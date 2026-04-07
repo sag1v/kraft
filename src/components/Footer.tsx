@@ -1,11 +1,12 @@
 import React from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
+import { shortenPath } from '../utils';
 
 export function Footer() {
   const { homeDir, theme } = useUIContext();
   const { cwd, gitInfo } = useSessionContext();
 
-  const displayPath = cwd && homeDir ? cwd.replace(homeDir, '~') : cwd || '~';
+  const displayPath = cwd ? shortenPath(cwd, homeDir) : '~';
 
   return (
     <div className="footer">

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VscFolderOpened } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
-import { IconButton } from './IconButton';
+import { IconButton, PanelMinimizeButton } from './IconButton';
+import { shortenPath } from '../utils';
 import type { DirEntry } from '../types';
 
 interface TreeNodeProps {
@@ -178,21 +179,6 @@ export function Explorer() {
     if (explorerRoot) loadFolder(explorerRoot, true);
   }, [explorerRoot, loadFolder]);
 
-  const handleSyncToCwd = useCallback(async () => {
-    let dir = cwd;
-    if (activeSessionId && window.api?.getTerminalCwd) {
-      try {
-        const liveCwd = await window.api.getTerminalCwd(activeSessionId);
-        if (liveCwd) {
-          dir = liveCwd;
-          updateSessionCwd(activeSessionId, liveCwd);
-        }
-      } catch {
-        // fall back to context cwd
-      }
-    }
-    if (dir) loadFolder(dir);
-  }, [cwd, activeSessionId, updateSessionCwd, loadFolder]);
 
   const handleFileClick = useCallback(
     (path: string) => {
@@ -201,11 +187,7 @@ export function Explorer() {
     [setOpenFilePath]
   );
 
-  const displayRoot = explorerRoot
-    ? homeDir
-      ? explorerRoot.replace(homeDir, '~')
-      : explorerRoot
-    : '';
+  const displayRoot = explorerRoot ? shortenPath(explorerRoot, homeDir) : '';
 
   const shortRoot = explorerRoot ? explorerRoot.split('/').pop() || explorerRoot : '';
 
@@ -214,14 +196,7 @@ export function Explorer() {
       <div className="panel explorer-panel">
         <div className="panel-header">
           <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
-          <IconButton
-            className="panel-minimize-btn"
-            tooltip="Minimize panel"
-            onMouseDown={e => e.stopPropagation()}
-            onClick={() => setPanelVisibility('explorer', false)}
-          >
-            &#x2212;
-          </IconButton>
+          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} />
         </div>
         <div className="panel-body explorer-tree">
           <div className="explorer-prompt">
@@ -232,7 +207,7 @@ export function Explorer() {
               Load current folder
             </button>
             <div className="explorer-prompt-path" data-tooltip={cwd} data-tooltip-pos="bottom">
-              {cwd && homeDir ? cwd.replace(homeDir, '~') : cwd}
+              {shortenPath(cwd, homeDir)}
             </div>
           </div>
         </div>
@@ -250,7 +225,7 @@ export function Explorer() {
               className="explorer-action-btn explorer-sync-btn"
               tooltip="Sync to terminal directory"
               tooltipPos="bottom"
-              onClick={handleSyncToCwd}
+              onClick={handleLoadCwd}
             >
               ↻
             </IconButton>
@@ -271,21 +246,14 @@ export function Explorer() {
           >
             ⟳
           </IconButton>
-          <IconButton
-            className="panel-minimize-btn"
-            tooltip="Minimize panel"
-            onMouseDown={e => e.stopPropagation()}
-            onClick={() => setPanelVisibility('explorer', false)}
-          >
-            &#x2212;
-          </IconButton>
+          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} />
         </div>
       </div>
       {explorerOutOfSync && (
-        <div className="explorer-sync-bar" onClick={handleSyncToCwd}>
+        <div className="explorer-sync-bar" onClick={handleLoadCwd}>
           <span>Terminal moved to </span>
           <span className="explorer-sync-path">
-            {homeDir ? cwd.replace(homeDir, '~') : cwd}
+            {shortenPath(cwd, homeDir)}
           </span>
           <span> - click to follow</span>
         </div>

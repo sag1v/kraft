@@ -306,18 +306,6 @@ function applyPanelDrop(
   }
 }
 
-function detectDropPosition(e: React.DragEvent): DropPosition {
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const x = (e.clientX - rect.left) / rect.width;
-  const y = (e.clientY - rect.top) / rect.height;
-  const dL = x, dR = 1 - x, dT = y, dB = 1 - y;
-  const min = Math.min(dL, dR, dT, dB);
-  if (min === dT) return 'top';
-  if (min === dB) return 'bottom';
-  if (min === dL) return 'left';
-  return 'right';
-}
-
 function detectEdge(e: React.DragEvent, containerRect: DOMRect): DropPosition | null {
   const x = e.clientX - containerRect.left;
   const y = e.clientY - containerRect.top;

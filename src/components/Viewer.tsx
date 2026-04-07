@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useUIContext } from '../context/AppContext';
-import { IconButton } from './IconButton';
+import { PanelMinimizeButton } from './IconButton';
 import { FileIcon } from './FileIcon';
 import { TabBar, type TabItem } from './TabBar';
+import { shortenPath } from '../utils';
 import hljs from 'highlight.js';
 
 const extToLang: Record<string, string> = {
@@ -162,7 +163,7 @@ export function Viewer() {
         : null;
       return {
         id: filePath,
-        tooltip: homeDir ? filePath.replace(homeDir, '~') : filePath,
+        tooltip: shortenPath(filePath, homeDir),
         label: (
           <>
             <FileIcon name={name} isDirectory={false} />
@@ -177,24 +178,17 @@ export function Viewer() {
 
   return (
     <div className="panel viewer-panel">
-      <div className="panel-header viewer-tab-header">
-        <span className="panel-title panel-icon viewer-icon viewer-panel-title" data-tooltip="Viewer - drag to reorder" data-tooltip-pos="bottom">{'{}'}</span>
+      <div className="panel-header tabbed-panel-header">
+        <span className="panel-title panel-icon viewer-icon tabbed-panel-title" data-tooltip="Viewer - drag to reorder" data-tooltip-pos="bottom">{'{}'}</span>
         <TabBar
           tabs={tabs}
           activeId={openFilePath}
           onActivate={setActiveFileTab}
           onClose={closeFileTab}
           onReorder={reorderFileTabs}
-          className="viewer-tabs"
+          className="tabbed-panel-tabs"
         />
-        <IconButton
-          className="panel-minimize-btn"
-          tooltip="Minimize panel"
-          onMouseDown={e => e.stopPropagation()}
-          onClick={() => setPanelVisibility('viewer', false)}
-        >
-          &#x2212;
-        </IconButton>
+        <PanelMinimizeButton onMinimize={() => setPanelVisibility('viewer', false)} />
       </div>
       <div className="panel-body viewer-body">
         {loading ? (

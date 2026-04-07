@@ -36,3 +36,20 @@ export const IconButton = React.memo(function IconButton({
     </button>
   );
 });
+
+export const PanelMinimizeButton = React.memo(function PanelMinimizeButton({
+  onMinimize,
+}: {
+  onMinimize: () => void;
+}) {
+  return (
+    <IconButton
+      className="panel-minimize-btn"
+      tooltip="Minimize panel"
+      onMouseDown={e => e.stopPropagation()}
+      onClick={onMinimize}
+    >
+      &#x2212;
+    </IconButton>
+  );
+});

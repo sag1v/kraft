@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { TerminalInstance } from './TerminalInstance';
-import { IconButton } from './IconButton';
+import { IconButton, PanelMinimizeButton } from './IconButton';
 import { TabBar, type TabItem } from './TabBar';
 
 let tabCounter = 0;
@@ -155,8 +155,8 @@ export function TerminalPanel() {
 
   return (
     <div className="panel terminal-panel">
-      <div className="panel-header terminal-tab-header">
-        <span className="panel-title panel-icon terminal-icon terminal-panel-title" data-tooltip="Terminal - drag to reorder" data-tooltip-pos="bottom">&gt;_</span>
+      <div className="panel-header tabbed-panel-header">
+        <span className="panel-title panel-icon terminal-icon tabbed-panel-title" data-tooltip="Terminal - drag to reorder" data-tooltip-pos="bottom">&gt;_</span>
         <TabBar
           tabs={tabs}
           activeId={activeSessionId}
@@ -164,7 +164,7 @@ export function TerminalPanel() {
           onClose={handleCloseTab}
           onReorder={reorderSessions}
           onContextMenu={handleTabContextMenu}
-          className="terminal-tabs"
+          className="tabbed-panel-tabs"
           trailing={
             <IconButton
               className="terminal-tab-add"
@@ -176,15 +176,7 @@ export function TerminalPanel() {
             </IconButton>
           }
         />
-        <IconButton
-          className="panel-minimize-btn"
-          tooltip="Minimize panel"
-          tooltipPos="bottom"
-          onMouseDown={e => e.stopPropagation()}
-          onClick={() => setPanelVisibility('terminal', false)}
-        >
-          &#x2212;
-        </IconButton>
+        <PanelMinimizeButton onMinimize={() => setPanelVisibility('terminal', false)} />
       </div>
       {tabContextMenu && sessions.length > 1 && (
         <div

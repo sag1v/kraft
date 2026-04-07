@@ -294,7 +294,7 @@ body {
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1;
-  letter-spacing: -1px;
+  letter-spacing: 1px;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -644,22 +644,21 @@ body {
   box-shadow: inset -2px 0 0 0 var(--accent);
 }
 
-/* ── Viewer ── */
+/* ── Shared tabbed panel header ── */
 
-.viewer-tab-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.tabbed-panel-header {
   gap: 8px;
 }
 
-.viewer-panel-title {
+.tabbed-panel-title {
   flex-shrink: 0;
 }
 
-.viewer-tabs {
+.tabbed-panel-tabs {
   flex: 1;
 }
+
+/* ── Viewer ── */
 
 .viewer-tab-subpath {
   font-size: 10px;
@@ -798,20 +797,6 @@ body {
   flex-direction: column;
 }
 
-.terminal-tab-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.terminal-panel-title {
-  flex-shrink: 0;
-}
-
-.terminal-tabs {
-  flex: 1;
-}
 
 .terminal-tab-add {
   background: none;
