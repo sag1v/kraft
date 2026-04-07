@@ -23,7 +23,6 @@ export function CommandPalette() {
         id: 'reload-window',
         category: 'Developer',
         label: 'Reload Window',
-        shortcut: `${MOD}+Shift+R`,
         run: () => window.api?.reloadWindow?.(),
       },
       {
