@@ -29,38 +29,99 @@ const DIR_CACHE_TTL = 5000;
 const activeWatchers = new Map<string, fs.FSWatcher>();
 
 function getDefaultShell(): string {
-  if (process.platform === 'darwin' || process.platform === 'linux') {
-    return process.env.SHELL || '/bin/zsh';
+  if (process.platform === 'win32') {
+    return process.env.COMSPEC || 'cmd.exe';
   }
-  return 'powershell.exe';
+  try {
+    const { shell } = os.userInfo();
+    if (shell) return shell;
+  } catch { /* ignore */ }
+  return process.platform === 'darwin'
+    ? (process.env.SHELL || '/bin/zsh')
+    : (process.env.SHELL || '/bin/sh');
 }
+
+const IDE_ENV_PREFIXES = ['VSCODE_', 'CURSOR_', 'CLAUDE_CODE_'];
+const IDE_ENV_KEYS = new Set([
+  'TERM_PROGRAM',
+  'TERM_PROGRAM_VERSION',
+  'ORIGINAL_XDG_CURRENT_DESKTOP',
+  'GIT_ASKPASS',
+  'ELECTRON_RUN_AS_NODE',
+  '__CFBundleIdentifier',
+]);
+
+function stripIdeEnv(env: Record<string, string>): Record<string, string> {
+  const clean: Record<string, string> = {};
+  for (const [key, val] of Object.entries(env)) {
+    if (IDE_ENV_KEYS.has(key)) continue;
+    if (IDE_ENV_PREFIXES.some(p => key.startsWith(p))) continue;
+    clean[key] = val;
+  }
+  clean.TERM_PROGRAM = 'kraft';
+  return clean;
+}
+
+const ENV_DELIMITER = '_KRAFT_ENV_DELIMITER_';
 
 let cachedShellEnv: Record<string, string> | null = null;
 let shellEnvPromise: Promise<Record<string, string>> | null = null;
+let shellEnvFailed = false;
 
 async function getShellEnv(): Promise<Record<string, string>> {
   if (cachedShellEnv) return cachedShellEnv;
   if (shellEnvPromise) return shellEnvPromise;
 
   shellEnvPromise = (async () => {
-    const defaultShell = getDefaultShell();
-    try {
-      const { stdout } = await execFileAsync(defaultShell, ['-ilc', 'env'], {
-        encoding: 'utf-8',
-        timeout: 5000,
-        env: { ...process.env },
-      });
-      const env: Record<string, string> = {};
-      for (const line of stdout.split('\n')) {
-        const idx = line.indexOf('=');
-        if (idx > 0) {
-          env[line.substring(0, idx)] = line.substring(idx + 1);
-        }
-      }
-      cachedShellEnv = { ...process.env, ...env } as Record<string, string>;
-    } catch {
-      cachedShellEnv = process.env as Record<string, string>;
+    if (process.platform === 'win32') {
+      cachedShellEnv = stripIdeEnv(process.env as Record<string, string>);
+      return cachedShellEnv;
     }
+
+    const defaultShell = getDefaultShell();
+    const args = ['-ilc', `echo -n "${ENV_DELIMITER}"; command env; echo -n "${ENV_DELIMITER}"; exit`];
+    const spawnEnv = stripIdeEnv(process.env as Record<string, string>);
+    spawnEnv.DISABLE_AUTO_UPDATE = 'true';
+    spawnEnv.ZSH_TMUX_AUTOSTART = 'false';
+
+    const shells = [defaultShell, '/bin/zsh', '/bin/bash', '/bin/sh']
+      .filter((s, i, arr) => arr.indexOf(s) === i);
+
+    for (const shell of shells) {
+      try {
+        const { stdout } = await execFileAsync(shell, args, {
+          encoding: 'utf-8',
+          timeout: 5000,
+          env: spawnEnv,
+        });
+        const delimited = stdout.split(ENV_DELIMITER)[1];
+        if (!delimited) continue;
+
+        const env: Record<string, string> = {};
+        for (const line of delimited.split('\n').filter(Boolean)) {
+          const idx = line.indexOf('=');
+          if (idx > 0) {
+            env[line.substring(0, idx)] = line.substring(idx + 1);
+          }
+        }
+        env.TERM_PROGRAM = 'kraft';
+        console.log('[Kraft] Terminal env vars:', JSON.stringify(Object.keys(env).sort(), null, 2));
+        const suspicious = Object.entries(env).filter(([k]) =>
+          /vscode|cursor|electron|editor|ide|terminal_emulator/i.test(k)
+        );
+        if (suspicious.length > 0) {
+          console.log('[Kraft] Potentially IDE-related vars:', JSON.stringify(Object.fromEntries(suspicious), null, 2));
+        }
+        cachedShellEnv = env;
+        return cachedShellEnv;
+      } catch {
+        continue;
+      }
+    }
+
+    console.error('[Kraft] Failed to load shell environment from any shell');
+    shellEnvFailed = true;
+    cachedShellEnv = stripIdeEnv(process.env as Record<string, string>);
     return cachedShellEnv;
   })();
 
@@ -341,6 +402,12 @@ function setupIPC() {
         mainWindow.webContents.send('terminal-exit', id, exitCode);
       }
     });
+
+    if (shellEnvFailed && mainWindow && !mainWindow.isDestroyed()) {
+      const warn = '\x1b[33m[Kraft] Warning: Could not load shell environment. '
+        + 'Some tools may not be found. Check your shell config.\x1b[0m\r\n';
+      mainWindow.webContents.send('terminal-data', id, warn);
+    }
 
     return { id, pid: ptyProcess.pid };
   });
