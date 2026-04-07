@@ -92,6 +92,12 @@ function TreeNode({ entry, depth, onFileClick, collapseKey, gitStatus }: TreeNod
         className={`tree-row ${!entry.isDirectory ? 'tree-row-file' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={toggleOpen}
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation();
+          e.dataTransfer.setData('application/x-kraft-file-path', entry.path);
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
       >
         <FileIcon name={entry.name} isDirectory={entry.isDirectory} isOpen={isOpen} />
         <span className="tree-name" style={nameColor ? { color: nameColor } : undefined}>
@@ -166,6 +172,12 @@ function ChangesList({ gitStatus, explorerRoot, onFileClick }: ChangesListProps)
                 onClick={() => onFileClick(filePath)}
                 data-tooltip={relativePath}
                 data-tooltip-pos="bottom"
+                draggable
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  e.dataTransfer.setData('application/x-kraft-file-path', filePath);
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
               >
                 <FileIcon name={name} isDirectory={false} />
                 <span className="explorer-change-name" style={{ color }}>{name}</span>

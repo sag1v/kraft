@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import type { ILink, ILinkProvider } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -148,6 +148,71 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
   const onOpenFileRef = useRef(onOpenFile);
   onOpenFileRef.current = onOpenFile;
+
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const isFileDrag = useCallback((e: React.DragEvent) => {
+    return e.dataTransfer.types.includes('application/x-kraft-file-path') ||
+      e.dataTransfer.types.includes('Files');
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (isFileDrag(e)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }, [isFileDrag]);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (isFileDrag(e)) {
+      e.preventDefault();
+      dragCounterRef.current++;
+      setIsDragOver(true);
+    }
+  }, [isFileDrag]);
+
+  const handleDragLeave = useCallback(() => {
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+
+    const currentCwd = cwdRef.current;
+    const toRelative = (p: string) => {
+      if (currentCwd && p.startsWith(currentCwd + '/')) {
+        return p.slice(currentCwd.length + 1);
+      }
+      return p;
+    };
+
+    const kraftPath = e.dataTransfer.getData('application/x-kraft-file-path');
+    if (kraftPath) {
+      window.api.writeTerminal(sessionIdRef.current, `@${toRelative(kraftPath)} `);
+      requestAnimationFrame(() => xtermRef.current?.focus());
+      return;
+    }
+
+    if (e.dataTransfer.files.length > 0) {
+      const paths: string[] = [];
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const filePath = (e.dataTransfer.files[i] as any).path as string;
+        if (filePath) paths.push(`@${toRelative(filePath)}`);
+      }
+      if (paths.length > 0) {
+        window.api.writeTerminal(sessionIdRef.current, paths.join(' ') + ' ');
+      }
+    }
+    requestAnimationFrame(() => xtermRef.current?.focus());
+  }, []);
 
   useEffect(() => {
     const container = termRef.current;
@@ -343,10 +408,19 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
   return (
     <div
-      className="terminal-instance"
-      style={{ display: isActive ? 'flex' : 'none', flex: 1, height: '100%' }}
+      className={`terminal-instance${isDragOver ? ' terminal-drag-over' : ''}`}
+      style={{ display: isActive ? 'flex' : 'none', flex: 1, height: '100%', position: 'relative' }}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       <div className="panel-body terminal-body" ref={termRef} />
+      {isDragOver && (
+        <div className="terminal-drop-overlay">
+          <span className="terminal-drop-label">Drop file to paste @path</span>
+        </div>
+      )}
     </div>
   );
 });
