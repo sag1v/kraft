@@ -69,16 +69,28 @@ function scanJsonlForContextDirs(filePath: string): AgentContextDir[] {
   } catch { return []; }
 }
 
+/** JSONL often has no add-dir lines early on; use the session project cwd so the UI can react immediately. */
+function contextDirsFromJsonlOrCwd(jsonlPath: string, projectCwd: string): AgentContextDir[] {
+  const fromJsonl = scanJsonlForContextDirs(jsonlPath);
+  if (fromJsonl.length > 0) return fromJsonl;
+  if (projectCwd) {
+    return [{ path: projectCwd, name: path.basename(projectCwd) }];
+  }
+  return [];
+}
+
 class ClaudeCodeSessionWatcher implements AgentSessionWatcher {
   private watcher: fs.FSWatcher | null = null;
   private contextDirs: AgentContextDir[] = [];
   private callback: ((dirs: AgentContextDir[]) => void) | null = null;
   private jsonlPath: string;
+  private projectCwd: string;
   private lastSize = 0;
 
-  constructor(jsonlPath: string) {
+  constructor(jsonlPath: string, projectCwd: string) {
     this.jsonlPath = jsonlPath;
-    this.contextDirs = scanJsonlForContextDirs(jsonlPath);
+    this.projectCwd = projectCwd;
+    this.contextDirs = contextDirsFromJsonlOrCwd(jsonlPath, projectCwd);
     this.lastSize = this.getFileSize();
     this.startWatching();
   }
@@ -102,7 +114,7 @@ class ClaudeCodeSessionWatcher implements AgentSessionWatcher {
     const newSize = this.getFileSize();
     if (newSize <= this.lastSize) return;
 
-    const newDirs = scanJsonlForContextDirs(this.jsonlPath);
+    const newDirs = contextDirsFromJsonlOrCwd(this.jsonlPath, this.projectCwd);
     this.lastSize = newSize;
 
     if (this.dirsChanged(newDirs)) {
@@ -158,6 +170,6 @@ export class ClaudeCodeProvider implements AgentProvider {
       return null;
     }
 
-    return new ClaudeCodeSessionWatcher(jsonlPath);
+    return new ClaudeCodeSessionWatcher(jsonlPath, session.cwd);
   }
 }

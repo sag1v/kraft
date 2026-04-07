@@ -17,6 +17,7 @@ export class AgentManager {
   private providers: AgentProvider[] = [];
   private terminals = new Map<string, TrackedTerminal>();
   private onDirsChanged: ((terminalId: string, dirs: AgentContextDir[]) => void) | null = null;
+  private onDetected: ((terminalId: string, agentId: string) => void) | null = null;
 
   constructor() {
     this.providers.push(new ClaudeCodeProvider());
@@ -24,6 +25,10 @@ export class AgentManager {
 
   setOnContextDirsChanged(callback: (terminalId: string, dirs: AgentContextDir[]) => void) {
     this.onDirsChanged = callback;
+  }
+
+  setOnAgentDetected(callback: (terminalId: string, agentId: string) => void) {
+    this.onDetected = callback;
   }
 
   registerTerminal(terminalId: string, terminalPid: number, cwd: string) {
@@ -67,8 +72,13 @@ export class AgentManager {
           const result = await provider.detect(pid, tracked.cwd);
           if (!result) continue;
 
+          const firstDetection = tracked.detectedAgent === null;
           console.log(`[Kraft] Agent detected: ${result.displayName} (pid=${pid}) for terminal ${terminalId}`);
           tracked.detectedAgent = result.agentId;
+
+          if (firstDetection) {
+            this.onDetected?.(terminalId, result.agentId);
+          }
 
           const watcher = await provider.watchSession(pid, tracked.cwd);
           if (watcher) {
@@ -85,10 +95,8 @@ export class AgentManager {
             });
 
             const initialDirs = watcher.getContextDirs();
-            if (initialDirs.length > 0) {
-              console.log(`[Kraft] Initial context dirs for ${terminalId}:`, initialDirs);
-              this.onDirsChanged?.(terminalId, initialDirs);
-            }
+            console.log(`[Kraft] Initial context dirs for ${terminalId}:`, initialDirs);
+            this.onDirsChanged?.(terminalId, initialDirs);
           } else {
             console.log(`[Kraft] Agent detected but JSONL not ready yet, will keep polling (pid=${pid})`);
           }

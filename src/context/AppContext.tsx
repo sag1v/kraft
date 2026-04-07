@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalSession, PanelId, AgentContextDir } from '../types';
 import { getThemeById, kraftDark } from '../themes';
+import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
 
 const STANDARD_LAYOUT: PanelId[][] = [['explorer', 'viewer', 'terminal']];
 const SPLIT_LAYOUT: PanelId[][] = [['explorer', 'viewer'], ['terminal', 'terminal']];
@@ -152,6 +153,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
 
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
   const cwd = activeSession?.cwd || homeDir || '';
   const explorerRoot = activeSessionId ? explorerRoots[activeSessionId] ?? null : null;
@@ -207,6 +211,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!window.api?.onAgentDetected) return;
+    const unsubscribe = window.api.onAgentDetected((terminalId, _agentId) => {
+      const agentTabColor = themeRef.current.colors.agentAccent;
+      setSessions(prev =>
+        prev.map(s => {
+          if (s.id !== terminalId) return s;
+          if (s.icon !== undefined) return s;
+          const setColor = s.iconColor === undefined;
+          return {
+            ...s,
+            icon: AGENT_AUTO_TAB_ICON_ID,
+            autoIcon: true,
+            ...(setColor ? { iconColor: agentTabColor, autoIconColor: true } : {}),
+          };
+        })
+      );
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (!window.api?.onAgentContextDirsChanged) return;
     const unsubscribe = window.api.onAgentContextDirsChanged((terminalId, dirs) => {
       setAgentContextDirsMap(prev => ({ ...prev, [terminalId]: dirs }));
@@ -214,8 +239,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const accent = theme.colors.agentAccent;
+    setSessions(prev => {
+      let changed = false;
+      const next = prev.map(s => {
+        if (!s.autoIconColor) return s;
+        if (s.iconColor === accent) return s;
+        changed = true;
+        return { ...s, iconColor: accent };
+      });
+      return changed ? next : prev;
+    });
+  }, [theme]);
+
   const addSession = useCallback((session: TerminalSession) => {
-    setSessions(prev => [...prev, session]);
+    setSessions(prev => {
+      if (prev.length === 0) return [...prev, session];
+      const usedColors = prev.map(s => s.iconColor).filter(Boolean) as string[];
+      const color = session.iconColor || pickRandomColor(usedColors);
+      return [...prev, { ...session, iconColor: color }];
+    });
     setActiveSessionId(session.id);
   }, []);
 
@@ -279,8 +323,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const next = [...prev];
       next[idx] = {
         ...prev[idx],
-        ...(icon !== undefined ? { icon: icon || undefined } : {}),
-        ...(iconColor !== undefined ? { iconColor: iconColor || undefined } : {}),
+        ...(icon !== undefined ? { icon: icon || undefined, autoIcon: false } : {}),
+        ...(iconColor !== undefined ? { iconColor: iconColor || undefined, autoIconColor: false } : {}),
       };
       return next;
     });

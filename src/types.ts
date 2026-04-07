@@ -38,6 +38,10 @@ export interface TerminalSession {
   customLabel?: string;
   icon?: string;
   iconColor?: string;
+  /** True when the icon was auto-set by agent detection (not manually chosen). */
+  autoIcon?: boolean;
+  /** True when the color was auto-set by agent detection (not manually chosen). */
+  autoIconColor?: boolean;
   cwd: string;
 }
 
@@ -138,6 +142,7 @@ export interface ElectronAPI {
   onTerminalExit: (callback: (id: string, exitCode: number) => void) => () => void;
   getAgentContextDirs: (terminalId: string) => Promise<AgentContextDir[]>;
   onAgentContextDirsChanged: (callback: (terminalId: string, dirs: AgentContextDir[]) => void) => () => void;
+  onAgentDetected: (callback: (terminalId: string, agentId: string) => void) => () => void;
   getSettings: () => Promise<Record<string, any>>;
   saveSettings: (settings: Record<string, any>) => Promise<boolean>;
   toggleDevTools: () => void;

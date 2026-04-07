@@ -140,11 +140,158 @@ export const TERMINAL_ICONS: TerminalIconDef[] = [
       </svg>
     ),
   },
+  {
+    id: 'database',
+    label: 'Database',
+    svg: (
+      <svg {...s}>
+        <ellipse cx="8" cy="4.5" rx="4" ry="1.4" {...stroke} />
+        <path d="M4,4.5 L4,11.5 M12,4.5 L12,11.5" {...stroke} />
+        <ellipse cx="8" cy="11.5" rx="4" ry="1.4" {...stroke} />
+        <line x1="4" y1="8" x2="12" y2="8" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'containers',
+    label: 'Containers',
+    svg: (
+      <svg {...s}>
+        <rect x="2" y="2" width="12" height="3.2" rx="0.8" {...stroke} />
+        <rect x="2" y="6.4" width="12" height="3.2" rx="0.8" {...stroke} />
+        <rect x="2" y="10.8" width="12" height="3.2" rx="0.8" {...stroke} />
+        <circle cx="4.5" cy="3.6" r="0.65" fill="currentColor" />
+        <circle cx="4.5" cy="8" r="0.65" fill="currentColor" />
+        <circle cx="4.5" cy="12.4" r="0.65" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: 'git',
+    label: 'Git',
+    svg: (
+      <svg {...s}>
+        <circle cx="4" cy="12" r="1.6" {...stroke} />
+        <circle cx="4" cy="4" r="1.6" {...stroke} />
+        <circle cx="12" cy="4" r="1.6" {...stroke} />
+        <circle cx="8" cy="8" r="1.6" {...stroke} />
+        <path d="M4,12 L8,8 M4,4 L8,8 L12,4" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'logs',
+    label: 'Logs',
+    svg: (
+      <svg {...s}>
+        <rect x="3" y="2" width="10" height="12" rx="1" {...stroke} />
+        <line x1="5" y1="5" x2="11" y2="5" {...stroke} />
+        <line x1="5" y1="7.5" x2="11" y2="7.5" {...stroke} />
+        <line x1="5" y1="10" x2="9" y2="10" {...stroke} />
+        <line x1="5" y1="12.5" x2="11" y2="12.5" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'package',
+    label: 'Package',
+    svg: (
+      <svg {...s}>
+        <path d="M4,5 L8,2.5 L12,5 L8,7.5 Z" {...stroke} />
+        <path d="M4,5 L4,13 L12,13 L12,5" {...stroke} />
+        <line x1="8" y1="7.5" x2="8" y2="13" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'test',
+    label: 'Tests',
+    svg: (
+      <svg {...s}>
+        <circle cx="8" cy="8" r="5.2" {...stroke} />
+        <polyline points="5,8 7.5,10.5 11.5,6" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'rocket',
+    label: 'Deploy',
+    svg: (
+      <svg {...s}>
+        <path d="M8,2 L10,8.5 L8,7.7 L6,8.5 Z" {...stroke} />
+        <rect x="6" y="8.5" width="4" height="4" rx="0.5" {...stroke} />
+        <path d="M6,12.5 L5,14 M10,12.5 L11,14" {...stroke} />
+        <path d="M8,11 L7,13.2 L8,12.5 L9,13.2 Z" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'link',
+    label: 'Remote',
+    svg: (
+      <svg {...s}>
+        <circle cx="6" cy="8" r="2.7" {...stroke} />
+        <circle cx="10" cy="8" r="2.7" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'refresh',
+    label: 'Watch',
+    svg: (
+      <svg {...s}>
+        <path
+          d="M12.5,5 A5.2,5.2 0 1 0 12.5,12"
+          fill="none"
+          {...stroke}
+        />
+        <polyline points="14,3 14,6 11,6" {...stroke} />
+        <path
+          d="M3.5,11 A5.2,5.2 0 1 0 3.5,4"
+          fill="none"
+          {...stroke}
+        />
+        <polyline points="2,13 2,10 5,10" {...stroke} />
+      </svg>
+    ),
+  },
+  {
+    id: 'cloud',
+    label: 'Cloud',
+    svg: (
+      <svg {...s}>
+        <path
+          d="M4,10.5 C2.8,10.5 2,9.6 2,8.5 C2,7.2 3.2,6 4.8,6 C5.2,4.3 6.8,3 8.8,3 C11.2,3 13,4.8 13,7 C13.8,7 14.5,7.8 14.5,8.8 C14.5,9.9 13.6,10.8 12.4,10.8 L4,10.5 Z"
+          {...stroke}
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'cpu',
+    label: 'CPU',
+    svg: (
+      <svg {...s}>
+        <rect x="5" y="5" width="6" height="6" rx="0.6" {...stroke} />
+        <line x1="8" y1="2" x2="8" y2="5" {...stroke} />
+        <line x1="8" y1="11" x2="8" y2="14" {...stroke} />
+        <line x1="2" y1="8" x2="5" y2="8" {...stroke} />
+        <line x1="11" y1="8" x2="14" y2="8" {...stroke} />
+        <line x1="4.2" y1="4.2" x2="5.8" y2="5.8" {...stroke} />
+        <line x1="11.8" y1="4.2" x2="10.2" y2="5.8" {...stroke} />
+        <line x1="4.2" y1="11.8" x2="5.8" y2="10.2" {...stroke} />
+        <line x1="11.8" y1="11.8" x2="10.2" y2="10.2" {...stroke} />
+      </svg>
+    ),
+  },
 ];
 
 export const TERMINAL_ICON_MAP = new Map(TERMINAL_ICONS.map(i => [i.id, i]));
 
 export const DEFAULT_TERMINAL_ICON = 'terminal';
+
+/** Tab icon applied when an AI agent session is detected, only if the user never set a tab icon. */
+export const AGENT_AUTO_TAB_ICON_ID = 'robot';
 
 export const TAB_COLORS = [
   { id: 'default', label: 'Default', value: '' },
@@ -157,6 +304,14 @@ export const TAB_COLORS = [
   { id: 'purple', label: 'Purple', value: '#c975d2' },
   { id: 'pink', label: 'Pink', value: '#e77da8' },
 ];
+
+const ASSIGNABLE_COLORS = TAB_COLORS.filter(c => c.value !== '').map(c => c.value);
+
+export function pickRandomColor(usedColors: string[]): string {
+  const unused = ASSIGNABLE_COLORS.filter(c => !usedColors.includes(c));
+  const pool = unused.length > 0 ? unused : ASSIGNABLE_COLORS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 
 export function TerminalTabIcon({ iconId, color }: { iconId?: string; color?: string }) {
   const def = TERMINAL_ICON_MAP.get(iconId || DEFAULT_TERMINAL_ICON) || TERMINAL_ICONS[0];

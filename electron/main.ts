@@ -617,6 +617,12 @@ agentManager.setOnContextDirsChanged((terminalId, dirs) => {
   }
 });
 
+agentManager.setOnAgentDetected((terminalId, agentId) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('agent-detected', terminalId, agentId);
+  }
+});
+
 app.whenReady().then(() => {
   getShellEnv();
   setupIPC();

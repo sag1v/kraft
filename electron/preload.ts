@@ -85,6 +85,15 @@ const api = {
     return () => ipcRenderer.removeListener('agent-context-dirs-changed', handler);
   },
 
+  onAgentDetected: (
+    callback: (terminalId: string, agentId: string) => void
+  ): (() => void) => {
+    const handler = (_event: any, terminalId: string, agentId: string) =>
+      callback(terminalId, agentId);
+    ipcRenderer.on('agent-detected', handler);
+    return () => ipcRenderer.removeListener('agent-detected', handler);
+  },
+
   getSettings: (): Promise<Record<string, any>> => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: Record<string, any>): Promise<boolean> => ipcRenderer.invoke('save-settings', settings),
 
