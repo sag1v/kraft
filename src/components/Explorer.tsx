@@ -3,7 +3,7 @@ import { VscFolderOpened } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
-import { shortenPath } from '../utils';
+import { shortenPath, normPath, isPathWithinRoot } from '../utils';
 import type { DirEntry, GitFileStatus, AgentContextDir } from '../types';
 
 const STATUS_COLOR_VAR: Record<string, string> = {
@@ -48,18 +48,55 @@ interface TreeNodeProps {
   entry: DirEntry;
   depth: number;
   onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
   collapseKey: number;
   gitStatus: Record<string, GitFileStatus>;
+  syncedRevealFile: string | null;
+  revealGeneration: number;
 }
 
-function TreeNode({ entry, depth, onFileClick, collapseKey, gitStatus }: TreeNodeProps) {
+function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, gitStatus, syncedRevealFile, revealGeneration }: TreeNodeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const fileRowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsOpen(false);
   }, [collapseKey]);
+
+  useEffect(() => {
+    if (!entry.isDirectory || !syncedRevealFile) return;
+    const d = normPath(entry.path);
+    const t = normPath(syncedRevealFile);
+    if (t === d || !t.startsWith(d + '/')) return;
+    setIsOpen(true);
+    if (children !== null) return;
+    let cancelled = false;
+    setLoading(true);
+    window.api.readDirectory(entry.path)
+      .then((list) => {
+        if (!cancelled) setChildren(list);
+      })
+      .catch(() => {
+        if (!cancelled) setChildren([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.isDirectory, entry.path, syncedRevealFile, revealGeneration, children]);
+
+  useEffect(() => {
+    if (entry.isDirectory || !syncedRevealFile) return;
+    if (normPath(syncedRevealFile) !== normPath(entry.path)) return;
+    const id = requestAnimationFrame(() => {
+      fileRowRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [entry.isDirectory, entry.path, syncedRevealFile, revealGeneration]);
 
   const toggleOpen = useCallback(async () => {
     if (!entry.isDirectory) {
@@ -85,13 +122,16 @@ function TreeNode({ entry, depth, onFileClick, collapseKey, gitStatus }: TreeNod
     : (gitStatus[entry.path] as GitFileStatus | undefined) ?? null;
 
   const nameColor = fileStatus ? STATUS_COLOR_VAR[fileStatus] : undefined;
+  const isExplorerActive = !entry.isDirectory && syncedRevealFile && normPath(syncedRevealFile) === normPath(entry.path);
 
   return (
     <div className="tree-node">
       <div
-        className={`tree-row ${!entry.isDirectory ? 'tree-row-file' : ''}`}
+        ref={entry.isDirectory ? undefined : fileRowRef}
+        className={`tree-row ${!entry.isDirectory ? 'tree-row-file' : ''} ${isExplorerActive ? 'tree-row-explorer-active' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={toggleOpen}
+        onDoubleClick={!entry.isDirectory ? (e) => { e.stopPropagation(); onFileDoubleClick(); } : undefined}
         draggable
         onDragStart={(e) => {
           e.stopPropagation();
@@ -118,8 +158,11 @@ function TreeNode({ entry, depth, onFileClick, collapseKey, gitStatus }: TreeNod
               entry={child}
               depth={depth + 1}
               onFileClick={onFileClick}
+              onFileDoubleClick={onFileDoubleClick}
               collapseKey={collapseKey}
               gitStatus={gitStatus}
+              syncedRevealFile={syncedRevealFile}
+              revealGeneration={revealGeneration}
             />
           ))}
         </div>
@@ -136,6 +179,7 @@ interface ChangesListProps {
   gitStatus: Record<string, GitFileStatus>;
   allRoots: string[];
   onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
 }
 
 interface ChangesGroupProps {
@@ -143,10 +187,11 @@ interface ChangesGroupProps {
   rootName: string;
   files: [string, GitFileStatus][];
   onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
   showRootHeader: boolean;
 }
 
-function ChangesGroup({ rootPath, rootName, files, onFileClick, showRootHeader }: ChangesGroupProps) {
+function ChangesGroup({ rootPath, rootName, files, onFileClick, onFileDoubleClick, showRootHeader }: ChangesGroupProps) {
   const [groupOpen, setGroupOpen] = useState(true);
 
   if (files.length === 0) return null;
@@ -174,6 +219,7 @@ function ChangesGroup({ rootPath, rootName, files, onFileClick, showRootHeader }
             key={filePath}
             className="explorer-change-item"
             onClick={() => onFileClick(filePath)}
+            onDoubleClick={(e) => { e.stopPropagation(); onFileDoubleClick(); }}
             data-tooltip={relativePath}
             data-tooltip-pos="bottom"
             draggable
@@ -196,7 +242,7 @@ function ChangesGroup({ rootPath, rootName, files, onFileClick, showRootHeader }
   );
 }
 
-function ChangesList({ gitStatus, allRoots, onFileClick }: ChangesListProps) {
+function ChangesList({ gitStatus, allRoots, onFileClick, onFileDoubleClick }: ChangesListProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [height, setHeight] = useState(CHANGES_DEFAULT_HEIGHT);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -312,6 +358,7 @@ function ChangesList({ gitStatus, allRoots, onFileClick }: ChangesListProps) {
               rootName={group.rootName}
               files={group.files}
               onFileClick={onFileClick}
+              onFileDoubleClick={onFileDoubleClick}
               showRootHeader={showRootHeaders}
             />
           ))}
@@ -324,11 +371,14 @@ function ChangesList({ gitStatus, allRoots, onFileClick }: ChangesListProps) {
 interface ContextDirSectionProps {
   dir: AgentContextDir;
   onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
   collapseKey: number;
   gitStatus: Record<string, GitFileStatus>;
+  syncedRevealFile: string | null;
+  revealGeneration: number;
 }
 
-function ContextDirSection({ dir, onFileClick, collapseKey, gitStatus }: ContextDirSectionProps) {
+function ContextDirSection({ dir, onFileClick, onFileDoubleClick, collapseKey, gitStatus, syncedRevealFile, revealGeneration }: ContextDirSectionProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -345,6 +395,12 @@ function ContextDirSection({ dir, onFileClick, collapseKey, gitStatus }: Context
   useEffect(() => {
     setIsOpen(false);
   }, [collapseKey]);
+
+  useEffect(() => {
+    if (!syncedRevealFile) return;
+    if (!isPathWithinRoot(syncedRevealFile, dir.path)) return;
+    setIsOpen(true);
+  }, [syncedRevealFile, revealGeneration, dir.path]);
 
   const folderStatus = getFolderStatus(dir.path, gitStatus);
   const nameColor = folderStatus ? STATUS_COLOR_VAR[folderStatus] : undefined;
@@ -372,8 +428,11 @@ function ContextDirSection({ dir, onFileClick, collapseKey, gitStatus }: Context
               entry={entry}
               depth={1}
               onFileClick={onFileClick}
+              onFileDoubleClick={onFileDoubleClick}
               collapseKey={collapseKey}
               gitStatus={gitStatus}
+              syncedRevealFile={syncedRevealFile}
+              revealGeneration={revealGeneration}
             />
           ))}
         </div>
@@ -388,7 +447,7 @@ interface TreeCache {
 }
 
 export function Explorer() {
-  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath } = useUIContext();
+  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath } = useUIContext();
   const {
     cwd,
     explorerRoot,
@@ -542,7 +601,34 @@ export function Explorer() {
     [setDiffFilePath]
   );
 
+  const showViewerPanel = useCallback(() => {
+    setPanelVisibility('viewer', true);
+  }, [setPanelVisibility]);
+
   const [rootOpen, setRootOpen] = useState(true);
+  const [revealGeneration, setRevealGeneration] = useState(0);
+
+  const agentContextPathsKey = useMemo(
+    () => agentContextDirs.map(d => d.path).join('\0'),
+    [agentContextDirs],
+  );
+
+  const syncedRevealFile = useMemo(() => {
+    if (explorerOutOfSync || !openFilePath) return null;
+    if (explorerRoot && isPathWithinRoot(openFilePath, explorerRoot)) return openFilePath;
+    for (const d of agentContextDirs) {
+      if (isPathWithinRoot(openFilePath, d.path)) return openFilePath;
+    }
+    return null;
+  }, [explorerOutOfSync, openFilePath, explorerRoot, agentContextPathsKey]);
+
+  useEffect(() => {
+    if (!syncedRevealFile) return;
+    if (explorerRoot && isPathWithinRoot(syncedRevealFile, explorerRoot)) {
+      setRootOpen(true);
+    }
+    setRevealGeneration((g) => g + 1);
+  }, [syncedRevealFile, openFilePath, explorerRoot, explorerOutOfSync, agentContextPathsKey]);
 
   useEffect(() => {
     setRootOpen(true);
@@ -650,8 +736,11 @@ export function Explorer() {
                   entry={entry}
                   depth={1}
                   onFileClick={handleFileClick}
+                  onFileDoubleClick={showViewerPanel}
                   collapseKey={collapseKey}
                   gitStatus={gitStatus}
+                  syncedRevealFile={syncedRevealFile}
+                  revealGeneration={revealGeneration}
                 />
               ))
             )
@@ -661,8 +750,11 @@ export function Explorer() {
               key={dir.path}
               dir={dir}
               onFileClick={handleFileClick}
+              onFileDoubleClick={showViewerPanel}
               collapseKey={collapseKey}
               gitStatus={gitStatus}
+              syncedRevealFile={syncedRevealFile}
+              revealGeneration={revealGeneration}
             />
           ))}
         </div>
@@ -671,6 +763,7 @@ export function Explorer() {
             gitStatus={gitStatus}
             allRoots={allRoots}
             onFileClick={handleChangeFileClick}
+            onFileDoubleClick={showViewerPanel}
           />
         )}
       </div>

@@ -74,6 +74,8 @@ interface UIContextValue {
   setOpenFilePath: (path: string | null) => void;
   openFiles: string[];
   closeFileTab: (path: string) => void;
+  closeOtherFileTabs: (keepPath: string) => void;
+  closeAllFileTabs: () => void;
   setActiveFileTab: (path: string) => void;
   reorderFileTabs: (fromIndex: number, toIndex: number) => void;
   settingsLoaded: boolean;
@@ -319,6 +321,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const closeFileTab = useCallback((path: string) => {
     const sid = activeSessionIdRef.current;
     if (!sid) return;
+    setDiffFilePathState(prev => (prev === path ? null : prev));
     setOpenFileTabsMap(prev => {
       const entry = prev[sid];
       if (!entry) return prev;
@@ -335,6 +338,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return { ...prev, [sid]: { files, activeFile } };
     });
+  }, []);
+
+  const closeOtherFileTabs = useCallback((keepPath: string) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    setOpenFileTabsMap(prev => {
+      const entry = prev[sid];
+      if (!entry || !entry.files.includes(keepPath)) return prev;
+      return { ...prev, [sid]: { files: [keepPath], activeFile: keepPath } };
+    });
+    setDiffFilePathState(prev => (prev && prev !== keepPath ? null : prev));
+  }, []);
+
+  const closeAllFileTabs = useCallback(() => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    setOpenFileTabsMap(prev => {
+      const entry = prev[sid];
+      if (!entry || entry.files.length === 0) return prev;
+      return { ...prev, [sid]: { files: [], activeFile: null } };
+    });
+    setDiffFilePathState(null);
   }, []);
 
   const setActiveFileTab = useCallback((path: string) => {
@@ -540,6 +565,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setOpenFilePath,
     openFiles,
     closeFileTab,
+    closeOtherFileTabs,
+    closeAllFileTabs,
     setActiveFileTab,
     reorderFileTabs,
     settingsLoaded,
@@ -548,7 +575,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     diffFilePath,
     setDiffFilePath,
   }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath,
-       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
+       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, closeOtherFileTabs, closeAllFileTabs, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
 
   const sessionValue = useMemo<SessionContextValue>(() => ({
     cwd,

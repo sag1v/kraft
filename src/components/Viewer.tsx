@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { PanelMinimizeButton } from './IconButton';
 import { FileIcon } from './FileIcon';
@@ -80,12 +80,50 @@ function escapeHtml(text: string): string {
 }
 
 export function Viewer() {
-  const { openFilePath, openFiles, closeFileTab, setActiveFileTab, reorderFileTabs, homeDir, setPanelVisibility, diffFilePath, setDiffFilePath } = useUIContext();
+  const {
+    openFilePath,
+    openFiles,
+    closeFileTab,
+    closeOtherFileTabs,
+    closeAllFileTabs,
+    setActiveFileTab,
+    reorderFileTabs,
+    homeDir,
+    setPanelVisibility,
+    diffFilePath,
+    setDiffFilePath,
+  } = useUIContext();
   const { gitStatus, explorerRoot } = useSessionContext();
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
   const fetchedVersionRef = useRef<Record<string, number>>({});
+
+  const [tabContextMenu, setTabContextMenu] = useState<{
+    x: number;
+    y: number;
+    filePath: string;
+  } | null>(null);
+  const tabContextMenuRef = useRef<HTMLDivElement>(null);
+
+  const closeTabContextMenu = useCallback(() => {
+    setTabContextMenu(null);
+  }, []);
+
+  useEffect(() => {
+    if (!tabContextMenu) return;
+    const onClick = (e: MouseEvent) => {
+      if (tabContextMenuRef.current?.contains(e.target as Node)) return;
+      closeTabContextMenu();
+    };
+    window.addEventListener('click', onClick, true);
+    return () => window.removeEventListener('click', onClick, true);
+  }, [tabContextMenu, closeTabContextMenu]);
+
+  const handleTabContextMenu = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: id });
+  }, []);
 
   useEffect(() => {
     if (!explorerRoot || !window.api?.onDirectoryChanged) return;
@@ -214,6 +252,7 @@ export function Viewer() {
           onActivate={(id) => { setDiffFilePath(null); setActiveFileTab(id); }}
           onClose={closeFileTab}
           onReorder={reorderFileTabs}
+          onContextMenu={handleTabContextMenu}
           className="tabbed-panel-tabs"
         />
         {openFilePath && fileHasChanges && (
@@ -228,6 +267,53 @@ export function Viewer() {
         )}
         <PanelMinimizeButton onMinimize={() => setPanelVisibility('viewer', false)} />
       </div>
+      {tabContextMenu && openFiles.length > 0 && (
+        <div
+          ref={tabContextMenuRef}
+          className="tab-context-menu"
+          style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
+          role="menu"
+        >
+          <button
+            type="button"
+            className="tab-context-item"
+            role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => {
+              closeFileTab(tabContextMenu.filePath);
+              closeTabContextMenu();
+            }}
+          >
+            Close
+          </button>
+          {openFiles.length > 1 && (
+            <button
+              type="button"
+              className="tab-context-item"
+              role="menuitem"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => {
+                closeOtherFileTabs(tabContextMenu.filePath);
+                closeTabContextMenu();
+              }}
+            >
+              Close Others
+            </button>
+          )}
+          <button
+            type="button"
+            className="tab-context-item"
+            role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => {
+              closeAllFileTabs();
+              closeTabContextMenu();
+            }}
+          >
+            Close All
+          </button>
+        </div>
+      )}
       <div className="panel-body viewer-body">
         {isDiffMode && openFilePath ? (
           <DiffView filePath={openFilePath} />
