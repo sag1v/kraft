@@ -87,7 +87,7 @@ export function CommandPalette() {
 
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('>');
-  const [fileResults, setFileResults] = useState<string[]>([]);
+  const [fileResults, setFileResults] = useState<Array<{ path: string; isDirectory: boolean }>>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,15 +152,15 @@ export function CommandPalette() {
     if (isCommandMode) {
       return filteredCommands.map((c) => ({ kind: 'command' as const, key: c.id, category: c.category, label: c.label, shortcut: c.shortcut, run: c.run }));
     }
-    return fileResults.map((p) => {
-      const parts = p.split('/');
-      const fileName = parts.pop() || p;
+    return fileResults.map((r) => {
+      const parts = r.path.split('/');
+      const fileName = parts.pop() || r.path;
       let dirPath = parts.join('/');
       if (searchRoot && dirPath.startsWith(searchRoot)) {
         dirPath = dirPath.slice(searchRoot.length);
         if (dirPath.startsWith('/')) dirPath = dirPath.slice(1);
       }
-      return { kind: 'file' as const, key: p, path: p, label: p, fileName, dirPath };
+      return { kind: 'file' as const, key: r.path, path: r.path, label: r.path, fileName, dirPath, isDirectory: r.isDirectory };
     });
   }, [isCommandMode, filteredCommands, fileResults, searchRoot]);
 
@@ -221,12 +221,21 @@ export function CommandPalette() {
       if (!item) return;
       if (item.kind === 'command') {
         item.run();
+        setOpen(false);
+      } else if (item.isDirectory) {
+        let relativePath = item.path;
+        if (searchRoot && relativePath.startsWith(searchRoot)) {
+          relativePath = relativePath.slice(searchRoot.length);
+          if (relativePath.startsWith('/')) relativePath = relativePath.slice(1);
+        }
+        setInput(relativePath + '/');
+        setSelectedIndex(0);
       } else {
         setOpenFilePath(item.path);
+        setOpen(false);
       }
-      setOpen(false);
     },
-    [items, setOpenFilePath]
+    [items, setOpenFilePath, searchRoot]
   );
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,7 +264,7 @@ export function CommandPalette() {
     }
   };
 
-  const placeholder = isCommandMode ? 'Search commands… (delete > for files)' : 'Search files by name… (type > for commands)';
+  const placeholder = isCommandMode ? 'Search commands… (delete > for files)' : 'Search files by name or path… (type > for commands)';
 
   if (!open) return null;
 
@@ -313,8 +322,8 @@ export function CommandPalette() {
                   </>
                 ) : (
                   <>
-                    <FileIcon name={item.fileName} isDirectory={false} />
-                    <span className="command-palette-file-name">{item.fileName}</span>
+                    <FileIcon name={item.fileName} isDirectory={item.isDirectory} />
+                    <span className="command-palette-file-name">{item.fileName}{item.isDirectory ? '/' : ''}</span>
                     {item.dirPath && <span className="command-palette-file-path">{item.dirPath}</span>}
                   </>
                 )}

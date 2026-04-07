@@ -30,7 +30,7 @@ const api = {
 
   readDirectory: (dirPath: string, skipCache?: boolean): Promise<DirEntry[]> => ipcRenderer.invoke('read-directory', dirPath, skipCache),
   readFile: (filePath: string): Promise<FileResult> => ipcRenderer.invoke('read-file', filePath),
-  searchFiles: (rootDir: string, query: string): Promise<string[]> => ipcRenderer.invoke('search-files', rootDir, query),
+  searchFiles: (rootDir: string, query: string): Promise<Array<{ path: string; isDirectory: boolean }>> => ipcRenderer.invoke('search-files', rootDir, query),
   getGitInfo: (dirPath: string): Promise<GitInfo> => ipcRenderer.invoke('get-git-info', dirPath),
   getGitStatus: (dirPath: string): Promise<{ files: Record<string, string>; repoRoot: string | null }> =>
     ipcRenderer.invoke('get-git-status', dirPath),

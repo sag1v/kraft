@@ -294,6 +294,27 @@ function setupIPC() {
   ipcMain.handle('search-files', async (_event, rootDir: string, query: string) => {
     const maxResults = 50;
     const lowerQuery = query.toLowerCase();
+    const isPathQuery = query.includes('/');
+
+    if (isPathQuery) {
+      const dirQuery = query.replace(/\/+$/, '');
+      const targetDir = path.resolve(rootDir, dirQuery);
+      try {
+        const stat = await fs.promises.stat(targetDir);
+        if (stat.isDirectory()) {
+          const entries = await fs.promises.readdir(targetDir, { withFileTypes: true });
+          const dirs: { path: string; isDirectory: boolean }[] = [];
+          const files: { path: string; isDirectory: boolean }[] = [];
+          for (const entry of entries) {
+            if (entry.name.startsWith('.')) continue;
+            const item = { path: path.join(targetDir, entry.name), isDirectory: entry.isDirectory() };
+            if (entry.isDirectory()) dirs.push(item);
+            else files.push(item);
+          }
+          return [...dirs, ...files].slice(0, maxResults);
+        }
+      } catch {}
+    }
 
     try {
       const { stdout } = await execFileAsync(
@@ -302,18 +323,20 @@ function setupIPC() {
         { cwd: rootDir, maxBuffer: 1024 * 1024 }
       );
       const files = stdout.split('\n').filter(Boolean);
-      const results: string[] = [];
+      const results: { path: string; isDirectory: boolean }[] = [];
       for (const file of files) {
-        const name = file.split('/').pop() || file;
-        if (name.toLowerCase().includes(lowerQuery)) {
-          results.push(path.join(rootDir, file));
+        const matchTarget = isPathQuery
+          ? file.toLowerCase()
+          : (file.split('/').pop() || file).toLowerCase();
+        if (matchTarget.includes(lowerQuery)) {
+          results.push({ path: path.join(rootDir, file), isDirectory: false });
           if (results.length >= maxResults) break;
         }
       }
       if (results.length > 0) return results;
     } catch {}
 
-    const results: string[] = [];
+    const results: { path: string; isDirectory: boolean }[] = [];
     const SKIP_DIRS = new Set([
       'node_modules', '__pycache__', '.next', '.nuxt',
       'coverage', '.cache', '.turbo', '.svn',
@@ -333,9 +356,14 @@ function setupIPC() {
           for (const entry of entries) {
             if (entry.name.startsWith('.')) continue;
             const fullPath = path.join(dir, entry.name);
-            if (entry.isFile() && entry.name.toLowerCase().includes(lowerQuery)) {
-              results.push(fullPath);
-              if (results.length >= maxResults) break;
+            if (entry.isFile()) {
+              const matchTarget = isPathQuery
+                ? path.relative(rootDir, fullPath).toLowerCase()
+                : entry.name.toLowerCase();
+              if (matchTarget.includes(lowerQuery)) {
+                results.push({ path: fullPath, isDirectory: false });
+                if (results.length >= maxResults) break;
+              }
             } else if (entry.isDirectory() && !shouldSkipDir(entry.name)) {
               nextQueue.push(fullPath);
             }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { PanelMinimizeButton } from './IconButton';
 import { FileIcon } from './FileIcon';
@@ -85,6 +85,7 @@ export function Viewer() {
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
+  const fetchedVersionRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     if (!explorerRoot || !window.api?.onDirectoryChanged) return;
@@ -93,7 +94,6 @@ export function Viewer() {
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
-        setContentCache({});
         setFileVersion(v => v + 1);
       }, 400);
     });
@@ -109,18 +109,23 @@ export function Viewer() {
       return;
     }
 
-    if (contentCache[openFilePath]) {
+    const hasCached = !!contentCache[openFilePath];
+    const lastFetchedVersion = fetchedVersionRef.current[openFilePath] ?? -1;
+
+    if (hasCached && lastFetchedVersion === fileVersion) {
       setLoading(false);
       return;
     }
 
+    setLoading(!hasCached);
+
     let cancelled = false;
-    setLoading(true);
 
     (async () => {
       try {
         const result = await window.api.readFile(openFilePath);
         if (!cancelled) {
+          fetchedVersionRef.current[openFilePath] = fileVersion;
           if (result.error) {
             setContentCache(prev => ({ ...prev, [openFilePath]: { content: null, error: result.error } }));
           } else {
@@ -130,6 +135,7 @@ export function Viewer() {
         }
       } catch (e: any) {
         if (!cancelled) {
+          fetchedVersionRef.current[openFilePath] = fileVersion;
           setContentCache(prev => ({ ...prev, [openFilePath]: { content: null, error: e.message } }));
           setLoading(false);
         }

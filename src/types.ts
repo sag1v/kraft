@@ -11,6 +11,11 @@ export interface FileResult {
   content: string | null;
 }
 
+export interface SearchFileResult {
+  path: string;
+  isDirectory: boolean;
+}
+
 export interface GitInfo {
   branch: string | null;
   repoName: string | null;
@@ -111,7 +116,7 @@ export interface ElectronAPI {
   getHomeDir: () => Promise<string>;
   readDirectory: (dirPath: string, skipCache?: boolean) => Promise<DirEntry[]>;
   readFile: (filePath: string) => Promise<FileResult>;
-  searchFiles: (rootDir: string, query: string) => Promise<string[]>;
+  searchFiles: (rootDir: string, query: string) => Promise<SearchFileResult[]>;
   getGitInfo: (dirPath: string) => Promise<GitInfo>;
   getGitStatus: (dirPath: string) => Promise<GitStatusResult>;
   getGitDiff: (filePath: string, repoRoot: string) => Promise<GitDiffResult>;
