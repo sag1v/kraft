@@ -124,6 +124,7 @@ export interface ElectronAPI {
   writeTerminal: (id: string, data: string) => void;
   resizeTerminal: (id: string, cols: number, rows: number) => void;
   getTerminalCwd: (id: string) => Promise<string | null>;
+  resolveFilePath: (rawPath: string, cwd?: string) => Promise<string | null>;
   destroyTerminal: (id: string) => void;
   onTerminalData: (callback: (id: string, data: string) => void) => () => void;
   onTerminalExit: (callback: (id: string, exitCode: number) => void) => () => void;

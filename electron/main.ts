@@ -548,6 +548,22 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle('resolve-file-path', async (_event, rawPath: string, cwd?: string) => {
+    try {
+      let resolved = rawPath;
+      if (resolved.startsWith('~/')) {
+        resolved = path.join(os.homedir(), resolved.slice(2));
+      } else if (!path.isAbsolute(resolved)) {
+        resolved = path.resolve(cwd || os.homedir(), resolved);
+      }
+      const stat = await fs.promises.stat(resolved);
+      if (stat.isFile()) return resolved;
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
   ipcMain.on('terminal-destroy', (_event, id: string) => {
     const instance = ptyInstances.get(id);
     if (instance) {

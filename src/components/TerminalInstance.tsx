@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
+import type { ILink, ILinkProvider } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -33,12 +34,92 @@ function buildXtermTheme(theme: Theme) {
   };
 }
 
+// Matches file paths with optional :line:col suffix.
+// Group 1: the path, Group 2: line number, Group 3: column number
+const FILE_PATH_RE =
+  /((?:~\/|\.{1,2}\/|\/)[^\s:'"()[\]{}<>,;!?]+|(?:[\w\-.]+\/)+[\w\-.]+\.[\w]+)(?::(\d+)(?::(\d+))?)?/g;
+
+function stripTrailingPunctuation(p: string): string {
+  return p.replace(/[.,:;!?)>\]]+$/, '');
+}
+
+const IS_MAC = navigator.platform.toUpperCase().includes('MAC');
+const LINK_TOOLTIP_TEXT = IS_MAC ? 'Follow link (⌘ + click)' : 'Follow link (Ctrl + click)';
+
+function createLinkTooltip(): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'terminal-link-tooltip';
+  el.textContent = LINK_TOOLTIP_TEXT;
+  return el;
+}
+
+class FilePathLinkProvider implements ILinkProvider {
+  constructor(
+    private terminal: XTerm,
+    private getCwd: () => string,
+    private onOpenFile: (path: string) => void,
+    private tooltip: HTMLDivElement,
+  ) {}
+
+  provideLinks(lineNumber: number, callback: (links: ILink[] | undefined) => void): void {
+    const line = this.terminal.buffer.active.getLine(lineNumber - 1);
+    if (!line) { callback(undefined); return; }
+
+    const text = line.translateToString();
+    const links: ILink[] = [];
+    const tooltip = this.tooltip;
+
+    FILE_PATH_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = FILE_PATH_RE.exec(text)) !== null) {
+      const rawPath = stripTrailingPunctuation(match[1]);
+      if (rawPath.length < 3) continue;
+
+      const startX = match.index + 1;
+      const endX = match.index + rawPath.length + (match[2] ? match[2].length + 1 : 0) + (match[3] ? match[3].length + 1 : 0) + 1;
+      const cwd = this.getCwd();
+      const openFile = this.onOpenFile;
+
+      links.push({
+        range: {
+          start: { x: startX, y: lineNumber },
+          end: { x: endX, y: lineNumber },
+        },
+        text: rawPath,
+        decorations: { pointerCursor: true, underline: true },
+        activate(event: MouseEvent, linkText: string) {
+          if (!event.metaKey && !event.ctrlKey) return;
+          tooltip.classList.remove('visible');
+          (async () => {
+            try {
+              const resolved = await window.api.resolveFilePath(linkText, cwd || undefined);
+              if (resolved) openFile(resolved);
+            } catch { /* ignore */ }
+          })();
+        },
+        hover(event: MouseEvent) {
+          tooltip.style.left = `${event.clientX}px`;
+          tooltip.style.top = `${event.clientY + 20}px`;
+          tooltip.classList.add('visible');
+        },
+        leave() {
+          tooltip.classList.remove('visible');
+        },
+      });
+    }
+
+    callback(links.length > 0 ? links : undefined);
+  }
+}
+
 interface TerminalInstanceProps {
   sessionId: string;
   isActive: boolean;
   theme: Theme;
   settings: AppSettings;
+  cwd: string;
   onCwdChange: (sessionId: string, cwd: string) => void;
+  onOpenFile: (filePath: string) => void;
 }
 
 export const TerminalInstance = React.memo(function TerminalInstance({
@@ -46,7 +127,9 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   isActive,
   theme,
   settings,
+  cwd,
   onCwdChange,
+  onOpenFile,
 }: TerminalInstanceProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -57,8 +140,14 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
 
+  const cwdRef = useRef(cwd);
+  cwdRef.current = cwd;
+
   const onCwdChangeRef = useRef(onCwdChange);
   onCwdChangeRef.current = onCwdChange;
+
+  const onOpenFileRef = useRef(onOpenFile);
+  onOpenFileRef.current = onOpenFile;
 
   useEffect(() => {
     const container = termRef.current;
@@ -87,6 +176,18 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     const fitAddon = new FitAddon();
     xterm.loadAddon(fitAddon);
     xterm.loadAddon(new WebLinksAddon());
+
+    const linkTooltip = createLinkTooltip();
+    document.body.appendChild(linkTooltip);
+
+    xterm.registerLinkProvider(
+      new FilePathLinkProvider(
+        xterm,
+        () => cwdRef.current,
+        (filePath) => onOpenFileRef.current(filePath),
+        linkTooltip,
+      ),
+    );
     xterm.open(container);
 
     xtermRef.current = xterm;
@@ -156,6 +257,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       removeDataListener();
       removeExitListener();
       clearInterval(cwdPoll);
+      linkTooltip.remove();
       xtermRef.current = null;
       fitAddonRef.current = null;
       try { webglAddon?.dispose(); } catch { /* already disposed */ }

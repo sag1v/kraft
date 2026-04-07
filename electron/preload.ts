@@ -54,6 +54,9 @@ const api = {
 
   getTerminalCwd: (id: string): Promise<string | null> => ipcRenderer.invoke('terminal-get-cwd', id),
 
+  resolveFilePath: (rawPath: string, cwd?: string): Promise<string | null> =>
+    ipcRenderer.invoke('resolve-file-path', rawPath, cwd),
+
   destroyTerminal: (id: string): void => {
     ipcRenderer.send('terminal-destroy', id);
   },

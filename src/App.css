@@ -1552,6 +1552,30 @@ body {
   padding-right: 16px;
 }
 
+/* ── Terminal Link Tooltip ── */
+
+.terminal-link-tooltip {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  color: var(--fg);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1.4;
+  white-space: nowrap;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.terminal-link-tooltip.visible {
+  opacity: 1;
+}
+
 /* ── Global Tooltip (rendered by GlobalTooltip.tsx) ── */
 
 .global-tooltip {

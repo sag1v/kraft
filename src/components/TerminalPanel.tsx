@@ -7,7 +7,7 @@ import { TabBar, type TabItem } from './TabBar';
 let tabCounter = 0;
 
 export function TerminalPanel() {
-  const { theme, settings, homeDir, setPanelVisibility } = useUIContext();
+  const { theme, settings, homeDir, setPanelVisibility, setOpenFilePath } = useUIContext();
   const {
     cwd,
     sessions,
@@ -105,6 +105,10 @@ export function TerminalPanel() {
   const handleCwdChange = useCallback((sessionId: string, newCwd: string) => {
     updateSessionCwd(sessionId, newCwd);
   }, [updateSessionCwd]);
+
+  const handleOpenFile = useCallback((filePath: string) => {
+    setOpenFilePath(filePath);
+  }, [setOpenFilePath]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -219,7 +223,9 @@ export function TerminalPanel() {
             isActive={session.id === activeSessionId}
             theme={theme}
             settings={settings}
+            cwd={session.cwd}
             onCwdChange={handleCwdChange}
+            onOpenFile={handleOpenFile}
           />
         ))}
       </div>
