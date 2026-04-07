@@ -1,0 +1,381 @@
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { Theme, LayoutPreset, AppSettings, GitInfo, TerminalSession, PanelId } from '../types';
+import { getThemeById, kraftDark } from '../themes';
+
+const STANDARD_LAYOUT: PanelId[][] = [['explorer', 'viewer', 'terminal']];
+const SPLIT_LAYOUT: PanelId[][] = [['explorer', 'viewer'], ['terminal', 'terminal']];
+const STACKED_LAYOUT: PanelId[][] = [['explorer'], ['viewer'], ['terminal']];
+
+const ALL_PANELS: PanelId[] = ['explorer', 'viewer', 'terminal'];
+
+const PRESET_LAYOUTS: Partial<Record<LayoutPreset, PanelId[][]>> = {
+  standard: STANDARD_LAYOUT,
+  split: SPLIT_LAYOUT,
+  stacked: STACKED_LAYOUT,
+};
+
+function normalizePanelLayout(raw: unknown): PanelId[][] {
+  if (!Array.isArray(raw) || raw.length === 0) return STANDARD_LAYOUT.map(r => [...r]);
+
+  const validIds = new Set<string>(ALL_PANELS);
+  const result: PanelId[][] = [];
+  for (const row of raw) {
+    if (!Array.isArray(row) || row.length === 0) continue;
+    const validRow: PanelId[] = [];
+    for (const id of row) {
+      if (validIds.has(id as string)) validRow.push(id as PanelId);
+    }
+    if (validRow.length > 0) result.push(validRow);
+  }
+  if (result.length === 0) return STANDARD_LAYOUT.map(r => [...r]);
+
+  const maxCols = Math.max(...result.map(r => r.length));
+  for (const row of result) {
+    while (row.length < maxCols) row.push(row[row.length - 1]);
+  }
+
+  const present = new Set(result.flat());
+  const missing = ALL_PANELS.filter(id => !present.has(id));
+  if (missing.length > 0) {
+    const lastRow = result[result.length - 1];
+    for (const m of missing) lastRow[lastRow.length - 1] = m;
+  }
+
+  return result;
+}
+
+function panelLayoutsEqual(a: PanelId[][], b: PanelId[][]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((row, i) =>
+    row.length === b[i].length && row.every((id, j) => id === b[i][j])
+  );
+}
+
+function layoutToPreset(layout: PanelId[][]): LayoutPreset {
+  if (panelLayoutsEqual(layout, STANDARD_LAYOUT)) return 'standard';
+  if (panelLayoutsEqual(layout, SPLIT_LAYOUT)) return 'split';
+  if (panelLayoutsEqual(layout, STACKED_LAYOUT)) return 'stacked';
+  return 'custom';
+}
+
+interface UIContextValue {
+  theme: Theme;
+  setThemeId: (id: string) => void;
+  layout: LayoutPreset;
+  setLayout: (preset: LayoutPreset) => void;
+  panelLayout: PanelId[][];
+  setPanelLayout: (layout: PanelId[][]) => void;
+  settings: AppSettings;
+  updateSettings: (partial: Partial<AppSettings>) => void;
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+  homeDir: string;
+  openFilePath: string | null;
+  setOpenFilePath: (path: string | null) => void;
+  settingsLoaded: boolean;
+  panelVisibility: { explorer: boolean; viewer: boolean; terminal: boolean };
+  setPanelVisibility: (panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => void;
+}
+
+interface SessionContextValue {
+  cwd: string;
+  sessions: TerminalSession[];
+  activeSessionId: string | null;
+  addSession: (session: TerminalSession) => void;
+  removeSession: (id: string) => void;
+  setActiveSession: (id: string) => void;
+  updateSessionCwd: (id: string, cwd: string) => void;
+  explorerRoot: string | null;
+  setExplorerRoot: (path: string | null) => void;
+  explorerOutOfSync: boolean;
+  gitInfo: GitInfo;
+}
+
+const defaultSettings: AppSettings = {
+  shellOverride: null,
+  defaultLayout: 'standard',
+  panelLayout: STANDARD_LAYOUT.map(r => [...r]),
+  savedCustomLayout: null,
+  fontSize: 14,
+  theme: 'kraft-dark',
+};
+
+const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false };
+
+const UIContext = createContext<UIContextValue>(null!);
+const SessionContext = createContext<SessionContextValue>(null!);
+
+function normPath(p: string) {
+  return p.replace(/\/+$/, '');
+}
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [theme, setTheme] = useState<Theme>(kraftDark);
+  const [layout, setLayoutState] = useState<LayoutPreset>('standard');
+  const [sessions, setSessions] = useState<TerminalSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [explorerRoots, setExplorerRoots] = useState<Record<string, string | null>>({});
+  const [openFilePath, setOpenFilePath] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [homeDir, setHomeDir] = useState('');
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [gitCacheVersion, setGitCacheVersion] = useState(0);
+  const [panelVisibility, setPanelVisibilityState] = useState({
+    explorer: true,
+    viewer: true,
+    terminal: true,
+  });
+
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
+
+  const activeSession = sessions.find(s => s.id === activeSessionId) || null;
+  const cwd = activeSession?.cwd || homeDir || '';
+  const explorerRoot = activeSessionId ? explorerRoots[activeSessionId] ?? null : null;
+  const explorerOutOfSync = !!(explorerRoot && cwd && normPath(explorerRoot) !== normPath(cwd));
+
+  const gitCacheRef = useRef<Map<string, GitInfo>>(new Map());
+  const prevGitInfoRef = useRef<GitInfo>(defaultGitInfo);
+
+  const cachedGit = cwd ? gitCacheRef.current.get(cwd) : undefined;
+  if (cachedGit) {
+    if (
+      prevGitInfoRef.current.branch !== cachedGit.branch ||
+      prevGitInfoRef.current.repoName !== cachedGit.repoName ||
+      prevGitInfoRef.current.isGitRepo !== cachedGit.isGitRepo
+    ) {
+      prevGitInfoRef.current = cachedGit;
+    }
+  } else if (prevGitInfoRef.current !== defaultGitInfo && !cwd) {
+    prevGitInfoRef.current = defaultGitInfo;
+  }
+  const gitInfo = prevGitInfoRef.current;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const home = (await window.api.getHomeDir()).replace(/\/+$/, '');
+        setHomeDir(home);
+
+        const saved = await window.api.getSettings();
+        if (saved && Object.keys(saved).length > 0) {
+          const merged = { ...defaultSettings, ...saved } as AppSettings;
+          // Migrate legacy panelOrder -> panelLayout
+          if (!merged.panelLayout && (saved as any).panelOrder) {
+            merged.panelLayout = [(saved as any).panelOrder as PanelId[]];
+          }
+          // Migrate old 'stacked' -> 'split'
+          if ((merged.defaultLayout as string) === 'stacked' && merged.panelLayout &&
+              merged.panelLayout.length === 2 && merged.panelLayout[0].length === 2) {
+            merged.defaultLayout = 'split';
+          }
+          merged.panelLayout = normalizePanelLayout(merged.panelLayout);
+          setSettings(merged);
+          setTheme(getThemeById(merged.theme));
+          setLayoutState(merged.defaultLayout);
+        }
+      } catch {
+        // Running outside Electron
+      } finally {
+        setSettingsLoaded(true);
+      }
+    })();
+  }, []);
+
+  const addSession = useCallback((session: TerminalSession) => {
+    setSessions(prev => [...prev, session]);
+    setActiveSessionId(session.id);
+  }, []);
+
+  const removeSession = useCallback((id: string) => {
+    setSessions(prev => {
+      const next = prev.filter(s => s.id !== id);
+      if (activeSessionIdRef.current === id && next.length > 0) {
+        setActiveSessionId(next[next.length - 1].id);
+      } else if (next.length === 0) {
+        setActiveSessionId(null);
+      }
+      return next;
+    });
+    setExplorerRoots(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  const setActiveSession = useCallback((id: string) => {
+    setActiveSessionId(id);
+  }, []);
+
+  const updateSessionCwd = useCallback((id: string, newCwd: string) => {
+    if (!newCwd) return;
+    const normalized = normPath(newCwd);
+    setSessions(prev => {
+      const idx = prev.findIndex(s => s.id === id);
+      if (idx === -1 || prev[idx].cwd === normalized) return prev;
+      const next = [...prev];
+      next[idx] = { ...prev[idx], cwd: normalized };
+      return next;
+    });
+  }, []);
+
+  const setExplorerRoot = useCallback((path: string | null) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    setExplorerRoots(prev => ({ ...prev, [sid]: path }));
+  }, []);
+
+  useEffect(() => {
+    if (!cwd) return;
+    const timer = setTimeout(() => {
+      (async () => {
+        try {
+          const info = await window.api.getGitInfo(cwd);
+          const current = gitCacheRef.current.get(cwd);
+          if (!current || current.branch !== info.branch || current.repoName !== info.repoName || current.isGitRepo !== info.isGitRepo) {
+            gitCacheRef.current.set(cwd, info);
+            setGitCacheVersion(v => v + 1);
+          }
+        } catch {
+          gitCacheRef.current.set(cwd, defaultGitInfo);
+          setGitCacheVersion(v => v + 1);
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [cwd]);
+
+  const setThemeId = useCallback((id: string) => {
+    const t = getThemeById(id);
+    setTheme(t);
+    setSettings(prev => {
+      const next = { ...prev, theme: id };
+      window.api?.saveSettings(next);
+      return next;
+    });
+  }, []);
+
+  const setLayout = useCallback((preset: LayoutPreset) => {
+    setLayoutState(preset);
+    if (preset !== 'custom') {
+      setPanelVisibilityState({ explorer: true, viewer: true, terminal: true });
+    }
+    const presetLayout = PRESET_LAYOUTS[preset];
+    setSettings(prev => {
+      const next: AppSettings = {
+        ...prev,
+        defaultLayout: preset,
+        ...(presetLayout ? { panelLayout: presetLayout.map(r => [...r]) } : {}),
+      };
+      window.api?.saveSettings(next);
+      return next;
+    });
+  }, []);
+
+  const setPanelLayout = useCallback((newLayout: PanelId[][]) => {
+    const normalized = normalizePanelLayout(newLayout);
+    const matchedPreset = layoutToPreset(normalized);
+    setLayoutState(matchedPreset);
+    setSettings(prev => {
+      const next: AppSettings = {
+        ...prev,
+        panelLayout: normalized,
+        defaultLayout: matchedPreset,
+        ...(matchedPreset === 'custom' ? { savedCustomLayout: normalized.map(r => [...r]) } : {}),
+      };
+      window.api?.saveSettings(next);
+      return next;
+    });
+  }, []);
+
+  const setPanelVisibility = useCallback((panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => {
+    setPanelVisibilityState(prev => ({ ...prev, [panel]: visible }));
+  }, []);
+
+  const updateSettings = useCallback((partial: Partial<AppSettings>) => {
+    if (partial.defaultLayout != null) {
+      setPanelVisibilityState({ explorer: true, viewer: true, terminal: true });
+    }
+    setSettings(prev => {
+      let next: AppSettings = { ...prev, ...partial };
+      if (partial.defaultLayout != null) {
+        const presetLayout = PRESET_LAYOUTS[partial.defaultLayout];
+        if (presetLayout) {
+          next = { ...next, panelLayout: presetLayout.map(r => [...r]) };
+        } else if (partial.defaultLayout === 'custom') {
+          if (prev.savedCustomLayout) {
+            next = { ...next, panelLayout: prev.savedCustomLayout.map(r => [...r]) };
+          } else {
+            next = { ...next, savedCustomLayout: prev.panelLayout.map(r => [...r]) };
+          }
+        }
+      }
+      if (partial.panelLayout != null) {
+        next = { ...next, panelLayout: normalizePanelLayout(partial.panelLayout) };
+      }
+      if (partial.theme) setTheme(getThemeById(partial.theme));
+      if (partial.defaultLayout != null) setLayoutState(partial.defaultLayout);
+      window.api?.saveSettings(next);
+      return next;
+    });
+  }, []);
+
+  const uiValue = useMemo<UIContextValue>(() => ({
+    theme,
+    setThemeId,
+    layout,
+    setLayout,
+    panelLayout: settings.panelLayout,
+    setPanelLayout,
+    settings,
+    updateSettings,
+    settingsOpen,
+    setSettingsOpen,
+    homeDir,
+    openFilePath,
+    setOpenFilePath,
+    settingsLoaded,
+    panelVisibility,
+    setPanelVisibility,
+  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, settingsLoaded, panelVisibility,
+       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility]);
+
+  const sessionValue = useMemo<SessionContextValue>(() => ({
+    cwd,
+    sessions,
+    activeSessionId,
+    addSession,
+    removeSession,
+    setActiveSession,
+    updateSessionCwd,
+    explorerRoot,
+    setExplorerRoot,
+    explorerOutOfSync,
+    gitInfo,
+  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo,
+       addSession, removeSession, setActiveSession, updateSessionCwd, setExplorerRoot]);
+
+  return (
+    <UIContext.Provider value={uiValue}>
+      <SessionContext.Provider value={sessionValue}>
+        {children}
+      </SessionContext.Provider>
+    </UIContext.Provider>
+  );
+}
+
+export function useUIContext() {
+  return useContext(UIContext);
+}
+
+export function useSessionContext() {
+  return useContext(SessionContext);
+}
+
+export function useAppContext() {
+  const ui = useContext(UIContext);
+  const session = useContext(SessionContext);
+  return { ...ui, ...session };
+}
