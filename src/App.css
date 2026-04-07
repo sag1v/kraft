@@ -335,11 +335,12 @@ body {
   background: none;
   border: none;
   color: var(--fg-dim);
-  font-size: 14px;
+  font-size: 18px;
+  font-weight: 600;
   cursor: pointer;
   padding: 0 8px;
   line-height: 1;
-  opacity: 0.3;
+  opacity: 0.55;
   transition: opacity 0.15s, color 0.15s;
   align-self: stretch;
   display: inline-flex;
@@ -348,7 +349,7 @@ body {
 
 .panel-header:hover .panel-close-btn,
 .panel-header:hover .panel-minimize-btn {
-  opacity: 0.6;
+  opacity: 0.8;
 }
 
 .panel-close-btn:hover,
