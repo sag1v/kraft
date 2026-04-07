@@ -156,7 +156,7 @@ export function TerminalPanel() {
   return (
     <div className="panel terminal-panel">
       <div className="panel-header terminal-tab-header">
-        <span className="panel-title terminal-panel-title">Terminal</span>
+        <span className="panel-title panel-icon terminal-icon terminal-panel-title" data-tooltip="Terminal - drag to reorder" data-tooltip-pos="bottom">&gt;_</span>
         <TabBar
           tabs={tabs}
           activeId={activeSessionId}

@@ -177,8 +177,16 @@ export function Viewer() {
 
   return (
     <div className="panel viewer-panel">
-      <div className="panel-header viewer-header">
-        <span className="panel-title">Viewer</span>
+      <div className="panel-header viewer-tab-header">
+        <span className="panel-title panel-icon viewer-icon viewer-panel-title" data-tooltip="Viewer - drag to reorder" data-tooltip-pos="bottom">{'{}'}</span>
+        <TabBar
+          tabs={tabs}
+          activeId={openFilePath}
+          onActivate={setActiveFileTab}
+          onClose={closeFileTab}
+          onReorder={reorderFileTabs}
+          className="viewer-tabs"
+        />
         <IconButton
           className="panel-minimize-btn"
           tooltip="Minimize panel"
@@ -188,16 +196,6 @@ export function Viewer() {
           &#x2212;
         </IconButton>
       </div>
-      {tabs.length > 0 && (
-        <TabBar
-          tabs={tabs}
-          activeId={openFilePath}
-          onActivate={setActiveFileTab}
-          onClose={closeFileTab}
-          onReorder={reorderFileTabs}
-          className="viewer-tab-bar"
-        />
-      )}
       <div className="panel-body viewer-body">
         {loading ? (
           <div className="viewer-placeholder">Loading...</div>

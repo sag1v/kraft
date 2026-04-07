@@ -73,7 +73,7 @@ export function TabBar({
                 className="tab-item-close"
                 onClick={e => handleCloseClick(tab.id, e)}
               >
-                ✕
+                ×
               </button>
             )}
           </div>

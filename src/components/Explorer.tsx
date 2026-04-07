@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { VscFolderOpened } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton } from './IconButton';
@@ -212,7 +213,7 @@ export function Explorer() {
     return (
       <div className="panel explorer-panel">
         <div className="panel-header">
-          <span className="panel-title">Explorer</span>
+          <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
           <IconButton
             className="panel-minimize-btn"
             tooltip="Minimize panel"
@@ -242,9 +243,7 @@ export function Explorer() {
   return (
     <div className="panel explorer-panel">
       <div className="panel-header">
-        <span className="panel-title" data-tooltip={displayRoot} data-tooltip-pos="bottom">
-          {shortRoot}
-        </span>
+        <span className="panel-title panel-icon explorer-icon" data-tooltip={`${displayRoot} - drag to reorder`} data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
         <div className="explorer-actions">
           {explorerOutOfSync && (
             <IconButton
