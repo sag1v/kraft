@@ -30,6 +30,9 @@ export interface TerminalInfo {
 export interface TerminalSession {
   id: string;
   label: string;
+  customLabel?: string;
+  icon?: string;
+  iconColor?: string;
   cwd: string;
 }
 

@@ -91,6 +91,8 @@ interface SessionContextValue {
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
   updateSessionCwd: (id: string, cwd: string) => void;
+  renameSession: (id: string, customLabel: string) => void;
+  updateSessionAppearance: (id: string, icon?: string, iconColor?: string) => void;
   reorderSessions: (fromIndex: number, toIndex: number) => void;
   explorerRoot: string | null;
   setExplorerRoot: (path: string | null) => void;
@@ -235,6 +237,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (idx === -1 || prev[idx].cwd === normalized) return prev;
       const next = [...prev];
       next[idx] = { ...prev[idx], cwd: normalized };
+      return next;
+    });
+  }, []);
+
+  const renameSession = useCallback((id: string, customLabel: string) => {
+    setSessions(prev => {
+      const idx = prev.findIndex(s => s.id === id);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = { ...prev[idx], customLabel: customLabel || undefined };
+      return next;
+    });
+  }, []);
+
+  const updateSessionAppearance = useCallback((id: string, icon?: string, iconColor?: string) => {
+    setSessions(prev => {
+      const idx = prev.findIndex(s => s.id === id);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = {
+        ...prev[idx],
+        ...(icon !== undefined ? { icon: icon || undefined } : {}),
+        ...(iconColor !== undefined ? { iconColor: iconColor || undefined } : {}),
+      };
       return next;
     });
   }, []);
@@ -483,6 +509,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     removeSession,
     setActiveSession,
     updateSessionCwd,
+    renameSession,
+    updateSessionAppearance,
     reorderSessions,
     explorerRoot,
     setExplorerRoot,
@@ -492,7 +520,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     gitRepoRoot,
     refreshGitStatus,
   }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitRepoRoot,
-       addSession, removeSession, setActiveSession, updateSessionCwd, reorderSessions, setExplorerRoot, refreshGitStatus]);
+       addSession, removeSession, setActiveSession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus]);
 
   return (
     <UIContext.Provider value={uiValue}>

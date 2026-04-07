@@ -2,7 +2,8 @@ import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react'
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { TerminalInstance } from './TerminalInstance';
 import { IconButton, PanelMinimizeButton } from './IconButton';
-import { TabBar, type TabItem } from './TabBar';
+import { TabBar, type TabItem, type TabBarHandle } from './TabBar';
+import { TerminalTabIcon, TERMINAL_ICONS, TAB_COLORS } from '../terminalIcons';
 
 let tabCounter = 0;
 
@@ -17,8 +18,11 @@ export function TerminalPanel() {
     setActiveSession,
     updateSessionCwd,
     reorderSessions,
+    renameSession,
+    updateSessionAppearance,
   } = useSessionContext();
 
+  const tabBarRef = useRef<TabBarHandle>(null);
   const creatingInitialRef = useRef(false);
 
   const sessionsRef = useRef(sessions);
@@ -90,17 +94,23 @@ export function TerminalPanel() {
     y: number;
     sessionId: string;
   } | null>(null);
+  const [contextSubMenu, setContextSubMenu] = useState<'icon' | 'color' | null>(null);
   const tabContextMenuRef = useRef<HTMLDivElement>(null);
+
+  const closeContextMenu = useCallback(() => {
+    setTabContextMenu(null);
+    setContextSubMenu(null);
+  }, []);
 
   useEffect(() => {
     if (!tabContextMenu) return;
     const onClick = (e: MouseEvent) => {
       if (tabContextMenuRef.current?.contains(e.target as Node)) return;
-      setTabContextMenu(null);
+      closeContextMenu();
     };
     window.addEventListener('click', onClick, true);
     return () => window.removeEventListener('click', onClick, true);
-  }, [tabContextMenu]);
+  }, [tabContextMenu, closeContextMenu]);
 
   const handleCwdChange = useCallback((sessionId: string, newCwd: string) => {
     updateSessionCwd(sessionId, newCwd);
@@ -109,6 +119,10 @@ export function TerminalPanel() {
   const handleOpenFile = useCallback((filePath: string) => {
     setOpenFilePath(filePath);
   }, [setOpenFilePath]);
+
+  const handleRenameTab = useCallback((id: string, newLabel: string) => {
+    renameSession(id, newLabel);
+  }, [renameSession]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -141,11 +155,18 @@ export function TerminalPanel() {
   const tabs = useMemo<TabItem[]>(() =>
     sessions.map(session => {
       const dirName = session.cwd ? session.cwd.split('/').pop() || session.label : session.label;
+      const displayName = session.customLabel || dirName;
       return {
         id: session.id,
-        tooltip: session.cwd ? `${session.label} - ${session.cwd}` : session.label,
+        tooltip: session.cwd ? `${displayName} - ${session.cwd}` : displayName,
+        editableLabel: displayName,
         closable: sessions.length > 1,
-        label: <span className="tab-item-label">{dirName}</span>,
+        label: (
+          <>
+            <TerminalTabIcon iconId={session.icon} color={session.iconColor} />
+            <span className="tab-item-label">{displayName}</span>
+          </>
+        ),
       };
     }),
     [sessions],
@@ -153,20 +174,21 @@ export function TerminalPanel() {
 
   const handleTabContextMenu = useCallback((id: string, e: React.MouseEvent) => {
     e.preventDefault();
-    if (sessions.length <= 1) return;
     setTabContextMenu({ x: e.clientX, y: e.clientY, sessionId: id });
-  }, [sessions.length]);
+  }, []);
 
   return (
     <div className="panel terminal-panel">
       <div className="panel-header tabbed-panel-header">
         <span className="panel-title panel-icon terminal-icon tabbed-panel-title" data-tooltip="Terminal - drag to reorder" data-tooltip-pos="bottom">&gt;_</span>
         <TabBar
+          ref={tabBarRef}
           tabs={tabs}
           activeId={activeSessionId}
           onActivate={setActiveSession}
           onClose={handleCloseTab}
           onReorder={reorderSessions}
+          onRename={handleRenameTab}
           onContextMenu={handleTabContextMenu}
           className="tabbed-panel-tabs"
           trailing={
@@ -182,7 +204,7 @@ export function TerminalPanel() {
         />
         <PanelMinimizeButton onMinimize={() => setPanelVisibility('terminal', false)} />
       </div>
-      {tabContextMenu && sessions.length > 1 && (
+      {tabContextMenu && (
         <div
           ref={tabContextMenuRef}
           className="tab-context-menu"
@@ -195,24 +217,111 @@ export function TerminalPanel() {
             role="menuitem"
             onMouseDown={e => e.preventDefault()}
             onClick={() => {
-              handleCloseTab(tabContextMenu.sessionId);
-              setTabContextMenu(null);
+              tabBarRef.current?.startRename(tabContextMenu.sessionId);
+              closeContextMenu();
             }}
           >
-            Close
+            Rename
           </button>
           <button
             type="button"
-            className="tab-context-item"
+            className={`tab-context-item tab-context-has-sub ${contextSubMenu === 'icon' ? 'active' : ''}`}
             role="menuitem"
             onMouseDown={e => e.preventDefault()}
-            onClick={() => {
-              handleCloseOthers(tabContextMenu.sessionId);
-              setTabContextMenu(null);
-            }}
+            onClick={() => setContextSubMenu(contextSubMenu === 'icon' ? null : 'icon')}
           >
-            Close Others
+            Change Icon
           </button>
+          <button
+            type="button"
+            className={`tab-context-item tab-context-has-sub ${contextSubMenu === 'color' ? 'active' : ''}`}
+            role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => setContextSubMenu(contextSubMenu === 'color' ? null : 'color')}
+          >
+            Change Color
+          </button>
+          {contextSubMenu === 'icon' && (
+            <div className="tab-context-picker tab-icon-picker">
+              {TERMINAL_ICONS.map(icon => {
+                const session = sessions.find(s => s.id === tabContextMenu.sessionId);
+                const isActive = (session?.icon || 'terminal') === icon.id;
+                return (
+                  <button
+                    key={icon.id}
+                    type="button"
+                    className={`tab-icon-option ${isActive ? 'active' : ''}`}
+                    data-tooltip={icon.label}
+                    data-tooltip-pos="bottom"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => {
+                      updateSessionAppearance(tabContextMenu.sessionId, icon.id, undefined);
+                      closeContextMenu();
+                    }}
+                  >
+                    {icon.svg}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {contextSubMenu === 'color' && (
+            <div className="tab-context-picker tab-color-picker">
+              {TAB_COLORS.map(color => (
+                <button
+                  key={color.id}
+                  type="button"
+                  className={`tab-color-option ${
+                    (sessions.find(s => s.id === tabContextMenu.sessionId)?.iconColor || '') === color.value ? 'active' : ''
+                  }`}
+                  data-tooltip={color.label}
+                  data-tooltip-pos="bottom"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => {
+                    updateSessionAppearance(tabContextMenu.sessionId, undefined, color.value);
+                    closeContextMenu();
+                  }}
+                >
+                  {color.value ? (
+                    <span className="tab-color-swatch" style={{ background: color.value }} />
+                  ) : (
+                    <span className="tab-color-swatch tab-color-default">
+                      <span className="tab-color-reset-line" />
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="tab-context-separator" />
+          {sessions.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="tab-context-item"
+                role="menuitem"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => {
+                  handleCloseTab(tabContextMenu.sessionId);
+                  closeContextMenu();
+                }}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="tab-context-item"
+                role="menuitem"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => {
+                  handleCloseOthers(tabContextMenu.sessionId);
+                  closeContextMenu();
+                }}
+              >
+                Close Others
+              </button>
+            </>
+          )}
         </div>
       )}
       <div className="terminal-instances">
