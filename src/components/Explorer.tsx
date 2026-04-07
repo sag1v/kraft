@@ -219,7 +219,7 @@ export function Explorer() {
             onMouseDown={e => e.stopPropagation()}
             onClick={() => setPanelVisibility('explorer', false)}
           >
-            —
+            &#x2212;
           </IconButton>
         </div>
         <div className="panel-body explorer-tree">
@@ -278,7 +278,7 @@ export function Explorer() {
             onMouseDown={e => e.stopPropagation()}
             onClick={() => setPanelVisibility('explorer', false)}
           >
-            —
+            &#x2212;
           </IconButton>
         </div>
       </div>

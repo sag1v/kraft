@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useUIContext, useSessionContext } from '../context/AppContext';
+import { useUIContext } from '../context/AppContext';
 import { IconButton } from './IconButton';
+import { FileIcon } from './FileIcon';
+import { TabBar, type TabItem } from './TabBar';
 import hljs from 'highlight.js';
 
 const extToLang: Record<string, string> = {
@@ -76,16 +78,18 @@ function escapeHtml(text: string): string {
 }
 
 export function Viewer() {
-  const { openFilePath, theme, homeDir, setPanelVisibility } = useUIContext();
-  const { explorerRoot } = useSessionContext();
-  const [content, setContent] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { openFilePath, openFiles, closeFileTab, setActiveFileTab, reorderFileTabs, homeDir, setPanelVisibility } = useUIContext();
+  const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!openFilePath) {
-      setContent(null);
-      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    if (contentCache[openFilePath]) {
+      setLoading(false);
       return;
     }
 
@@ -97,18 +101,15 @@ export function Viewer() {
         const result = await window.api.readFile(openFilePath);
         if (!cancelled) {
           if (result.error) {
-            setError(result.error);
-            setContent(null);
+            setContentCache(prev => ({ ...prev, [openFilePath]: { content: null, error: result.error } }));
           } else {
-            setContent(result.content);
-            setError(null);
+            setContentCache(prev => ({ ...prev, [openFilePath]: { content: result.content, error: null } }));
           }
           setLoading(false);
         }
       } catch (e: any) {
         if (!cancelled) {
-          setError(e.message);
-          setContent(null);
+          setContentCache(prev => ({ ...prev, [openFilePath]: { content: null, error: e.message } }));
           setLoading(false);
         }
       }
@@ -119,6 +120,21 @@ export function Viewer() {
     };
   }, [openFilePath]);
 
+  useEffect(() => {
+    const staleKeys = Object.keys(contentCache).filter(k => !openFiles.includes(k));
+    if (staleKeys.length > 0) {
+      setContentCache(prev => {
+        const next = { ...prev };
+        for (const k of staleKeys) delete next[k];
+        return next;
+      });
+    }
+  }, [openFiles]);
+
+  const cached = openFilePath ? contentCache[openFilePath] : undefined;
+  const content = cached?.content ?? null;
+  const error = cached?.error ?? null;
+
   const highlightedHtml = useMemo(() => {
     if (!content || !openFilePath) return '';
     return highlightCode(content, openFilePath);
@@ -126,47 +142,62 @@ export function Viewer() {
 
   const lineCount = content ? content.split('\n').length : 0;
 
-  const fileName = openFilePath ? openFilePath.split('/').pop() : '';
-
-  const relativePath = useMemo(() => {
-    if (!openFilePath) return '';
-    if (explorerRoot && openFilePath.startsWith(explorerRoot)) {
-      const rel = openFilePath.slice(explorerRoot.length);
-      return rel.startsWith('/') ? rel.slice(1) : rel;
+  const duplicateNames = useMemo(() => {
+    const names = openFiles.map(f => f.split('/').pop() || f);
+    const seen = new Set<string>();
+    const dupes = new Set<string>();
+    for (const n of names) {
+      if (seen.has(n)) dupes.add(n);
+      seen.add(n);
     }
-    return homeDir ? openFilePath.replace(homeDir, '~') : openFilePath;
-  }, [openFilePath, explorerRoot, homeDir]);
+    return dupes;
+  }, [openFiles]);
 
-  const relativeDir = relativePath ? relativePath.split('/').slice(0, -1).join('/') : '';
-
-  const fullPath = openFilePath
-    ? homeDir
-      ? openFilePath.replace(homeDir, '~')
-      : openFilePath
-    : '';
+  const tabs = useMemo<TabItem[]>(() =>
+    openFiles.map(filePath => {
+      const name = filePath.split('/').pop() || filePath;
+      const parts = filePath.split('/');
+      const subpath = duplicateNames.has(name) && parts.length >= 2
+        ? parts[parts.length - 2]
+        : null;
+      return {
+        id: filePath,
+        tooltip: homeDir ? filePath.replace(homeDir, '~') : filePath,
+        label: (
+          <>
+            <FileIcon name={name} isDirectory={false} />
+            <span className="tab-item-label">{name}</span>
+            {subpath && <span className="viewer-tab-subpath">{subpath}</span>}
+          </>
+        ),
+      };
+    }),
+    [openFiles, duplicateNames, homeDir],
+  );
 
   return (
     <div className="panel viewer-panel">
-      <div className="panel-header">
-        <span className="panel-title" data-tooltip={fullPath || undefined} data-tooltip-pos="bottom">
-          {openFilePath ? (
-            <>
-              <span className="viewer-filename">{fileName}</span>
-              {relativeDir && <span className="viewer-filepath">{relativeDir}</span>}
-            </>
-          ) : (
-            'Viewer'
-          )}
-        </span>
+      <div className="panel-header viewer-header">
+        <span className="panel-title">Viewer</span>
         <IconButton
           className="panel-minimize-btn"
           tooltip="Minimize panel"
           onMouseDown={e => e.stopPropagation()}
           onClick={() => setPanelVisibility('viewer', false)}
         >
-          —
+          &#x2212;
         </IconButton>
       </div>
+      {tabs.length > 0 && (
+        <TabBar
+          tabs={tabs}
+          activeId={openFilePath}
+          onActivate={setActiveFileTab}
+          onClose={closeFileTab}
+          onReorder={reorderFileTabs}
+          className="viewer-tab-bar"
+        />
+      )}
       <div className="panel-body viewer-body">
         {loading ? (
           <div className="viewer-placeholder">Loading...</div>

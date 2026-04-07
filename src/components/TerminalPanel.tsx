@@ -1,7 +1,8 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { TerminalInstance } from './TerminalInstance';
 import { IconButton } from './IconButton';
+import { TabBar, type TabItem } from './TabBar';
 
 let tabCounter = 0;
 
@@ -15,6 +16,7 @@ export function TerminalPanel() {
     removeSession,
     setActiveSession,
     updateSessionCwd,
+    reorderSessions,
   } = useSessionContext();
 
   const creatingInitialRef = useRef(false);
@@ -132,65 +134,48 @@ export function TerminalPanel() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleCloseTab, setActiveSession]);
 
-  const getTabLabel = (session: typeof sessions[0]) => {
-    if (!session.cwd) return session.label;
-    const parts = session.cwd.split('/');
-    return parts[parts.length - 1] || session.label;
-  };
+  const tabs = useMemo<TabItem[]>(() =>
+    sessions.map(session => {
+      const dirName = session.cwd ? session.cwd.split('/').pop() || session.label : session.label;
+      return {
+        id: session.id,
+        tooltip: session.cwd ? `${session.label} - ${session.cwd}` : session.label,
+        closable: sessions.length > 1,
+        label: <span className="tab-item-label">{dirName}</span>,
+      };
+    }),
+    [sessions],
+  );
+
+  const handleTabContextMenu = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (sessions.length <= 1) return;
+    setTabContextMenu({ x: e.clientX, y: e.clientY, sessionId: id });
+  }, [sessions.length]);
 
   return (
     <div className="panel terminal-panel">
       <div className="panel-header terminal-tab-header">
         <span className="panel-title terminal-panel-title">Terminal</span>
-        <div className="terminal-tabs">
-          {sessions.map(session => (
-            <div
-              key={session.id}
-              className={`terminal-tab ${session.id === activeSessionId ? 'active' : ''}`}
-              onClick={() => setActiveSession(session.id)}
-              onMouseDown={e => {
-                if (e.button !== 1) return;
-                e.preventDefault();
-                e.stopPropagation();
-                if (sessions.length <= 1) return;
-                handleCloseTab(session.id);
-              }}
-              onContextMenu={e => {
-                e.preventDefault();
-                if (sessions.length <= 1) return;
-                setTabContextMenu({
-                  x: e.clientX,
-                  y: e.clientY,
-                  sessionId: session.id,
-                });
-              }}
-              data-tooltip={session.cwd ? `${session.label} - ${session.cwd}` : session.label}
-              data-tooltip-pos="bottom"
+        <TabBar
+          tabs={tabs}
+          activeId={activeSessionId}
+          onActivate={setActiveSession}
+          onClose={handleCloseTab}
+          onReorder={reorderSessions}
+          onContextMenu={handleTabContextMenu}
+          className="terminal-tabs"
+          trailing={
+            <IconButton
+              className="terminal-tab-add"
+              tooltip="New terminal session (Ctrl+Shift+T)"
+              tooltipPos="bottom"
+              onClick={() => createTabRef.current()}
             >
-              <span className="terminal-tab-label">{getTabLabel(session)}</span>
-              {sessions.length > 1 && (
-                <button
-                  className="terminal-tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCloseTab(session.id);
-                  }}
-                  data-tooltip="Close tab" data-tooltip-pos="bottom"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
-          <IconButton
-            className="terminal-tab-add"
-            tooltip="New terminal session (Ctrl+Shift+T)"
-            tooltipPos="bottom"
-            onClick={() => createTabRef.current()}
-          >
-            +
-          </IconButton>
-        </div>
+              +
+            </IconButton>
+          }
+        />
         <IconButton
           className="panel-minimize-btn"
           tooltip="Minimize panel"
@@ -198,7 +183,7 @@ export function TerminalPanel() {
           onMouseDown={e => e.stopPropagation()}
           onClick={() => setPanelVisibility('terminal', false)}
         >
-          —
+          &#x2212;
         </IconButton>
       </div>
       {tabContextMenu && sessions.length > 1 && (

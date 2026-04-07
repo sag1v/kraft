@@ -489,9 +489,20 @@ export function PanelLayout() {
   /* ---- Drag & Drop ---- */
 
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-  const MIN_DRAG_DISTANCE = 20;
+  const dragMouseDownTarget = useRef<EventTarget | null>(null);
+  const MIN_DRAG_DISTANCE = 60;
+
+  const onPanelMouseDown = useCallback((e: React.MouseEvent) => {
+    dragMouseDownTarget.current = e.target;
+  }, []);
 
   const onDragStart = useCallback((id: PanelId, e: React.DragEvent) => {
+    const title = (e.currentTarget as HTMLElement).querySelector('.panel-title');
+    const clickedEl = dragMouseDownTarget.current as Node | null;
+    if (!title || !clickedEl || !title.contains(clickedEl)) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('text/plain', id);
     e.dataTransfer.effectAllowed = 'move';
     dragStartPos.current = { x: e.clientX, y: e.clientY };
@@ -504,6 +515,7 @@ export function PanelLayout() {
   draggedPanelRef.current = draggedPanel;
 
   const onContainerDragOver = useCallback((e: React.DragEvent) => {
+    if (!draggedPanelRef.current) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (!containerRef.current) return;
@@ -565,6 +577,7 @@ export function PanelLayout() {
   }, []);
 
   const onContainerDrop = useCallback((e: React.DragEvent) => {
+    if (!draggedPanelRef.current) return;
     e.preventDefault();
     setDropIndicator(null);
     setDraggedPanel(null);
@@ -714,6 +727,7 @@ export function PanelLayout() {
                 display: visible ? undefined : 'none',
                 position: 'relative',
               }}
+              onMouseDown={onPanelMouseDown}
               onDragStart={visible ? (e) => onDragStart(id, e) : undefined}
               onDragEnd={visible ? onDragEnd : undefined}
             >

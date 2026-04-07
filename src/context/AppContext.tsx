@@ -72,6 +72,10 @@ interface UIContextValue {
   homeDir: string;
   openFilePath: string | null;
   setOpenFilePath: (path: string | null) => void;
+  openFiles: string[];
+  closeFileTab: (path: string) => void;
+  setActiveFileTab: (path: string) => void;
+  reorderFileTabs: (fromIndex: number, toIndex: number) => void;
   settingsLoaded: boolean;
   panelVisibility: { explorer: boolean; viewer: boolean; terminal: boolean };
   setPanelVisibility: (panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => void;
@@ -85,6 +89,7 @@ interface SessionContextValue {
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
   updateSessionCwd: (id: string, cwd: string) => void;
+  reorderSessions: (fromIndex: number, toIndex: number) => void;
   explorerRoot: string | null;
   setExplorerRoot: (path: string | null) => void;
   explorerOutOfSync: boolean;
@@ -116,7 +121,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [explorerRoots, setExplorerRoots] = useState<Record<string, string | null>>({});
-  const [openFilePath, setOpenFilePath] = useState<string | null>(null);
+  const [openFileTabsMap, setOpenFileTabsMap] = useState<Record<string, { files: string[]; activeFile: string | null }>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [homeDir, setHomeDir] = useState('');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -203,6 +208,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       delete next[id];
       return next;
     });
+    setOpenFileTabsMap(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, []);
 
   const setActiveSession = useCallback((id: string) => {
@@ -221,10 +231,80 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const reorderSessions = useCallback((fromIndex: number, toIndex: number) => {
+    setSessions(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }, []);
+
   const setExplorerRoot = useCallback((path: string | null) => {
     const sid = activeSessionIdRef.current;
     if (!sid) return;
     setExplorerRoots(prev => ({ ...prev, [sid]: path }));
+  }, []);
+
+  const sessionTabs = activeSessionId ? openFileTabsMap[activeSessionId] : undefined;
+  const openFiles = sessionTabs?.files ?? [];
+  const openFilePath = sessionTabs?.activeFile ?? null;
+
+  const setOpenFilePath = useCallback((path: string | null) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    setOpenFileTabsMap(prev => {
+      const entry = prev[sid] ?? { files: [], activeFile: null };
+      if (!path) {
+        return { ...prev, [sid]: { ...entry, activeFile: null } };
+      }
+      const files = entry.files.includes(path) ? entry.files : [...entry.files, path];
+      return { ...prev, [sid]: { files, activeFile: path } };
+    });
+  }, []);
+
+  const closeFileTab = useCallback((path: string) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    setOpenFileTabsMap(prev => {
+      const entry = prev[sid];
+      if (!entry) return prev;
+      const idx = entry.files.indexOf(path);
+      if (idx === -1) return prev;
+      const files = entry.files.filter(f => f !== path);
+      let activeFile = entry.activeFile;
+      if (activeFile === path) {
+        if (files.length === 0) {
+          activeFile = null;
+        } else {
+          activeFile = files[Math.min(idx, files.length - 1)];
+        }
+      }
+      return { ...prev, [sid]: { files, activeFile } };
+    });
+  }, []);
+
+  const setActiveFileTab = useCallback((path: string) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    setOpenFileTabsMap(prev => {
+      const entry = prev[sid];
+      if (!entry || !entry.files.includes(path)) return prev;
+      return { ...prev, [sid]: { ...entry, activeFile: path } };
+    });
+  }, []);
+
+  const reorderFileTabs = useCallback((fromIndex: number, toIndex: number) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    setOpenFileTabsMap(prev => {
+      const entry = prev[sid];
+      if (!entry) return prev;
+      const files = [...entry.files];
+      const [moved] = files.splice(fromIndex, 1);
+      files.splice(toIndex, 0, moved);
+      return { ...prev, [sid]: { ...entry, files } };
+    });
   }, []);
 
   useEffect(() => {
@@ -336,11 +416,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     homeDir,
     openFilePath,
     setOpenFilePath,
+    openFiles,
+    closeFileTab,
+    setActiveFileTab,
+    reorderFileTabs,
     settingsLoaded,
     panelVisibility,
     setPanelVisibility,
-  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, settingsLoaded, panelVisibility,
-       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility]);
+  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility,
+       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, setActiveFileTab, reorderFileTabs]);
 
   const sessionValue = useMemo<SessionContextValue>(() => ({
     cwd,
@@ -350,12 +434,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     removeSession,
     setActiveSession,
     updateSessionCwd,
+    reorderSessions,
     explorerRoot,
     setExplorerRoot,
     explorerOutOfSync,
     gitInfo,
   }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo,
-       addSession, removeSession, setActiveSession, updateSessionCwd, setExplorerRoot]);
+       addSession, removeSession, setActiveSession, updateSessionCwd, reorderSessions, setExplorerRoot]);
 
   return (
     <UIContext.Provider value={uiValue}>
