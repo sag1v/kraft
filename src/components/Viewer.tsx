@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useUIContext } from '../context/AppContext';
+import { useUIContext, useSessionContext } from '../context/AppContext';
 import { PanelMinimizeButton } from './IconButton';
 import { FileIcon } from './FileIcon';
 import { TabBar, type TabItem } from './TabBar';
+import { DiffView } from './DiffView';
 import { shortenPath } from '../utils';
 import hljs from 'highlight.js';
 
@@ -79,9 +80,28 @@ function escapeHtml(text: string): string {
 }
 
 export function Viewer() {
-  const { openFilePath, openFiles, closeFileTab, setActiveFileTab, reorderFileTabs, homeDir, setPanelVisibility } = useUIContext();
+  const { openFilePath, openFiles, closeFileTab, setActiveFileTab, reorderFileTabs, homeDir, setPanelVisibility, diffFilePath, setDiffFilePath } = useUIContext();
+  const { gitStatus, explorerRoot } = useSessionContext();
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
+  const [fileVersion, setFileVersion] = useState(0);
+
+  useEffect(() => {
+    if (!explorerRoot || !window.api?.onDirectoryChanged) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = window.api.onDirectoryChanged(() => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        setContentCache({});
+        setFileVersion(v => v + 1);
+      }, 400);
+    });
+    return () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
+  }, [explorerRoot]);
 
   useEffect(() => {
     if (!openFilePath) {
@@ -119,7 +139,7 @@ export function Viewer() {
     return () => {
       cancelled = true;
     };
-  }, [openFilePath]);
+  }, [openFilePath, fileVersion]);
 
   useEffect(() => {
     const staleKeys = Object.keys(contentCache).filter(k => !openFiles.includes(k));
@@ -142,6 +162,8 @@ export function Viewer() {
   }, [content, openFilePath]);
 
   const lineCount = content ? content.split('\n').length : 0;
+  const isDiffMode = !!(openFilePath && diffFilePath === openFilePath);
+  const fileHasChanges = !!(openFilePath && gitStatus[openFilePath]);
 
   const duplicateNames = useMemo(() => {
     const names = openFiles.map(f => f.split('/').pop() || f);
@@ -183,15 +205,27 @@ export function Viewer() {
         <TabBar
           tabs={tabs}
           activeId={openFilePath}
-          onActivate={setActiveFileTab}
+          onActivate={(id) => { setDiffFilePath(null); setActiveFileTab(id); }}
           onClose={closeFileTab}
           onReorder={reorderFileTabs}
           className="tabbed-panel-tabs"
         />
+        {openFilePath && fileHasChanges && (
+          <button
+            className={`viewer-diff-toggle ${isDiffMode ? 'active' : ''}`}
+            onClick={() => setDiffFilePath(isDiffMode ? null : openFilePath)}
+            data-tooltip={isDiffMode ? 'Show code' : 'Show diff'}
+            data-tooltip-pos="bottom"
+          >
+            Diff
+          </button>
+        )}
         <PanelMinimizeButton onMinimize={() => setPanelVisibility('viewer', false)} />
       </div>
       <div className="panel-body viewer-body">
-        {loading ? (
+        {isDiffMode && openFilePath ? (
+          <DiffView filePath={openFilePath} />
+        ) : loading ? (
           <div className="viewer-placeholder">Loading...</div>
         ) : error ? (
           <div className="viewer-placeholder viewer-error">{error}</div>

@@ -28,6 +28,19 @@ export interface TerminalSession {
   cwd: string;
 }
 
+export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed' | 'conflict';
+
+export interface GitStatusResult {
+  files: Record<string, GitFileStatus>;
+  repoRoot: string | null;
+}
+
+export interface GitDiffResult {
+  diff: string | null;
+  isNew: boolean;
+  content: string | null;
+}
+
 export interface Theme {
   id: string;
   name: string;
@@ -100,6 +113,8 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<FileResult>;
   searchFiles: (rootDir: string, query: string) => Promise<string[]>;
   getGitInfo: (dirPath: string) => Promise<GitInfo>;
+  getGitStatus: (dirPath: string) => Promise<GitStatusResult>;
+  getGitDiff: (filePath: string, repoRoot: string) => Promise<GitDiffResult>;
   createTerminal: (options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => Promise<TerminalInfo>;
   writeTerminal: (id: string, data: string) => void;
   resizeTerminal: (id: string, cols: number, rows: number) => void;

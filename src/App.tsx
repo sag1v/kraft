@@ -28,6 +28,11 @@ function AppInner() {
     root.style.setProperty('--agent-accent', c.agentAccent);
     root.style.setProperty('--diff-add', c.diffAdd);
     root.style.setProperty('--diff-remove', c.diffRemove);
+    root.style.setProperty('--git-modified', c.ansi.yellow);
+    root.style.setProperty('--git-added', c.diffAdd);
+    root.style.setProperty('--git-deleted', c.diffRemove);
+    root.style.setProperty('--git-untracked', c.diffAdd);
+    root.style.setProperty('--git-conflict', c.ansi.red);
   }, [theme]);
 
   const handleKeyDown = useCallback(

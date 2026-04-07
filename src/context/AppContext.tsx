@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Theme, LayoutPreset, AppSettings, GitInfo, TerminalSession, PanelId } from '../types';
+import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalSession, PanelId } from '../types';
 import { getThemeById, kraftDark } from '../themes';
 
 const STANDARD_LAYOUT: PanelId[][] = [['explorer', 'viewer', 'terminal']];
@@ -79,6 +79,8 @@ interface UIContextValue {
   settingsLoaded: boolean;
   panelVisibility: { explorer: boolean; viewer: boolean; terminal: boolean };
   setPanelVisibility: (panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => void;
+  diffFilePath: string | null;
+  setDiffFilePath: (path: string | null) => void;
 }
 
 interface SessionContextValue {
@@ -94,6 +96,9 @@ interface SessionContextValue {
   setExplorerRoot: (path: string | null) => void;
   explorerOutOfSync: boolean;
   gitInfo: GitInfo;
+  gitStatus: Record<string, GitFileStatus>;
+  gitRepoRoot: string | null;
+  refreshGitStatus: () => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -131,6 +136,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     viewer: true,
     terminal: true,
   });
+  const [gitStatus, setGitStatus] = useState<Record<string, GitFileStatus>>({});
+  const [gitRepoRoot, setGitRepoRoot] = useState<string | null>(null);
+  const [diffFilePath, setDiffFilePathState] = useState<string | null>(null);
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
@@ -327,6 +335,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [cwd]);
 
+  const fetchGitStatus = useCallback(async (dir: string) => {
+    if (!window.api?.getGitStatus) return;
+    try {
+      const result = await window.api.getGitStatus(dir);
+      setGitStatus(result.files as Record<string, GitFileStatus>);
+      setGitRepoRoot(result.repoRoot);
+    } catch {
+      setGitStatus({});
+      setGitRepoRoot(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!explorerRoot) {
+      setGitStatus({});
+      setGitRepoRoot(null);
+      return;
+    }
+    const timer = setTimeout(() => fetchGitStatus(explorerRoot), 300);
+    return () => clearTimeout(timer);
+  }, [explorerRoot, fetchGitStatus]);
+
+  const refreshGitStatus = useCallback(() => {
+    if (explorerRoot) fetchGitStatus(explorerRoot);
+  }, [explorerRoot, fetchGitStatus]);
+
+  const setDiffFilePath = useCallback((path: string | null) => {
+    setDiffFilePathState(path);
+    if (path) {
+      const sid = activeSessionIdRef.current;
+      if (!sid) return;
+      setOpenFileTabsMap(prev => {
+        const entry = prev[sid] ?? { files: [], activeFile: null };
+        const files = entry.files.includes(path) ? entry.files : [...entry.files, path];
+        return { ...prev, [sid]: { files, activeFile: path } };
+      });
+    }
+  }, []);
+
   const setThemeId = useCallback((id: string) => {
     const t = getThemeById(id);
     setTheme(t);
@@ -423,8 +470,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     settingsLoaded,
     panelVisibility,
     setPanelVisibility,
-  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility,
-       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, setActiveFileTab, reorderFileTabs]);
+    diffFilePath,
+    setDiffFilePath,
+  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath,
+       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
 
   const sessionValue = useMemo<SessionContextValue>(() => ({
     cwd,
@@ -439,8 +488,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setExplorerRoot,
     explorerOutOfSync,
     gitInfo,
-  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo,
-       addSession, removeSession, setActiveSession, updateSessionCwd, reorderSessions, setExplorerRoot]);
+    gitStatus,
+    gitRepoRoot,
+    refreshGitStatus,
+  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitRepoRoot,
+       addSession, removeSession, setActiveSession, updateSessionCwd, reorderSessions, setExplorerRoot, refreshGitStatus]);
 
   return (
     <UIContext.Provider value={uiValue}>

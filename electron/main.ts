@@ -370,6 +370,73 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle('get-git-status', async (_event, dirPath: string) => {
+    try {
+      const { stdout: rootStdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+        cwd: dirPath,
+        encoding: 'utf-8',
+        timeout: 3000,
+      });
+      const repoRoot = rootStdout.trim();
+
+      const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
+        cwd: repoRoot,
+        encoding: 'utf-8',
+        timeout: 5000,
+        maxBuffer: 1024 * 1024,
+      });
+
+      const files: Record<string, string> = {};
+      for (const line of stdout.split('\n').filter(Boolean)) {
+        const status = line.substring(0, 2);
+        let filePath = line.substring(3);
+        if (filePath.includes(' -> ')) {
+          filePath = filePath.split(' -> ')[1];
+        }
+        const fullPath = path.join(repoRoot, filePath);
+
+        let simplified = 'modified';
+        if (status.trim() === '??') simplified = 'untracked';
+        else if (status.includes('A')) simplified = 'added';
+        else if (status.includes('D')) simplified = 'deleted';
+        else if (status.includes('R')) simplified = 'renamed';
+        else if (status.includes('U')) simplified = 'conflict';
+
+        files[fullPath] = simplified;
+      }
+
+      return { files, repoRoot };
+    } catch {
+      return { files: {}, repoRoot: null };
+    }
+  });
+
+  ipcMain.handle('get-git-diff', async (_event, filePath: string, repoRoot: string) => {
+    try {
+      try {
+        await execFileAsync('git', ['ls-files', '--error-unmatch', filePath], {
+          cwd: repoRoot,
+          encoding: 'utf-8',
+          timeout: 3000,
+        });
+      } catch {
+        const content = await fs.promises.readFile(filePath, 'utf-8');
+        return { diff: null, isNew: true, content };
+      }
+
+      const { stdout } = await execFileAsync('git', ['diff', 'HEAD', '--', filePath], {
+        cwd: repoRoot,
+        encoding: 'utf-8',
+        timeout: 5000,
+        maxBuffer: 2 * 1024 * 1024,
+      });
+
+      return { diff: stdout, isNew: false, content: null };
+    } catch {
+      return { diff: null, isNew: false, content: null };
+    }
+  });
+
   ipcMain.handle('create-terminal', async (_event, options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => {
     const id = `term-${++terminalIdCounter}`;
     const shellPath = options.shell || getDefaultShell();

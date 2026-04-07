@@ -1,19 +1,58 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { VscFolderOpened } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
 import { shortenPath } from '../utils';
-import type { DirEntry } from '../types';
+import type { DirEntry, GitFileStatus } from '../types';
+
+const STATUS_COLOR_VAR: Record<string, string> = {
+  modified: 'var(--git-modified)',
+  added: 'var(--git-added)',
+  deleted: 'var(--git-deleted)',
+  untracked: 'var(--git-untracked)',
+  renamed: 'var(--git-modified)',
+  conflict: 'var(--git-conflict)',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  modified: 'M',
+  added: 'A',
+  deleted: 'D',
+  untracked: 'U',
+  renamed: 'R',
+  conflict: '!',
+};
+
+function getFolderStatus(
+  folderPath: string,
+  gitStatus: Record<string, GitFileStatus>,
+): GitFileStatus | null {
+  const prefix = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+  const priorities: GitFileStatus[] = ['conflict', 'modified', 'added', 'untracked', 'renamed', 'deleted'];
+  const found = new Set<GitFileStatus>();
+
+  for (const [filePath, status] of Object.entries(gitStatus)) {
+    if (filePath.startsWith(prefix)) {
+      found.add(status);
+    }
+  }
+
+  for (const p of priorities) {
+    if (found.has(p)) return p;
+  }
+  return null;
+}
 
 interface TreeNodeProps {
   entry: DirEntry;
   depth: number;
   onFileClick: (path: string) => void;
   collapseKey: number;
+  gitStatus: Record<string, GitFileStatus>;
 }
 
-function TreeNode({ entry, depth, onFileClick, collapseKey }: TreeNodeProps) {
+function TreeNode({ entry, depth, onFileClick, collapseKey, gitStatus }: TreeNodeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,6 +80,12 @@ function TreeNode({ entry, depth, onFileClick, collapseKey }: TreeNodeProps) {
     setIsOpen((prev) => !prev);
   }, [entry, isOpen, children, onFileClick]);
 
+  const fileStatus = entry.isDirectory
+    ? getFolderStatus(entry.path, gitStatus)
+    : (gitStatus[entry.path] as GitFileStatus | undefined) ?? null;
+
+  const nameColor = fileStatus ? STATUS_COLOR_VAR[fileStatus] : undefined;
+
   return (
     <div className="tree-node">
       <div
@@ -49,7 +94,14 @@ function TreeNode({ entry, depth, onFileClick, collapseKey }: TreeNodeProps) {
         onClick={toggleOpen}
       >
         <FileIcon name={entry.name} isDirectory={entry.isDirectory} isOpen={isOpen} />
-        <span className="tree-name">{entry.name}</span>
+        <span className="tree-name" style={nameColor ? { color: nameColor } : undefined}>
+          {entry.name}
+        </span>
+        {fileStatus && !entry.isDirectory && (
+          <span className="tree-git-badge" style={{ color: nameColor }}>
+            {STATUS_LABEL[fileStatus]}
+          </span>
+        )}
         {loading && <span className="tree-loading">...</span>}
       </div>
       {isOpen && children && (
@@ -61,8 +113,69 @@ function TreeNode({ entry, depth, onFileClick, collapseKey }: TreeNodeProps) {
               depth={depth + 1}
               onFileClick={onFileClick}
               collapseKey={collapseKey}
+              gitStatus={gitStatus}
             />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ChangesListProps {
+  gitStatus: Record<string, GitFileStatus>;
+  explorerRoot: string;
+  onFileClick: (path: string) => void;
+}
+
+function ChangesList({ gitStatus, explorerRoot, onFileClick }: ChangesListProps) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  const changedFiles = useMemo(() => {
+    const entries = Object.entries(gitStatus).sort(([, a], [, b]) => {
+      const order: Record<string, number> = { conflict: 0, modified: 1, added: 2, renamed: 3, untracked: 4, deleted: 5 };
+      return (order[a] ?? 99) - (order[b] ?? 99);
+    });
+    return entries;
+  }, [gitStatus]);
+
+  if (changedFiles.length === 0) return null;
+
+  return (
+    <div className="explorer-changes">
+      <div className="explorer-changes-header" onClick={() => setIsOpen(prev => !prev)}>
+        <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
+        <span className="explorer-changes-title">Changes</span>
+        <span className="explorer-changes-count">{changedFiles.length}</span>
+      </div>
+      {isOpen && (
+        <div className="explorer-changes-list">
+          {changedFiles.map(([filePath, status]) => {
+            const name = filePath.split('/').pop() || filePath;
+            const relativePath = filePath.startsWith(explorerRoot)
+              ? filePath.slice(explorerRoot.length + 1)
+              : filePath;
+            const dir = relativePath.includes('/')
+              ? relativePath.slice(0, relativePath.lastIndexOf('/'))
+              : '';
+            const color = STATUS_COLOR_VAR[status];
+            return (
+              <div
+                key={filePath}
+                className="explorer-change-item"
+                onClick={() => onFileClick(filePath)}
+                data-tooltip={relativePath}
+                data-tooltip-pos="bottom"
+              >
+                <FileIcon name={name} isDirectory={false} />
+                <span className="explorer-change-name" style={{ color }}>{name}</span>
+                {dir && <span className="explorer-change-dir">{dir}</span>}
+                <span className="explorer-change-badge" style={{ color }}>
+                  {STATUS_LABEL[status]}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -75,7 +188,7 @@ interface TreeCache {
 }
 
 export function Explorer() {
-  const { homeDir, setOpenFilePath, setPanelVisibility } = useUIContext();
+  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath } = useUIContext();
   const {
     cwd,
     explorerRoot,
@@ -83,6 +196,8 @@ export function Explorer() {
     explorerOutOfSync,
     activeSessionId,
     updateSessionCwd,
+    gitStatus,
+    refreshGitStatus,
   } = useSessionContext();
 
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -122,7 +237,9 @@ export function Explorer() {
 
     setExplorerRoot(dirPath);
     loadedRootRef.current = dirPath;
-    setLoading(true);
+    if (!forceRefresh || entriesRef.current.length === 0) {
+      setLoading(true);
+    }
     try {
       const result = await window.api.readDirectory(dirPath, forceRefresh);
       if (loadedRootRef.current === dirPath) {
@@ -149,6 +266,7 @@ export function Explorer() {
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
         loadFolder(explorerRoot, true);
+        refreshGitStatus();
       }, 300);
     });
 
@@ -157,7 +275,7 @@ export function Explorer() {
       window.api.unwatchDirectory(explorerRoot);
       unsubscribe();
     };
-  }, [explorerRoot, loadFolder]);
+  }, [explorerRoot, loadFolder, refreshGitStatus]);
 
   const handleLoadCwd = useCallback(async () => {
     let dir = cwd;
@@ -176,20 +294,28 @@ export function Explorer() {
   }, [cwd, activeSessionId, updateSessionCwd, loadFolder]);
 
   const handleRefresh = useCallback(() => {
-    if (explorerRoot) loadFolder(explorerRoot, true);
-  }, [explorerRoot, loadFolder]);
-
+    if (explorerRoot) {
+      loadFolder(explorerRoot, true);
+      refreshGitStatus();
+    }
+  }, [explorerRoot, loadFolder, refreshGitStatus]);
 
   const handleFileClick = useCallback(
     (path: string) => {
+      setDiffFilePath(null);
       setOpenFilePath(path);
     },
-    [setOpenFilePath]
+    [setOpenFilePath, setDiffFilePath]
+  );
+
+  const handleChangeFileClick = useCallback(
+    (path: string) => {
+      setDiffFilePath(path);
+    },
+    [setDiffFilePath]
   );
 
   const displayRoot = explorerRoot ? shortenPath(explorerRoot, homeDir) : '';
-
-  const shortRoot = explorerRoot ? explorerRoot.split('/').pop() || explorerRoot : '';
 
   if (!explorerRoot) {
     return (
@@ -271,8 +397,16 @@ export function Explorer() {
               depth={0}
               onFileClick={handleFileClick}
               collapseKey={collapseKey}
+              gitStatus={gitStatus}
             />
           ))
+        )}
+        {explorerRoot && Object.keys(gitStatus).length > 0 && (
+          <ChangesList
+            gitStatus={gitStatus}
+            explorerRoot={explorerRoot}
+            onFileClick={handleChangeFileClick}
+          />
         )}
       </div>
     </div>
