@@ -27,6 +27,11 @@ export interface TerminalInfo {
   pid: number;
 }
 
+export interface AgentContextDir {
+  path: string;
+  name: string;
+}
+
 export interface TerminalSession {
   id: string;
   label: string;
@@ -131,6 +136,8 @@ export interface ElectronAPI {
   destroyTerminal: (id: string) => void;
   onTerminalData: (callback: (id: string, data: string) => void) => () => void;
   onTerminalExit: (callback: (id: string, exitCode: number) => void) => () => void;
+  getAgentContextDirs: (terminalId: string) => Promise<AgentContextDir[]>;
+  onAgentContextDirsChanged: (callback: (terminalId: string, dirs: AgentContextDir[]) => void) => () => void;
   getSettings: () => Promise<Record<string, any>>;
   saveSettings: (settings: Record<string, any>) => Promise<boolean>;
   toggleDevTools: () => void;

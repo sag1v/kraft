@@ -393,7 +393,15 @@ body {
   height: 100%;
 }
 
+.explorer-body {
+  display: flex;
+  flex-direction: column;
+}
+
 .explorer-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding: 4px 0;
 }
 
@@ -570,8 +578,28 @@ body {
 /* ── Explorer: Changes section ── */
 
 .explorer-changes {
-  border-top: 1px solid var(--border);
-  margin-top: 4px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.explorer-changes-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  z-index: 2;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.explorer-changes-resize-handle:hover,
+.explorer-changes-resize-handle:active {
+  background: var(--accent);
 }
 
 .explorer-changes-header {
@@ -587,6 +615,8 @@ body {
   cursor: pointer;
   user-select: none;
   transition: color 0.15s;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .explorer-changes-header:hover {
@@ -616,7 +646,38 @@ body {
 }
 
 .explorer-changes-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding-bottom: 4px;
+}
+
+.explorer-changes-group {
+  margin-bottom: 2px;
+}
+
+.explorer-changes-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.explorer-changes-group-header:hover {
+  color: var(--fg);
+}
+
+.explorer-changes-group-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .explorer-change-item {
@@ -659,6 +720,71 @@ body {
   opacity: 0.8;
   flex-shrink: 0;
   padding-right: 2px;
+}
+
+/* ── Explorer multi-root / context dirs ── */
+
+.explorer-root-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  user-select: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.explorer-root-label:hover {
+  color: var(--fg-muted);
+}
+
+.explorer-root-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-context-dir {
+  margin-top: 2px;
+}
+
+.explorer-context-dir-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.explorer-context-dir-header:hover {
+  background: var(--selection);
+}
+
+.explorer-context-dir-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.explorer-context-dir-badge {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--agent-accent);
+  background: color-mix(in srgb, var(--agent-accent) 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
 }
 
 /* ── Shared tab bar ── */

@@ -4,7 +4,7 @@ import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
 import { shortenPath } from '../utils';
-import type { DirEntry, GitFileStatus } from '../types';
+import type { DirEntry, GitFileStatus, AgentContextDir } from '../types';
 
 const STATUS_COLOR_VAR: Record<string, string> = {
   modified: 'var(--git-modified)',
@@ -128,66 +128,254 @@ function TreeNode({ entry, depth, onFileClick, collapseKey, gitStatus }: TreeNod
   );
 }
 
+const CHANGES_HEADER_HEIGHT = 28;
+const CHANGES_MIN_HEIGHT = CHANGES_HEADER_HEIGHT;
+const CHANGES_DEFAULT_HEIGHT = 180;
+
 interface ChangesListProps {
   gitStatus: Record<string, GitFileStatus>;
-  explorerRoot: string;
+  allRoots: string[];
   onFileClick: (path: string) => void;
 }
 
-function ChangesList({ gitStatus, explorerRoot, onFileClick }: ChangesListProps) {
-  const [isOpen, setIsOpen] = useState(true);
+interface ChangesGroupProps {
+  rootPath: string;
+  rootName: string;
+  files: [string, GitFileStatus][];
+  onFileClick: (path: string) => void;
+  showRootHeader: boolean;
+}
 
-  const changedFiles = useMemo(() => {
-    const entries = Object.entries(gitStatus).sort(([, a], [, b]) => {
-      const order: Record<string, number> = { conflict: 0, modified: 1, added: 2, renamed: 3, untracked: 4, deleted: 5 };
-      return (order[a] ?? 99) - (order[b] ?? 99);
-    });
-    return entries;
-  }, [gitStatus]);
+function ChangesGroup({ rootPath, rootName, files, onFileClick, showRootHeader }: ChangesGroupProps) {
+  const [groupOpen, setGroupOpen] = useState(true);
 
-  if (changedFiles.length === 0) return null;
+  if (files.length === 0) return null;
+
+  const prefix = rootPath.endsWith('/') ? rootPath : rootPath + '/';
 
   return (
-    <div className="explorer-changes">
-      <div className="explorer-changes-header" onClick={() => setIsOpen(prev => !prev)}>
+    <div className="explorer-changes-group">
+      {showRootHeader && (
+        <div className="explorer-changes-group-header" onClick={() => setGroupOpen(prev => !prev)}>
+          <span className="explorer-changes-chevron">{groupOpen ? '▾' : '▸'}</span>
+          <span className="explorer-changes-group-name">{rootName}</span>
+          <span className="explorer-changes-count">{files.length}</span>
+        </div>
+      )}
+      {groupOpen && files.map(([filePath, status]) => {
+        const name = filePath.split('/').pop() || filePath;
+        const relativePath = filePath.startsWith(prefix) ? filePath.slice(prefix.length) : filePath;
+        const dir = relativePath.includes('/')
+          ? relativePath.slice(0, relativePath.lastIndexOf('/'))
+          : '';
+        const color = STATUS_COLOR_VAR[status];
+        return (
+          <div
+            key={filePath}
+            className="explorer-change-item"
+            onClick={() => onFileClick(filePath)}
+            data-tooltip={relativePath}
+            data-tooltip-pos="bottom"
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation();
+              e.dataTransfer.setData('application/x-kraft-file-path', filePath);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
+          >
+            <FileIcon name={name} isDirectory={false} />
+            <span className="explorer-change-name" style={{ color }}>{name}</span>
+            {dir && <span className="explorer-change-dir">{dir}</span>}
+            <span className="explorer-change-badge" style={{ color }}>
+              {STATUS_LABEL[status]}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChangesList({ gitStatus, allRoots, onFileClick }: ChangesListProps) {
+  const [isOpen, setIsOpen] = useState(true);
+  const [height, setHeight] = useState(CHANGES_DEFAULT_HEIGHT);
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const heightBeforeCollapseRef = useRef(CHANGES_DEFAULT_HEIGHT);
+
+  const groupedChanges = useMemo(() => {
+    const statusOrder: Record<string, number> = { conflict: 0, modified: 1, added: 2, renamed: 3, untracked: 4, deleted: 5 };
+    const sortFiles = (entries: [string, GitFileStatus][]) =>
+      entries.sort(([, a], [, b]) => (statusOrder[a] ?? 99) - (statusOrder[b] ?? 99));
+
+    const groups: { rootPath: string; rootName: string; files: [string, GitFileStatus][] }[] = [];
+    const assigned = new Set<string>();
+
+    for (const root of allRoots) {
+      const prefix = root.endsWith('/') ? root : root + '/';
+      const rootName = root.split('/').pop() || root;
+      const files: [string, GitFileStatus][] = [];
+      for (const [filePath, status] of Object.entries(gitStatus)) {
+        if (filePath.startsWith(prefix)) {
+          files.push([filePath, status]);
+          assigned.add(filePath);
+        }
+      }
+      if (files.length > 0) {
+        groups.push({ rootPath: root, rootName, files: sortFiles(files) });
+      }
+    }
+
+    const unmatched: [string, GitFileStatus][] = [];
+    for (const [filePath, status] of Object.entries(gitStatus)) {
+      if (!assigned.has(filePath)) {
+        unmatched.push([filePath, status]);
+      }
+    }
+    if (unmatched.length > 0) {
+      groups.push({ rootPath: '', rootName: 'Other', files: sortFiles(unmatched) });
+    }
+
+    return groups;
+  }, [gitStatus, allRoots]);
+
+  const totalCount = useMemo(
+    () => groupedChanges.reduce((sum, g) => sum + g.files.length, 0),
+    [groupedChanges],
+  );
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { startY: e.clientY, startHeight: height };
+    let lastHeight = height;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.startY - ev.clientY;
+      const newHeight = Math.max(CHANGES_MIN_HEIGHT, dragRef.current.startHeight + delta);
+      lastHeight = newHeight;
+      setHeight(newHeight);
+      setIsOpen(newHeight > CHANGES_MIN_HEIGHT + 4);
+    };
+
+    const onMouseUp = () => {
+      if (lastHeight > CHANGES_MIN_HEIGHT + 4) {
+        heightBeforeCollapseRef.current = lastHeight;
+      }
+      dragRef.current = null;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  }, [height]);
+
+  const toggleOpen = useCallback(() => {
+    if (isOpen) {
+      heightBeforeCollapseRef.current = height;
+      setHeight(CHANGES_MIN_HEIGHT);
+      setIsOpen(false);
+    } else {
+      setHeight(heightBeforeCollapseRef.current);
+      setIsOpen(true);
+    }
+  }, [isOpen, height]);
+
+  if (totalCount === 0) return null;
+
+  const showRootHeaders = groupedChanges.length > 1;
+
+  return (
+    <div
+      ref={containerRef}
+      className="explorer-changes"
+      style={{ height: isOpen ? height : CHANGES_MIN_HEIGHT, minHeight: CHANGES_MIN_HEIGHT }}
+    >
+      <div className="explorer-changes-resize-handle" onMouseDown={onResizeStart} />
+      <div className="explorer-changes-header" onClick={toggleOpen}>
         <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
         <span className="explorer-changes-title">Changes</span>
-        <span className="explorer-changes-count">{changedFiles.length}</span>
+        <span className="explorer-changes-count">{totalCount}</span>
       </div>
       {isOpen && (
         <div className="explorer-changes-list">
-          {changedFiles.map(([filePath, status]) => {
-            const name = filePath.split('/').pop() || filePath;
-            const relativePath = filePath.startsWith(explorerRoot)
-              ? filePath.slice(explorerRoot.length + 1)
-              : filePath;
-            const dir = relativePath.includes('/')
-              ? relativePath.slice(0, relativePath.lastIndexOf('/'))
-              : '';
-            const color = STATUS_COLOR_VAR[status];
-            return (
-              <div
-                key={filePath}
-                className="explorer-change-item"
-                onClick={() => onFileClick(filePath)}
-                data-tooltip={relativePath}
-                data-tooltip-pos="bottom"
-                draggable
-                onDragStart={(e) => {
-                  e.stopPropagation();
-                  e.dataTransfer.setData('application/x-kraft-file-path', filePath);
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-              >
-                <FileIcon name={name} isDirectory={false} />
-                <span className="explorer-change-name" style={{ color }}>{name}</span>
-                {dir && <span className="explorer-change-dir">{dir}</span>}
-                <span className="explorer-change-badge" style={{ color }}>
-                  {STATUS_LABEL[status]}
-                </span>
-              </div>
-            );
-          })}
+          {groupedChanges.map((group) => (
+            <ChangesGroup
+              key={group.rootPath || '__other'}
+              rootPath={group.rootPath}
+              rootName={group.rootName}
+              files={group.files}
+              onFileClick={onFileClick}
+              showRootHeader={showRootHeaders}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ContextDirSectionProps {
+  dir: AgentContextDir;
+  onFileClick: (path: string) => void;
+  collapseKey: number;
+  gitStatus: Record<string, GitFileStatus>;
+}
+
+function ContextDirSection({ dir, onFileClick, collapseKey, gitStatus }: ContextDirSectionProps) {
+  const [isOpen, setIsOpen] = useState(true);
+  const [entries, setEntries] = useState<DirEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || entries !== null) return;
+    setLoading(true);
+    window.api.readDirectory(dir.path)
+      .then(setEntries)
+      .catch(() => setEntries([]))
+      .finally(() => setLoading(false));
+  }, [isOpen, entries, dir.path]);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [collapseKey]);
+
+  const folderStatus = getFolderStatus(dir.path, gitStatus);
+  const nameColor = folderStatus ? STATUS_COLOR_VAR[folderStatus] : undefined;
+
+  return (
+    <div className="explorer-context-dir">
+      <div
+        className="explorer-context-dir-header"
+        onClick={() => setIsOpen(prev => !prev)}
+        data-tooltip={dir.path}
+        data-tooltip-pos="bottom"
+      >
+        <FileIcon name={dir.name} isDirectory isOpen={isOpen} />
+        <span className="explorer-context-dir-name" style={nameColor ? { color: nameColor } : undefined}>
+          {dir.name}
+        </span>
+        <span className="explorer-context-dir-badge">context</span>
+        {loading && <span className="tree-loading">...</span>}
+      </div>
+      {isOpen && entries && (
+        <div className="tree-children">
+          {entries.map((entry) => (
+            <TreeNode
+              key={entry.path}
+              entry={entry}
+              depth={1}
+              onFileClick={onFileClick}
+              collapseKey={collapseKey}
+              gitStatus={gitStatus}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -210,6 +398,7 @@ export function Explorer() {
     updateSessionCwd,
     gitStatus,
     refreshGitStatus,
+    agentContextDirs,
   } = useSessionContext();
 
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -289,6 +478,32 @@ export function Explorer() {
     };
   }, [explorerRoot, loadFolder, refreshGitStatus]);
 
+  useEffect(() => {
+    if (agentContextDirs.length === 0 || !window.api?.watchDirectory) return;
+
+    const dirs = agentContextDirs.map(d => d.path);
+    for (const dir of dirs) {
+      window.api.watchDirectory(dir);
+    }
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = window.api.onDirectoryChanged(() => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        refreshGitStatus();
+      }, 300);
+    });
+
+    return () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      for (const dir of dirs) {
+        window.api.unwatchDirectory(dir);
+      }
+      unsubscribe();
+    };
+  }, [agentContextDirs, refreshGitStatus]);
+
   const handleLoadCwd = useCallback(async () => {
     let dir = cwd;
     if (activeSessionId && window.api?.getTerminalCwd) {
@@ -327,7 +542,17 @@ export function Explorer() {
     [setDiffFilePath]
   );
 
+  const [rootOpen, setRootOpen] = useState(true);
+
+  useEffect(() => {
+    setRootOpen(true);
+  }, [explorerRoot]);
+
   const displayRoot = explorerRoot ? shortenPath(explorerRoot, homeDir) : '';
+  const allRoots = useMemo(() => {
+    const roots = explorerRoot ? [explorerRoot] : [];
+    return roots.concat(agentContextDirs.map(d => d.path));
+  }, [explorerRoot, agentContextDirs]);
 
   if (!explorerRoot) {
     return (
@@ -353,6 +578,10 @@ export function Explorer() {
     );
   }
 
+  const rootFolderName = explorerRoot.split('/').pop() || explorerRoot;
+  const rootFolderStatus = getFolderStatus(explorerRoot, gitStatus);
+  const rootNameColor = rootFolderStatus ? STATUS_COLOR_VAR[rootFolderStatus] : undefined;
+
   return (
     <div className="panel explorer-panel">
       <div className="panel-header">
@@ -372,7 +601,7 @@ export function Explorer() {
             className="explorer-action-btn"
             tooltip="Collapse all folders"
             tooltipPos="bottom"
-            onClick={(e) => { e.stopPropagation(); setCollapseKey(k => k + 1); }}
+            onClick={(e) => { e.stopPropagation(); setRootOpen(false); setCollapseKey(k => k + 1); }}
           >
             ⊟
           </IconButton>
@@ -396,27 +625,51 @@ export function Explorer() {
           <span> - click to follow</span>
         </div>
       )}
-      <div className="panel-body explorer-tree">
-        {loading ? (
-          <div className="explorer-loading">Loading...</div>
-        ) : entries.length === 0 ? (
-          <div className="explorer-empty">Empty directory</div>
-        ) : (
-          entries.map((entry) => (
-            <TreeNode
-              key={entry.path}
-              entry={entry}
-              depth={0}
+      <div className="panel-body explorer-body">
+        <div className="explorer-tree">
+          <div
+            className="explorer-root-label"
+            data-tooltip={explorerRoot}
+            data-tooltip-pos="bottom"
+            onClick={() => setRootOpen(prev => !prev)}
+          >
+            <FileIcon name={rootFolderName} isDirectory isOpen={rootOpen} />
+            <span className="explorer-root-name" style={rootNameColor ? { color: rootNameColor } : undefined}>
+              {rootFolderName}
+            </span>
+          </div>
+          {rootOpen && (
+            loading ? (
+              <div className="explorer-loading">Loading...</div>
+            ) : entries.length === 0 ? (
+              <div className="explorer-empty">Empty directory</div>
+            ) : (
+              entries.map((entry) => (
+                <TreeNode
+                  key={entry.path}
+                  entry={entry}
+                  depth={1}
+                  onFileClick={handleFileClick}
+                  collapseKey={collapseKey}
+                  gitStatus={gitStatus}
+                />
+              ))
+            )
+          )}
+          {agentContextDirs.map((dir) => (
+            <ContextDirSection
+              key={dir.path}
+              dir={dir}
               onFileClick={handleFileClick}
               collapseKey={collapseKey}
               gitStatus={gitStatus}
             />
-          ))
-        )}
-        {explorerRoot && Object.keys(gitStatus).length > 0 && (
+          ))}
+        </div>
+        {allRoots.length > 0 && Object.keys(gitStatus).length > 0 && (
           <ChangesList
             gitStatus={gitStatus}
-            explorerRoot={explorerRoot}
+            allRoots={allRoots}
             onFileClick={handleChangeFileClick}
           />
         )}

@@ -73,6 +73,18 @@ const api = {
     return () => ipcRenderer.removeListener('terminal-exit', handler);
   },
 
+  getAgentContextDirs: (terminalId: string): Promise<Array<{ path: string; name: string }>> =>
+    ipcRenderer.invoke('get-agent-context-dirs', terminalId),
+
+  onAgentContextDirsChanged: (
+    callback: (terminalId: string, dirs: Array<{ path: string; name: string }>) => void
+  ): (() => void) => {
+    const handler = (_event: any, terminalId: string, dirs: Array<{ path: string; name: string }>) =>
+      callback(terminalId, dirs);
+    ipcRenderer.on('agent-context-dirs-changed', handler);
+    return () => ipcRenderer.removeListener('agent-context-dirs-changed', handler);
+  },
+
   getSettings: (): Promise<Record<string, any>> => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: Record<string, any>): Promise<boolean> => ipcRenderer.invoke('save-settings', settings),
 

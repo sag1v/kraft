@@ -4,11 +4,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { AgentManager } from './agent-providers';
 
 const execFileAsync = promisify(execFile);
 const pty = require('node-pty');
 
 let mainWindow: BrowserWindow | null = null;
+const agentManager = new AgentManager();
 
 interface PtyInstance {
   process: any;
@@ -105,13 +107,6 @@ async function getShellEnv(): Promise<Record<string, string>> {
           }
         }
         env.TERM_PROGRAM = 'kraft';
-        console.log('[Kraft] Terminal env vars:', JSON.stringify(Object.keys(env).sort(), null, 2));
-        const suspicious = Object.entries(env).filter(([k]) =>
-          /vscode|cursor|electron|editor|ide|terminal_emulator/i.test(k)
-        );
-        if (suspicious.length > 0) {
-          console.log('[Kraft] Potentially IDE-related vars:', JSON.stringify(Object.fromEntries(suspicious), null, 2));
-        }
         cachedShellEnv = env;
         return cachedShellEnv;
       } catch {
@@ -485,6 +480,8 @@ function setupIPC() {
       shell: shellPath,
     });
 
+    agentManager.registerTerminal(id, ptyProcess.pid, options.cwd || os.homedir());
+
     ptyProcess.onData((data: string) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('terminal-data', id, data);
@@ -570,6 +567,11 @@ function setupIPC() {
       instance.process.kill();
       ptyInstances.delete(id);
     }
+    agentManager.unregisterTerminal(id);
+  });
+
+  ipcMain.handle('get-agent-context-dirs', (_event, terminalId: string) => {
+    return agentManager.getContextDirs(terminalId);
   });
 
   ipcMain.handle('get-settings', () => loadSettings());
@@ -609,6 +611,12 @@ function setupIPC() {
   });
 }
 
+agentManager.setOnContextDirsChanged((terminalId, dirs) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('agent-context-dirs-changed', terminalId, dirs);
+  }
+});
+
 app.whenReady().then(() => {
   getShellEnv();
   setupIPC();
@@ -616,6 +624,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  agentManager.stopAll();
   for (const [, instance] of ptyInstances) {
     instance.process.kill();
   }

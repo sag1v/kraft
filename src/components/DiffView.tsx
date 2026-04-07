@@ -68,13 +68,14 @@ interface DiffViewProps {
 }
 
 export function DiffView({ filePath }: DiffViewProps) {
-  const { gitRepoRoot } = useSessionContext();
+  const { getRepoRootForFile } = useSessionContext();
   const [hunks, setHunks] = useState<DiffHunk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!gitRepoRoot || !filePath) return;
+    const repoRoot = getRepoRootForFile(filePath);
+    if (!repoRoot || !filePath) return;
 
     let cancelled = false;
     setLoading(true);
@@ -82,7 +83,7 @@ export function DiffView({ filePath }: DiffViewProps) {
 
     (async () => {
       try {
-        const result = await window.api.getGitDiff(filePath, gitRepoRoot);
+        const result = await window.api.getGitDiff(filePath, repoRoot);
         if (cancelled) return;
 
         if (result.isNew && result.content != null) {
@@ -100,7 +101,7 @@ export function DiffView({ filePath }: DiffViewProps) {
     })();
 
     return () => { cancelled = true; };
-  }, [filePath, gitRepoRoot]);
+  }, [filePath, getRepoRootForFile]);
 
   const maxLineNum = useMemo(() => {
     let max = 0;
