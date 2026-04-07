@@ -17,7 +17,6 @@ export function TerminalPanel() {
     updateSessionCwd,
   } = useSessionContext();
 
-  const [agentModeActive, setAgentModeActive] = useState(false);
   const creatingInitialRef = useRef(false);
 
   const sessionsRef = useRef(sessions);
@@ -104,10 +103,6 @@ export function TerminalPanel() {
   const handleCwdChange = useCallback((sessionId: string, newCwd: string) => {
     updateSessionCwd(sessionId, newCwd);
   }, [updateSessionCwd]);
-
-  const handleAgentModeChange = useCallback((active: boolean) => {
-    setAgentModeActive(active);
-  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -196,14 +191,6 @@ export function TerminalPanel() {
             +
           </IconButton>
         </div>
-        <span
-          className="terminal-hint"
-          style={{ color: theme.colors.fgMuted }}
-          data-tooltip={agentModeActive ? 'Press Enter to send, Ctrl+C to cancel' : 'Type ? and Enter to start agent mode'}
-          data-tooltip-pos="bottom"
-        >
-          {agentModeActive ? 'Enter to send, Ctrl+C to cancel' : '? for agent mode'}
-        </span>
         <IconButton
           className="panel-minimize-btn"
           tooltip="Minimize panel"
@@ -256,7 +243,6 @@ export function TerminalPanel() {
             theme={theme}
             settings={settings}
             onCwdChange={handleCwdChange}
-            onAgentModeChange={handleAgentModeChange}
           />
         ))}
       </div>

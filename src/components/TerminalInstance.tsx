@@ -39,7 +39,6 @@ interface TerminalInstanceProps {
   theme: Theme;
   settings: AppSettings;
   onCwdChange: (sessionId: string, cwd: string) => void;
-  onAgentModeChange: (active: boolean) => void;
 }
 
 export const TerminalInstance = React.memo(function TerminalInstance({
@@ -48,7 +47,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   theme,
   settings,
   onCwdChange,
-  onAgentModeChange,
 }: TerminalInstanceProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -62,9 +60,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   const onCwdChangeRef = useRef(onCwdChange);
   onCwdChangeRef.current = onCwdChange;
 
-  const onAgentModeChangeRef = useRef(onAgentModeChange);
-  onAgentModeChangeRef.current = onAgentModeChange;
-
   useEffect(() => {
     const container = termRef.current;
     if (!container) return;
@@ -75,8 +70,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       return;
     }
 
-    const agentState = { active: false, buffer: '' };
-    let lastPtyOutputTs = 0;
     let receivedFirstOutput = false;
     const pendingCwd = { value: null as string | null, count: 0 };
 
@@ -120,7 +113,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
     const removeDataListener = window.api.onTerminalData((termId, data) => {
       if (termId === sessionIdRef.current) {
-        lastPtyOutputTs = Date.now();
         if (!receivedFirstOutput) receivedFirstOutput = true;
         xterm.write(data);
       }
@@ -133,55 +125,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     });
 
     xterm.onData((data) => {
-      if (agentState.active) {
-        for (const ch of data) {
-          if (ch === '\r' || ch === '\n') {
-            const prompt = agentState.buffer.trim();
-            agentState.active = false;
-            agentState.buffer = '';
-            onAgentModeChangeRef.current(false);
-            if (prompt) {
-              const divider = '\u2500'.repeat(Math.min(xterm.cols - 4, 56));
-              xterm.write('\r\n');
-              xterm.write(`\x1b[90m  ${divider}\x1b[0m\r\n`);
-              xterm.write(`\x1b[35m  Sending prompt "${prompt}" to LLM...\x1b[0m\r\n`);
-              xterm.write(`\x1b[90m  ${divider}\x1b[0m\r\n`);
-            } else {
-              xterm.write('\r\n');
-            }
-            return;
-          }
-          if (ch === '\x03') {
-            agentState.active = false;
-            agentState.buffer = '';
-            onAgentModeChangeRef.current(false);
-            xterm.write('\r\n');
-            return;
-          }
-          if (ch === '\x7f' || ch === '\b') {
-            if (agentState.buffer.length > 0) {
-              agentState.buffer = agentState.buffer.slice(0, -1);
-              xterm.write('\b \b');
-            }
-            return;
-          }
-          if (ch >= ' ') {
-            agentState.buffer += ch;
-            xterm.write('\x1b[35m' + ch + '\x1b[0m');
-          }
-        }
-        return;
-      }
-
-      const timeSinceOutput = Date.now() - lastPtyOutputTs;
-      if (data === '?' && receivedFirstOutput && timeSinceOutput > 150) {
-        agentState.active = true;
-        agentState.buffer = '';
-        onAgentModeChangeRef.current(true);
-        xterm.write('\x1b[35m? \x1b[0m');
-        return;
-      }
-
       window.api.writeTerminal(sessionIdRef.current, data);
     });
 
