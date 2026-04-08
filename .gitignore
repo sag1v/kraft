@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-electron/
+dist-release/
 *.js.map
 
 .DS_Store
