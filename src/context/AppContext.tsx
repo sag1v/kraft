@@ -117,7 +117,6 @@ const defaultSettings: AppSettings = {
   defaultLayout: 'watch-shit-done',
   panelLayout: WATCH_SHIT_DONE_LAYOUT.map(r => [...r]),
   savedCustomLayout: null,
-  fontSize: 14,
   theme: 'kraft-dark',
 };
 

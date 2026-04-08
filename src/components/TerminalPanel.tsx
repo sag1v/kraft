@@ -331,7 +331,6 @@ export function TerminalPanel() {
             sessionId={session.id}
             isActive={session.id === activeSessionId}
             theme={theme}
-            settings={settings}
             cwd={session.cwd}
             onCwdChange={handleCwdChange}
             onOpenFile={handleOpenFile}

@@ -4,7 +4,7 @@ import type { ILink, ILinkProvider } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
-import type { Theme, AppSettings } from '../types';
+import type { Theme } from '../types';
 import '@xterm/xterm/css/xterm.css';
 
 function buildXtermTheme(theme: Theme) {
@@ -116,7 +116,6 @@ interface TerminalInstanceProps {
   sessionId: string;
   isActive: boolean;
   theme: Theme;
-  settings: AppSettings;
   cwd: string;
   onCwdChange: (sessionId: string, cwd: string) => void;
   onOpenFile: (filePath: string) => void;
@@ -126,7 +125,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   sessionId,
   isActive,
   theme,
-  settings,
   cwd,
   onCwdChange,
   onOpenFile,
@@ -229,7 +227,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
     const xterm = new XTerm({
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace',
-      fontSize: settings.fontSize,
+      fontSize: 14,
       theme: buildXtermTheme(theme),
       cursorBlink: true,
       cursorStyle: 'block',
@@ -343,17 +341,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       xtermRef.current.options.theme = buildXtermTheme(theme);
     }
   }, [theme]);
-
-  useEffect(() => {
-    if (xtermRef.current) {
-      xtermRef.current.options.fontSize = settings.fontSize;
-      try {
-        fitAddonRef.current?.fit();
-      } catch {
-        // ignore
-      }
-    }
-  }, [settings.fontSize]);
 
   useEffect(() => {
     if (!isActive) return;

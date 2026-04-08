@@ -140,6 +140,21 @@ function saveSettings(settings: Record<string, any>): void {
   fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2));
 }
 
+function applyZoomLevel(level: number) {
+  if (!mainWindow) return;
+  const clamped = Math.max(-3, Math.min(5, level));
+  mainWindow.webContents.setZoomLevel(clamped);
+  mainWindow.webContents.send('zoom-level-changed', clamped);
+  const saved = loadSettings();
+  saved.zoomLevel = clamped;
+  saveSettings(saved);
+}
+
+function applyZoomDelta(delta: number) {
+  if (!mainWindow) return;
+  applyZoomLevel(mainWindow.webContents.getZoomLevel() + delta);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -199,6 +214,26 @@ function createWindow() {
       ],
     },
     {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Zoom In',
+          accelerator: 'CommandOrControl+=',
+          click: () => applyZoomDelta(0.5),
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CommandOrControl+-',
+          click: () => applyZoomDelta(-0.5),
+        },
+        {
+          label: 'Reset Zoom',
+          accelerator: 'CommandOrControl+0',
+          click: () => applyZoomLevel(0),
+        },
+      ],
+    },
+    {
       label: 'Window',
       submenu: [
         { role: 'minimize' },
@@ -217,6 +252,17 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    const saved = loadSettings();
+    if (saved.zoomLevel != null) {
+      mainWindow?.webContents.setZoomLevel(saved.zoomLevel);
+    }
+  });
+
+  mainWindow.webContents.on('zoom-changed', (_event, direction) => {
+    applyZoomDelta(direction === 'in' ? 0.5 : -0.5);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -578,6 +624,15 @@ function setupIPC() {
   ipcMain.handle('save-settings', (_event, settings: Record<string, any>) => {
     saveSettings(settings);
     return true;
+  });
+
+  ipcMain.handle('get-zoom-level', () => {
+    return mainWindow?.webContents.getZoomLevel() ?? 0;
+  });
+
+  ipcMain.handle('set-zoom-level', (_event, level: number) => {
+    applyZoomLevel(level);
+    return mainWindow?.webContents.getZoomLevel() ?? 0;
   });
 
   ipcMain.on('watch-directory', (_event, dirPath: string) => {

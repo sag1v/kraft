@@ -97,6 +97,14 @@ const api = {
   getSettings: (): Promise<Record<string, any>> => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: Record<string, any>): Promise<boolean> => ipcRenderer.invoke('save-settings', settings),
 
+  getZoomLevel: (): Promise<number> => ipcRenderer.invoke('get-zoom-level'),
+  setZoomLevel: (level: number): Promise<number> => ipcRenderer.invoke('set-zoom-level', level),
+  onZoomLevelChanged: (callback: (level: number) => void): (() => void) => {
+    const handler = (_event: any, level: number) => callback(level);
+    ipcRenderer.on('zoom-level-changed', handler);
+    return () => ipcRenderer.removeListener('zoom-level-changed', handler);
+  },
+
   toggleDevTools: (): void => {
     ipcRenderer.send('toggle-devtools');
   },

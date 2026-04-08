@@ -118,7 +118,6 @@ export interface AppSettings {
   defaultLayout: LayoutPreset;
   panelLayout: PanelId[][];
   savedCustomLayout: PanelId[][] | null;
-  fontSize: number;
   theme: string;
 }
 
@@ -144,6 +143,9 @@ export interface ElectronAPI {
   onAgentDetected: (callback: (terminalId: string, agentId: string) => void) => () => void;
   getSettings: () => Promise<Record<string, any>>;
   saveSettings: (settings: Record<string, any>) => Promise<boolean>;
+  getZoomLevel: () => Promise<number>;
+  setZoomLevel: (level: number) => Promise<number>;
+  onZoomLevelChanged: (callback: (level: number) => void) => () => void;
   toggleDevTools: () => void;
   reloadWindow: () => void;
   watchDirectory: (dirPath: string) => void;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUIContext } from '../context/AppContext';
 import { themes } from '../themes';
 import type { LayoutPreset, PanelId } from '../types';
@@ -89,6 +89,77 @@ function ReallyConfirmModal({ step, onConfirm, onCancel }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function zoomLevelToPercent(level: number): number {
+  return Math.round(Math.pow(1.2, level) * 100);
+}
+
+function ZoomControl() {
+  const [zoomLevel, setZoomLevel] = useState(0);
+  const zoomRef = useRef(0);
+
+  useEffect(() => {
+    window.api?.getZoomLevel?.().then((level) => {
+      setZoomLevel(level);
+      zoomRef.current = level;
+    });
+
+    const unsub = window.api?.onZoomLevelChanged?.((level) => {
+      zoomRef.current = level;
+      setZoomLevel(level);
+    });
+    return () => unsub?.();
+  }, []);
+
+  const changeZoom = useCallback((delta: number) => {
+    const next = Math.max(-3, Math.min(5, zoomRef.current + delta));
+    zoomRef.current = next;
+    setZoomLevel(next);
+    window.api?.setZoomLevel?.(next);
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    zoomRef.current = 0;
+    setZoomLevel(0);
+    window.api?.setZoomLevel?.(0);
+  }, []);
+
+  const percent = zoomLevelToPercent(zoomLevel);
+
+  return (
+    <div className="settings-group">
+      <label className="settings-label">Zoom</label>
+      <div className="settings-font-size">
+        <button
+          className="settings-font-btn"
+          onClick={() => changeZoom(-0.5)}
+          data-tooltip="Zoom out (Cmd -)"
+          data-tooltip-pos="bottom"
+        >
+          −
+        </button>
+        <span
+          className="settings-font-value"
+          onClick={resetZoom}
+          style={{ cursor: 'pointer' }}
+          data-tooltip="Reset to 100%"
+          data-tooltip-pos="bottom"
+        >
+          {percent}%
+        </span>
+        <button
+          className="settings-font-btn"
+          onClick={() => changeZoom(0.5)}
+          data-tooltip="Zoom in (Cmd +)"
+          data-tooltip-pos="bottom"
+        >
+          +
+        </button>
+      </div>
+      <span className="settings-hint">Or use {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+/- keys anywhere</span>
     </div>
   );
 }
@@ -234,28 +305,7 @@ export function Settings() {
               </div>
             </div>
           </div>
-          <div className="settings-group">
-            <label className="settings-label">Font Size</label>
-            <div className="settings-font-size">
-              <button
-                className="settings-font-btn"
-                onClick={() =>
-                  updateSettings({ fontSize: Math.max(10, settings.fontSize - 1) })
-                }
-              >
-                −
-              </button>
-              <span className="settings-font-value">{settings.fontSize}px</span>
-              <button
-                className="settings-font-btn"
-                onClick={() =>
-                  updateSettings({ fontSize: Math.min(24, settings.fontSize + 1) })
-                }
-              >
-                +
-              </button>
-            </div>
-          </div>
+          <ZoomControl />
         </div>
       </div>
       {reallyStep > 0 && (
