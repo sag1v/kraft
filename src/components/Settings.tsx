@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUIContext } from '../context/AppContext';
 import { themes } from '../themes';
-import type { LayoutPreset, PanelId } from '../types';
+import type { LayoutPreset, PanelId, PanelVisibility } from '../types';
+import { removePanelFromGrid, simplifyGrid } from './PanelLayout';
 import { SHORTCUTS, SHORTCUT_CATEGORIES, MOD_KEY } from '../shortcuts';
 
 const shells = [
@@ -64,9 +65,29 @@ const PRESET_GRIDS: Record<string, PanelId[][]> = {
 
 const MY_LAYOUT_DEFAULT_GRID: PanelId[][] = [['explorer', 'terminal'], ['viewer', 'terminal']];
 
-function renderLayoutPreview(preset: LayoutPreset, savedCustom?: PanelId[][] | null): React.ReactNode {
+function filterHiddenPanels(grid: PanelId[][], visibility: PanelVisibility): PanelId[][] {
+  const hidden = (['explorer', 'viewer', 'terminal'] as PanelId[]).filter(id => !visibility[id]);
+  if (hidden.length === 0) return grid;
+
+  let g = grid.map(r => [...r]);
+  for (const panel of hidden) {
+    if (g.some(row => row.includes(panel))) {
+      g = removePanelFromGrid(g, panel);
+    }
+  }
+  return simplifyGrid(g);
+}
+
+function renderLayoutPreview(
+  preset: LayoutPreset,
+  savedCustom?: PanelId[][] | null,
+  customVisibility?: PanelVisibility | null,
+): React.ReactNode {
   if (preset === 'custom') {
-    const grid = (savedCustom && savedCustom.length > 0) ? savedCustom : MY_LAYOUT_DEFAULT_GRID;
+    let grid = (savedCustom && savedCustom.length > 0) ? savedCustom : MY_LAYOUT_DEFAULT_GRID;
+    if (customVisibility) {
+      grid = filterHiddenPanels(grid, customVisibility);
+    }
     return renderGridPreview(grid);
   }
   const grid = PRESET_GRIDS[preset];
@@ -441,7 +462,7 @@ export function Settings() {
                       data-tooltip-pos="bottom"
                     >
                       <div className="settings-layout-preview">
-                        {renderLayoutPreview('custom', settings.savedCustomLayout)}
+                        {renderLayoutPreview('custom', settings.savedCustomLayout, settings.customPanelVisibility)}
                       </div>
                       <span className="settings-layout-name">¯\_(ツ)_/¯</span>
                     </div>

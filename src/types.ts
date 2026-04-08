@@ -115,11 +115,14 @@ export type LayoutPreset =
 
 export type PanelId = 'explorer' | 'viewer' | 'terminal';
 
+export type PanelVisibility = { explorer: boolean; viewer: boolean; terminal: boolean };
+
 export interface AppSettings {
   shellOverride: string | null;
   defaultLayout: LayoutPreset;
   panelLayout: PanelId[][];
   savedCustomLayout: PanelId[][] | null;
+  customPanelVisibility: PanelVisibility | null;
   theme: string;
 }
 

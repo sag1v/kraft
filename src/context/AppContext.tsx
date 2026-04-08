@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalSession, PanelId, AgentContextDir } from '../types';
+import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalSession, PanelId, PanelVisibility, AgentContextDir } from '../types';
 import { getThemeById, kraftDark } from '../themes';
 import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
 
@@ -115,11 +115,14 @@ interface SessionContextValue {
   agentContextDirs: AgentContextDir[];
 }
 
+const ALL_VISIBLE: PanelVisibility = { explorer: true, viewer: true, terminal: true };
+
 const defaultSettings: AppSettings = {
   shellOverride: null,
   defaultLayout: 'watch-shit-done',
   panelLayout: WATCH_SHIT_DONE_LAYOUT.map(r => [...r]),
   savedCustomLayout: null,
+  customPanelVisibility: null,
   theme: 'kraft-dark',
 };
 
@@ -162,6 +165,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const themeRef = useRef(theme);
   themeRef.current = theme;
+
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+
+  const panelVisibilityRef = useRef(panelVisibility);
+  panelVisibilityRef.current = panelVisibility;
+
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
   const cwd = activeSession?.cwd || homeDir || '';
@@ -214,6 +226,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setSettings(merged);
           setTheme(getThemeById(merged.theme));
           setLayoutState(merged.defaultLayout);
+          if (merged.defaultLayout === 'custom' && merged.customPanelVisibility) {
+            setPanelVisibilityState({ ...merged.customPanelVisibility });
+          }
         }
       } catch {
         // Running outside Electron
@@ -566,8 +581,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setLayout = useCallback((preset: LayoutPreset) => {
     setLayoutState(preset);
-    if (preset !== 'custom') {
-      setPanelVisibilityState({ explorer: true, viewer: true, terminal: true });
+    if (preset === 'custom') {
+      const savedVis = settingsRef.current.customPanelVisibility;
+      setPanelVisibilityState(savedVis ? { ...savedVis } : { ...ALL_VISIBLE });
+    } else {
+      setPanelVisibilityState({ ...ALL_VISIBLE });
     }
     const presetLayout = PRESET_LAYOUTS[preset];
     setSettings(prev => {
@@ -590,7 +608,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         panelLayout: normalized,
         defaultLayout: matchedPreset,
-        ...(matchedPreset === 'custom' ? { savedCustomLayout: normalized.map(r => [...r]) } : {}),
+        ...(matchedPreset === 'custom' ? {
+          savedCustomLayout: normalized.map(r => [...r]),
+          customPanelVisibility: { ...panelVisibilityRef.current },
+        } : {}),
       };
       window.api?.saveSettings(next);
       return next;
@@ -598,19 +619,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setPanelVisibility = useCallback((panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => {
-    setPanelVisibilityState(prev => ({ ...prev, [panel]: visible }));
+    const next = { ...panelVisibilityRef.current, [panel]: visible };
+    setPanelVisibilityState(next);
+    if (layoutRef.current === 'custom') {
+      setSettings(prev => {
+        const updated = { ...prev, customPanelVisibility: { ...next } };
+        window.api?.saveSettings(updated);
+        return updated;
+      });
+    }
   }, []);
 
   const updateSettings = useCallback((partial: Partial<AppSettings>) => {
-    if (partial.defaultLayout != null) {
-      setPanelVisibilityState({ explorer: true, viewer: true, terminal: true });
-    }
     setSettings(prev => {
       let next: AppSettings = { ...prev, ...partial };
       if (partial.defaultLayout != null) {
         const presetLayout = PRESET_LAYOUTS[partial.defaultLayout];
         if (presetLayout) {
           next = { ...next, panelLayout: presetLayout.map(r => [...r]) };
+          setPanelVisibilityState({ ...ALL_VISIBLE });
         } else if (partial.defaultLayout === 'custom') {
           if (prev.savedCustomLayout) {
             next = { ...next, panelLayout: prev.savedCustomLayout.map(r => [...r]) };
@@ -618,6 +645,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             const initial = MY_LAYOUT_DEFAULT.map(r => [...r]);
             next = { ...next, panelLayout: initial, savedCustomLayout: initial.map(r => [...r]) };
           }
+          const savedVis = next.customPanelVisibility;
+          setPanelVisibilityState(savedVis ? { ...savedVis } : { ...ALL_VISIBLE });
+        } else {
+          setPanelVisibilityState({ ...ALL_VISIBLE });
         }
       }
       if (partial.panelLayout != null) {

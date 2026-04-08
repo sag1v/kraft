@@ -1887,7 +1887,7 @@ body {
 }
 
 .settings-layout-preview-box.explorer {
-  background: var(--accent);
+  background: var(--accent-tertiary);
   opacity: 0.4;
   max-width: 30%;
 }
@@ -1947,7 +1947,7 @@ body {
 }
 
 .settings-legend-dot.explorer {
-  background: var(--accent);
+  background: var(--accent-tertiary);
 }
 
 .settings-legend-dot.viewer {

@@ -230,7 +230,7 @@ function buildGridStyles(
 /*  Panel removal and grid simplification                              */
 /* ------------------------------------------------------------------ */
 
-function simplifyGrid(grid: PanelId[][]): PanelId[][] {
+export function simplifyGrid(grid: PanelId[][]): PanelId[][] {
   let g = grid.map(r => [...r]);
 
   for (let c = g[0].length - 1; c > 0; c--) {
@@ -263,7 +263,7 @@ function pointInRect(clientX: number, clientY: number, rect: DOMRect): boolean {
   return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
 }
 
-function removePanelFromGrid(grid: PanelId[][], panel: PanelId): PanelId[][] {
+export function removePanelFromGrid(grid: PanelId[][], panel: PanelId): PanelId[][] {
   const numRows = grid.length;
   const numCols = grid[0].length;
 
