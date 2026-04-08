@@ -2249,6 +2249,21 @@ body {
   font-size: 11px;
 }
 
+.command-palette-section-header {
+  padding: 6px 16px 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--fg-dim);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  border-top: 1px solid var(--border);
+  user-select: none;
+}
+
+.command-palette-section-header:first-child {
+  border-top: none;
+}
+
 .command-palette-empty {
   padding: 16px;
   text-align: center;

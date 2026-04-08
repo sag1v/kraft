@@ -11,9 +11,34 @@ type CommandDef = {
   run: () => void;
 };
 
+const RECENT_COMMANDS_KEY = 'kraft-recent-commands';
+const MAX_RECENT = 5;
+
+function loadRecentIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_COMMANDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentIds(ids: string[]) {
+  localStorage.setItem(RECENT_COMMANDS_KEY, JSON.stringify(ids.slice(0, MAX_RECENT)));
+}
+
+function pushRecent(id: string, prev: string[]): string[] {
+  const next = [id, ...prev.filter((x) => x !== id)].slice(0, MAX_RECENT);
+  saveRecentIds(next);
+  return next;
+}
+
 export function CommandPalette() {
   const { setSettingsOpen, setThemeId, setOpenFilePath, homeDir, panelVisibility, setPanelVisibility } = useUIContext();
   const { explorerRoot, cwd } = useSessionContext();
+  const [recentIds, setRecentIds] = useState<string[]>(loadRecentIds);
 
   const commands = useMemo<CommandDef[]>(
     () => [
@@ -150,9 +175,37 @@ export function CommandPalette() {
     };
   }, [open, isCommandMode, fileQuery, searchRoot]);
 
-  const items = useMemo(() => {
+  type CommandItem = { kind: 'command'; key: string; category: string; label: string; shortcut?: string; run: () => void };
+  type FileItem = { kind: 'file'; key: string; path: string; label: string; fileName: string; dirPath: string; isDirectory: boolean };
+  type SectionHeader = { kind: 'section'; key: string; label: string };
+  type PaletteItem = CommandItem | FileItem | SectionHeader;
+
+  const items: PaletteItem[] = useMemo(() => {
     if (isCommandMode) {
-      return filteredCommands.map((c) => ({ kind: 'command' as const, key: c.id, category: c.category, label: c.label, shortcut: c.shortcut, run: c.run }));
+      const toItem = (c: CommandDef): CommandItem => ({
+        kind: 'command', key: c.id, category: c.category, label: c.label, shortcut: c.shortcut, run: c.run,
+      });
+
+      if (!commandFilter && recentIds.length > 0) {
+        const recentCommands = recentIds
+          .map((id) => commands.find((c) => c.id === id))
+          .filter((c): c is CommandDef => c != null);
+        const recentSet = new Set(recentIds);
+        const otherCommands = commands.filter((c) => !recentSet.has(c.id));
+
+        const result: PaletteItem[] = [];
+        if (recentCommands.length > 0) {
+          result.push({ kind: 'section', key: 'section-recent', label: 'recently used' });
+          result.push(...recentCommands.map(toItem));
+        }
+        if (otherCommands.length > 0) {
+          result.push({ kind: 'section', key: 'section-other', label: 'other commands' });
+          result.push(...otherCommands.map(toItem));
+        }
+        return result;
+      }
+
+      return filteredCommands.map(toItem);
     }
     return fileResults.map((r) => {
       const parts = r.path.split('/');
@@ -162,13 +215,22 @@ export function CommandPalette() {
         dirPath = dirPath.slice(searchRoot.length);
         if (dirPath.startsWith('/')) dirPath = dirPath.slice(1);
       }
-      return { kind: 'file' as const, key: r.path, path: r.path, label: r.path, fileName, dirPath, isDirectory: r.isDirectory };
+      return { kind: 'file' as const, key: r.path, path: r.path, label: r.path, fileName, dirPath, isDirectory: r.isDirectory } as FileItem;
     });
-  }, [isCommandMode, filteredCommands, fileResults, searchRoot]);
+  }, [isCommandMode, filteredCommands, fileResults, searchRoot, commandFilter, recentIds, commands]);
+
+  const selectableIndices = useMemo(
+    () => items.reduce<number[]>((acc, item, i) => { if (item.kind !== 'section') acc.push(i); return acc; }, []),
+    [items]
+  );
 
   useEffect(() => {
-    setSelectedIndex((i) => Math.min(i, Math.max(0, items.length - 1)));
-  }, [items.length]);
+    setSelectedIndex((prev) => {
+      if (selectableIndices.length === 0) return 0;
+      if (selectableIndices.includes(prev)) return prev;
+      return selectableIndices[0];
+    });
+  }, [selectableIndices]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -220,8 +282,9 @@ export function CommandPalette() {
   const executeIndex = useCallback(
     (index: number) => {
       const item = items[index];
-      if (!item) return;
+      if (!item || item.kind === 'section') return;
       if (item.kind === 'command') {
+        setRecentIds((prev) => pushRecent(item.key, prev));
         item.run();
         setOpen(false);
       } else if (item.isDirectory) {
@@ -256,10 +319,16 @@ export function CommandPalette() {
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((i) => Math.min(i + 1, Math.max(0, items.length - 1)));
+      setSelectedIndex((cur) => {
+        const pos = selectableIndices.indexOf(cur);
+        return pos < selectableIndices.length - 1 ? selectableIndices[pos + 1] : cur;
+      });
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex((i) => Math.max(i - 1, 0));
+      setSelectedIndex((cur) => {
+        const pos = selectableIndices.indexOf(cur);
+        return pos > 0 ? selectableIndices[pos - 1] : cur;
+      });
     } else if (e.key === 'Enter') {
       e.preventDefault();
       executeIndex(selectedIndex);
@@ -297,40 +366,44 @@ export function CommandPalette() {
               {isCommandMode ? 'No matching commands' : !searchRoot ? 'Open a folder or terminal cwd to search files' : !fileQuery ? 'Type to search files' : 'No matching files'}
             </div>
           ) : (
-            items.map((item, index) => (
-              <div
-                key={item.key}
-                role="option"
-                aria-selected={index === selectedIndex}
-                className={`command-palette-item${index === selectedIndex ? ' active' : ''}`}
-                data-index={index}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => executeIndex(index)}
-              >
-                {item.kind === 'command' ? (
-                  <>
-                    <span className="command-palette-cmd-label">
-                      <span className="command-palette-cmd-category">{item.category}: </span>
-                      {item.label}
-                    </span>
-                    {item.shortcut && (
-                      <span className="command-palette-shortcut">
-                        {item.shortcut.split('+').map((key, i) => (
-                          <kbd key={i} className="command-palette-kbd">{key}</kbd>
-                        ))}
+            items.map((item, index) =>
+              item.kind === 'section' ? (
+                <div key={item.key} className="command-palette-section-header">{item.label}</div>
+              ) : (
+                <div
+                  key={item.key}
+                  role="option"
+                  aria-selected={index === selectedIndex}
+                  className={`command-palette-item${index === selectedIndex ? ' active' : ''}`}
+                  data-index={index}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeIndex(index)}
+                >
+                  {item.kind === 'command' ? (
+                    <>
+                      <span className="command-palette-cmd-label">
+                        <span className="command-palette-cmd-category">{item.category}: </span>
+                        {item.label}
                       </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <FileIcon name={item.fileName} isDirectory={item.isDirectory} />
-                    <span className="command-palette-file-name">{item.fileName}{item.isDirectory ? '/' : ''}</span>
-                    {item.dirPath && <span className="command-palette-file-path">{item.dirPath}</span>}
-                  </>
-                )}
-              </div>
-            ))
+                      {item.shortcut && (
+                        <span className="command-palette-shortcut">
+                          {item.shortcut.split('+').map((key, i) => (
+                            <kbd key={i} className="command-palette-kbd">{key}</kbd>
+                          ))}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <FileIcon name={item.fileName} isDirectory={item.isDirectory} />
+                      <span className="command-palette-file-name">{item.fileName}{item.isDirectory ? '/' : ''}</span>
+                      {item.dirPath && <span className="command-palette-file-path">{item.dirPath}</span>}
+                    </>
+                  )}
+                </div>
+              )
+            )
           )}
         </div>
       </div>
