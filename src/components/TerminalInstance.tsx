@@ -399,7 +399,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     }
 
     let receivedFirstOutput = false;
-    const pendingCwd = { value: null as string | null, count: 0 };
 
     const xterm = new XTerm({
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace',
@@ -471,25 +470,38 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
     let lastReportedCwd: string | null = null;
 
+    const reportCwd = (newCwd: string) => {
+      if (newCwd && newCwd !== lastReportedCwd) {
+        lastReportedCwd = newCwd;
+        onCwdChangeRef.current(sessionIdRef.current, newCwd);
+      }
+    };
+
+    // OSC 7 — instant cwd updates for shells that support it (zsh with oh-my-zsh/prezto,
+    // fish, modern bash configs). Format: \e]7;file://hostname/path\a
+    xterm.parser.registerOscHandler(7, (data: string) => {
+      try {
+        const url = new URL(data);
+        const newCwd = decodeURIComponent(url.pathname);
+        if (newCwd) reportCwd(newCwd);
+      } catch {
+        // not a valid URL, ignore
+      }
+      return false;
+    });
+
+    // Polling fallback for shells that don't emit OSC 7.
+    // No double-read debounce — OSC 7 already handles the reliable case,
+    // so a single stable reading is good enough here.
     const cwdPoll = setInterval(async () => {
       if (!sessionIdRef.current || !receivedFirstOutput) return;
       try {
         const newCwd = await window.api.getTerminalCwd(sessionIdRef.current);
-        if (!newCwd) return;
-        if (newCwd === pendingCwd.value) {
-          pendingCwd.count++;
-          if (pendingCwd.count === 2 && newCwd !== lastReportedCwd) {
-            lastReportedCwd = newCwd;
-            onCwdChangeRef.current(sessionIdRef.current, newCwd);
-          }
-        } else {
-          pendingCwd.value = newCwd;
-          pendingCwd.count = 1;
-        }
+        if (newCwd) reportCwd(newCwd);
       } catch {
         // ignore
       }
-    }, 2000);
+    }, 5000);
 
     return () => {
       cancelAnimationFrame(rafId);
