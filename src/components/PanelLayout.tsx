@@ -1024,6 +1024,12 @@ export function PanelLayout() {
         )}
       </div>
 
+      {draggedPanel && (
+        <div className="kraft-context-hint">
+          Press <kbd>Esc</kbd> to cancel
+        </div>
+      )}
+
       {panelGhost && (
         <div
           className="kraft-panel-drag-ghost"

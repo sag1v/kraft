@@ -189,6 +189,7 @@ export function Settings() {
     keybindings: null,
   });
   const searchRef = useRef<HTMLInputElement>(null);
+  const scrollingTo = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -218,6 +219,8 @@ export function Settings() {
 
   const scrollToCategory = useCallback((id: SettingsCategory) => {
     setActiveCategory(id);
+    if (scrollingTo.current) clearTimeout(scrollingTo.current);
+    scrollingTo.current = setTimeout(() => { scrollingTo.current = null; }, 500);
     const el = sectionRefs.current[id];
     if (el && bodyRef.current) {
       bodyRef.current.scrollTo({ top: el.offsetTop - bodyRef.current.offsetTop, behavior: 'smooth' });
@@ -225,6 +228,7 @@ export function Settings() {
   }, []);
 
   const handleScroll = useCallback(() => {
+    if (scrollingTo.current) return;
     const body = bodyRef.current;
     if (!body) return;
     const scrollTop = body.scrollTop + body.offsetTop + 40;

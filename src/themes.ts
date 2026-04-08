@@ -4,7 +4,7 @@ export const kraftDark: Theme = {
   id: 'kraft-dark',
   name: 'Kraft Dark',
   type: 'dark',
-  dot: '#6c9ced',
+  dot: '#73e07a',
   colors: {
     bg: '#1e1f22',
     bgSecondary: '#2b2d30',
@@ -12,7 +12,7 @@ export const kraftDark: Theme = {
     fg: '#e8eaf0',
     fgMuted: '#9da0a8',
     fgDim: '#5c6370',
-    accent: '#6c9ced',
+    accent: '#73e07a',
     accentSecondary: '#da7fcb',
     border: '#393b40',
     selection: '#2d4f67',

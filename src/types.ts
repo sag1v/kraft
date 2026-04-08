@@ -149,6 +149,7 @@ export interface ElectronAPI {
   getZoomLevel: () => Promise<number>;
   setZoomLevel: (level: number) => Promise<number>;
   onZoomLevelChanged: (callback: (level: number) => void) => () => void;
+  onOpenSettings: (callback: () => void) => () => void;
   toggleDevTools: () => void;
   reloadWindow: () => void;
   watchDirectory: (dirPath: string) => void;

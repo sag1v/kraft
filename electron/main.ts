@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Menu, nativeImage, dialog, clipboard } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -156,7 +156,16 @@ function applyZoomDelta(delta: number) {
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+  const icon = nativeImage.createFromPath(iconPath);
+
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(icon);
+  }
+
   mainWindow = new BrowserWindow({
+    title: 'Kraft',
+    icon,
     width: 1400,
     height: 900,
     minWidth: 800,
@@ -190,9 +199,50 @@ function createWindow() {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: app.name,
+      label: 'Kraft',
       submenu: [
-        { role: 'about' },
+        {
+          label: 'About Kraft',
+          click: () => {
+            const electronVersion = process.versions.electron;
+            const chromeVersion = process.versions.chrome;
+            const nodeVersion = process.versions.node;
+            const v8Version = process.versions.v8;
+            const osInfo = `${os.type()} ${os.arch()} ${os.release()}`;
+            const info = [
+              `Version: ${app.getVersion()}`,
+              `Electron: ${electronVersion}`,
+              `Chromium: ${chromeVersion}`,
+              `Node.js: ${nodeVersion}`,
+              `V8: ${v8Version}`,
+              `OS: ${osInfo}`,
+            ].join('\n');
+
+            const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+            const result = dialog.showMessageBoxSync(mainWindow!, {
+              type: 'info',
+              icon: nativeImage.createFromPath(iconPath),
+              title: 'About Kraft',
+              message: 'Kraft',
+              detail: info,
+              buttons: ['OK', 'Copy'],
+              defaultId: 0,
+            });
+            if (result === 1) {
+              clipboard.writeText(info);
+            }
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Settings...',
+          accelerator: 'CommandOrControl+,',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('open-settings');
+            }
+          },
+        },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
@@ -724,6 +774,8 @@ agentManager.setOnAgentDetected((terminalId, agentId) => {
     mainWindow.webContents.send('agent-detected', terminalId, agentId);
   }
 });
+
+app.setName('Kraft');
 
 app.whenReady().then(() => {
   getShellEnv();

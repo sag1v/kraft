@@ -98,6 +98,12 @@ const api = {
     return () => ipcRenderer.removeListener('agent-detected', handler);
   },
 
+  onOpenSettings: (callback: () => void): (() => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('open-settings', handler);
+    return () => ipcRenderer.removeListener('open-settings', handler);
+  },
+
   getSettings: (): Promise<Record<string, any>> => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: Record<string, any>): Promise<boolean> => ipcRenderer.invoke('save-settings', settings),
 

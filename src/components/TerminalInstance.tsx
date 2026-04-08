@@ -230,7 +230,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       fontSize: 14,
       theme: buildXtermTheme(theme),
       cursorBlink: true,
-      cursorStyle: 'block',
+      cursorStyle: 'underline',
       allowTransparency: false,
       scrollback: 5000,
       allowProposedApi: true,

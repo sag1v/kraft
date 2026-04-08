@@ -2,11 +2,31 @@ import { spawn } from 'child_process';
 import { build } from 'esbuild';
 import { createServer } from 'vite';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import electron from 'electron';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
+
+function patchElectronBundle() {
+  const electronBin = typeof electron === 'string' ? electron : electron.toString();
+  const plistPath = path.resolve(electronBin, '../../Info.plist');
+  try {
+    let plist = fs.readFileSync(plistPath, 'utf8');
+    const replace = (key, value) => {
+      const re = new RegExp(`(<key>${key}</key>\\s*<string>)[^<]*(</string>)`);
+      plist = plist.replace(re, `$1${value}$2`);
+    };
+    replace('CFBundleDisplayName', 'Kraft');
+    replace('CFBundleName', 'Kraft');
+    replace('CFBundleIdentifier', 'com.kraft.app');
+    fs.writeFileSync(plistPath, plist, 'utf8');
+    console.log('Patched Electron Info.plist with app name "Kraft".');
+  } catch (err) {
+    console.warn('Could not patch Electron Info.plist:', err.message);
+  }
+}
 
 async function buildElectron() {
   await build({
@@ -25,6 +45,7 @@ async function buildElectron() {
 }
 
 async function main() {
+  patchElectronBundle();
   await buildElectron();
   console.log('Electron build complete.');
 

@@ -127,6 +127,10 @@ function AppInner() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  useEffect(() => {
+    return window.api?.onOpenSettings?.(() => setSettingsOpen(true));
+  }, [setSettingsOpen]);
+
   if (!settingsLoaded) {
     return (
       <div
