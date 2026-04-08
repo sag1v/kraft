@@ -21,7 +21,18 @@ export function TerminalPanel() {
     reorderSessions,
     renameSession,
     updateSessionAppearance,
+    explorerRoot,
+    agentContextDirs,
   } = useSessionContext();
+
+  const workspaceRoots = useMemo(() => {
+    const roots: string[] = [];
+    if (explorerRoot) roots.push(explorerRoot);
+    for (const d of agentContextDirs) {
+      if (d.path && !roots.includes(d.path)) roots.push(d.path);
+    }
+    return roots;
+  }, [explorerRoot, agentContextDirs]);
 
   const tabBarRef = useRef<TabBarHandle>(null);
   const creatingInitialRef = useRef(false);
@@ -119,7 +130,8 @@ export function TerminalPanel() {
 
   const handleOpenFile = useCallback((filePath: string) => {
     setOpenFilePath(filePath);
-  }, [setOpenFilePath]);
+    setPanelVisibility('viewer', true);
+  }, [setOpenFilePath, setPanelVisibility]);
 
   const handleRenameTab = useCallback((id: string, newLabel: string) => {
     renameSession(id, newLabel);
@@ -333,6 +345,7 @@ export function TerminalPanel() {
             isActive={session.id === activeSessionId}
             theme={theme}
             cwd={session.cwd}
+            workspaceRoots={workspaceRoots}
             onCwdChange={handleCwdChange}
             onOpenFile={handleOpenFile}
           />

@@ -34,13 +34,38 @@ function buildXtermTheme(theme: Theme) {
   };
 }
 
-// Matches file paths with optional :line:col suffix.
-// Group 1: the path, Group 2: line number, Group 3: column number
-const FILE_PATH_RE =
-  /((?:~\/|\.{1,2}\/|\/)[^\s:'"()[\]{}<>,;!?]+|(?:[\w\-.]+\/)+[\w\-.]+\.[\w]+)(?::(\d+)(?::(\d+))?)?/g;
+const enum LinkLimits {
+  MaxLineLength = 2000,
+  MaxLinkLength = 500,
+  MaxLinksPerLine = 10,
+  MinPathLength = 3,
+  CacheTTLMs = 10_000,
+  CacheMaxSize = 500,
+}
 
-function stripTrailingPunctuation(p: string): string {
+// Matches absolute/relative/home-relative paths with strict character exclusions.
+// Excludes: whitespace, quotes, backticks, !, &, *, ;, <, >, |, {, }, and backslash.
+// The second alternative requires at least two segments with a file extension to reduce
+// false positives on bare package names or version strings.
+const FILE_PATH_RE =
+  /(?:(?:~\/|\.{1,2}\/|\/)(?:[^\s"'`!&*;|<>{}\\:()[\]]|\\[ ])+|(?:[A-Za-z0-9@_.-]+\/){2,}[A-Za-z0-9@_.-]+\.[A-Za-z]\w*)(?::(\d+)(?::(\d+))?)?/g;
+
+// Fallback patterns for well-known error output formats (only tried when primary regex finds nothing).
+const FALLBACK_MATCHERS: { re: RegExp; pathGroup: string; lineGroup?: string; colGroup?: string }[] = [
+  // Python: File "foo/bar.py", line 12
+  { re: /^ *File "(?<path>.+)"(?:, line (?<line>\d+))?/, pathGroup: 'path', lineGroup: 'line' },
+  // C/C++ compilers: foo/bar.cpp(339,12): error ...  OR  foo/bar.cpp(339): error ...
+  { re: /^(?<path>[^\s(]+)\((?<line>\d+)(?:, ?(?<col>\d+))?\) ?:/, pathGroup: 'path', lineGroup: 'line', colGroup: 'col' },
+  // Rust/Go/generic: foo/bar.rs:12:5: error ...
+  { re: /^(?<path>[^\s:]+):(?<line>\d+)(?::(?<col>\d+))? ?:/, pathGroup: 'path', lineGroup: 'line', colGroup: 'col' },
+];
+
+function stripTrailingJunk(p: string): string {
   return p.replace(/[.,:;!?)>\]]+$/, '');
+}
+
+function isGitDiffLine(text: string): boolean {
+  return text.startsWith('--- a/') || text.startsWith('+++ b/') || text.startsWith('diff --git');
 }
 
 const IS_MAC = navigator.platform.toUpperCase().includes('MAC');
@@ -53,10 +78,60 @@ function createLinkTooltip(): HTMLDivElement {
   return el;
 }
 
+type ResolveResult = string | null;
+
+class PathResolveCache {
+  private cache = new Map<string, { resolved: ResolveResult; ts: number }>();
+
+  get(key: string): ResolveResult | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() - entry.ts > LinkLimits.CacheTTLMs) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry.resolved;
+  }
+
+  set(key: string, resolved: ResolveResult): void {
+    if (this.cache.size >= LinkLimits.CacheMaxSize) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
+    this.cache.set(key, { resolved, ts: Date.now() });
+  }
+}
+
+async function resolvePathAcrossRoots(
+  rawPath: string,
+  roots: string[],
+  cache: PathResolveCache,
+): Promise<ResolveResult> {
+  for (const root of roots) {
+    const cacheKey = `${root}\0${rawPath}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) {
+      if (cached !== null) return cached;
+      continue;
+    }
+    try {
+      const resolved = await window.api.resolveFilePath(rawPath, root);
+      cache.set(cacheKey, resolved);
+      if (resolved) return resolved;
+    } catch {
+      cache.set(cacheKey, null);
+    }
+  }
+  return null;
+}
+
 class FilePathLinkProvider implements ILinkProvider {
+  private resolveCache = new PathResolveCache();
+
   constructor(
     private terminal: XTerm,
     private getCwd: () => string,
+    private getWorkspaceRoots: () => string[],
     private onOpenFile: (path: string) => void,
     private tooltip: HTMLDivElement,
   ) {}
@@ -66,36 +141,81 @@ class FilePathLinkProvider implements ILinkProvider {
     if (!line) { callback(undefined); return; }
 
     const text = line.translateToString();
-    const links: ILink[] = [];
+    if (text.length === 0 || text.length > LinkLimits.MaxLineLength) {
+      callback(undefined);
+      return;
+    }
+
+    if (isGitDiffLine(text)) {
+      callback(undefined);
+      return;
+    }
+
+    this.detectAndValidate(text, lineNumber).then(links => {
+      callback(links.length > 0 ? links : undefined);
+    });
+  }
+
+  private getResolutionRoots(): string[] {
+    const roots: string[] = [];
+    const seen = new Set<string>();
+    const add = (p: string) => {
+      if (p && !seen.has(p)) { seen.add(p); roots.push(p); }
+    };
+    add(this.getCwd());
+    for (const r of this.getWorkspaceRoots()) add(r);
+    return roots;
+  }
+
+  private async detectAndValidate(text: string, lineNumber: number): Promise<ILink[]> {
+    const candidates = this.extractCandidates(text);
+    if (candidates.length === 0) return [];
+
+    const roots = this.getResolutionRoots();
     const tooltip = this.tooltip;
+    const openFile = this.onOpenFile;
+    const links: ILink[] = [];
 
-    FILE_PATH_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = FILE_PATH_RE.exec(text)) !== null) {
-      const rawPath = stripTrailingPunctuation(match[1]);
-      if (rawPath.length < 3) continue;
+    for (const candidate of candidates) {
+      if (links.length >= LinkLimits.MaxLinksPerLine) break;
 
-      const startX = match.index + 1;
-      const endX = match.index + rawPath.length + (match[2] ? match[2].length + 1 : 0) + (match[3] ? match[3].length + 1 : 0) + 1;
-      const cwd = this.getCwd();
-      const openFile = this.onOpenFile;
+      const isAbsoluteish = candidate.path.startsWith('/') || candidate.path.startsWith('~/');
+      let resolved: ResolveResult = null;
+
+      if (isAbsoluteish) {
+        const cacheKey = `\0${candidate.path}`;
+        const cached = this.resolveCache.get(cacheKey);
+        if (cached !== undefined) {
+          resolved = cached;
+        } else {
+          try {
+            resolved = await window.api.resolveFilePath(candidate.path);
+          } catch {
+            resolved = null;
+          }
+          this.resolveCache.set(cacheKey, resolved);
+        }
+      } else {
+        resolved = await resolvePathAcrossRoots(candidate.path, roots, this.resolveCache);
+      }
+
+      if (resolved === null) continue;
+
+      const fullText = candidate.suffix
+        ? `${candidate.path}${candidate.suffix}`
+        : candidate.path;
 
       links.push({
         range: {
-          start: { x: startX, y: lineNumber },
-          end: { x: endX, y: lineNumber },
+          start: { x: candidate.startX, y: lineNumber },
+          end: { x: candidate.startX + fullText.length, y: lineNumber },
         },
-        text: rawPath,
+        text: fullText,
         decorations: { pointerCursor: true, underline: true },
-        activate(event: MouseEvent, linkText: string) {
+        activate(event: MouseEvent) {
           if (!event.metaKey && !event.ctrlKey) return;
           tooltip.classList.remove('visible');
-          (async () => {
-            try {
-              const resolved = await window.api.resolveFilePath(linkText, cwd || undefined);
-              if (resolved) openFile(resolved);
-            } catch { /* ignore */ }
-          })();
+          openFile(resolved!);
         },
         hover(event: MouseEvent) {
           tooltip.style.left = `${event.clientX}px`;
@@ -108,7 +228,58 @@ class FilePathLinkProvider implements ILinkProvider {
       });
     }
 
-    callback(links.length > 0 ? links : undefined);
+    return links;
+  }
+
+  private extractCandidates(text: string): { path: string; suffix: string; startX: number }[] {
+    const results: { path: string; suffix: string; startX: number }[] = [];
+
+    FILE_PATH_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = FILE_PATH_RE.exec(text)) !== null) {
+      const fullMatch = match[0];
+      if (fullMatch.length > LinkLimits.MaxLinkLength) continue;
+
+      const lineNum = match[1];
+      const colNum = match[2];
+      const pathEnd = lineNum ? fullMatch.indexOf(`:${lineNum}`) : fullMatch.length;
+      const rawPath = stripTrailingJunk(fullMatch.substring(0, pathEnd));
+      if (rawPath.length < LinkLimits.MinPathLength) continue;
+
+      const suffix = lineNum
+        ? `:${lineNum}${colNum ? `:${colNum}` : ''}`
+        : '';
+
+      results.push({
+        path: rawPath,
+        suffix,
+        startX: match.index + 1,
+      });
+    }
+
+    if (results.length === 0) {
+      for (const fm of FALLBACK_MATCHERS) {
+        const m = text.match(fm.re);
+        if (!m?.groups) continue;
+        const fbPath = m.groups[fm.pathGroup];
+        if (!fbPath || fbPath.length < LinkLimits.MinPathLength) continue;
+
+        const fbLine = fm.lineGroup ? m.groups[fm.lineGroup] : undefined;
+        const fbCol = fm.colGroup ? m.groups[fm.colGroup] : undefined;
+        const suffix = fbLine ? `:${fbLine}${fbCol ? `:${fbCol}` : ''}` : '';
+        const idx = text.indexOf(fbPath);
+        if (idx === -1) continue;
+
+        results.push({
+          path: fbPath,
+          suffix,
+          startX: idx + 1,
+        });
+        break;
+      }
+    }
+
+    return results;
   }
 }
 
@@ -117,6 +288,7 @@ interface TerminalInstanceProps {
   isActive: boolean;
   theme: Theme;
   cwd: string;
+  workspaceRoots: string[];
   onCwdChange: (sessionId: string, cwd: string) => void;
   onOpenFile: (filePath: string) => void;
 }
@@ -126,6 +298,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   isActive,
   theme,
   cwd,
+  workspaceRoots,
   onCwdChange,
   onOpenFile,
 }: TerminalInstanceProps) {
@@ -140,6 +313,9 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
   const cwdRef = useRef(cwd);
   cwdRef.current = cwd;
+
+  const workspaceRootsRef = useRef(workspaceRoots);
+  workspaceRootsRef.current = workspaceRoots;
 
   const onCwdChangeRef = useRef(onCwdChange);
   onCwdChangeRef.current = onCwdChange;
@@ -247,6 +423,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       new FilePathLinkProvider(
         xterm,
         () => cwdRef.current,
+        () => workspaceRootsRef.current,
         (filePath) => onOpenFileRef.current(filePath),
         linkTooltip,
       ),
