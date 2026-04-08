@@ -800,10 +800,15 @@ export function Explorer() {
   }, [explorerRoot]);
 
   const displayRoot = explorerRoot ? shortenPath(explorerRoot, homeDir) : '';
+  const visibleContextDirs = useMemo(
+    () => agentContextDirs.filter(d => d.path !== explorerRoot),
+    [agentContextDirs, explorerRoot],
+  );
+
   const allRoots = useMemo(() => {
     const roots = explorerRoot ? [explorerRoot] : [];
-    return roots.concat(agentContextDirs.map(d => d.path));
-  }, [explorerRoot, agentContextDirs]);
+    return roots.concat(visibleContextDirs.map(d => d.path));
+  }, [explorerRoot, visibleContextDirs]);
 
   const combinedGitStatus = useMemo(() => {
     if (Object.keys(gitStagedStatus).length === 0) return gitStatus;
@@ -952,7 +957,7 @@ export function Explorer() {
                 ))
               )
             )}
-            {agentContextDirs.map((dir) => (
+            {visibleContextDirs.map((dir) => (
               <ContextDirSection
                 key={dir.path}
                 dir={dir}
