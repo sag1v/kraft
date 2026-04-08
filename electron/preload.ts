@@ -98,6 +98,15 @@ const api = {
     return () => ipcRenderer.removeListener('agent-detected', handler);
   },
 
+  onAgentExited: (
+    callback: (terminalId: string) => void
+  ): (() => void) => {
+    const handler = (_event: any, terminalId: string) =>
+      callback(terminalId);
+    ipcRenderer.on('agent-exited', handler);
+    return () => ipcRenderer.removeListener('agent-exited', handler);
+  },
+
   onOpenSettings: (callback: () => void): (() => void) => {
     const handler = () => callback();
     ipcRenderer.on('open-settings', handler);

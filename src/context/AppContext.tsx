@@ -268,6 +268,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!window.api?.onAgentExited) return;
+    const unsubscribe = window.api.onAgentExited((terminalId) => {
+      setAgentContextDirsMap(prev => {
+        const next = { ...prev };
+        delete next[terminalId];
+        return next;
+      });
+      setSessions(prev =>
+        prev.map(s => {
+          if (s.id !== terminalId) return s;
+          if (!s.autoIcon) return s;
+          return {
+            ...s,
+            icon: undefined,
+            autoIcon: undefined,
+            ...(s.autoIconColor ? { iconColor: undefined, autoIconColor: undefined } : {}),
+          };
+        })
+      );
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     const accent = theme.colors.agentAccent;
     setSessions(prev => {
       let changed = false;

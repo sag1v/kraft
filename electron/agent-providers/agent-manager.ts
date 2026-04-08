@@ -10,6 +10,7 @@ interface TrackedTerminal {
   cwd: string;
   watcher: AgentSessionWatcher | null;
   detectedAgent: string | null;
+  agentPid: number | null;
   pollTimer: ReturnType<typeof setInterval> | null;
 }
 
@@ -18,6 +19,7 @@ export class AgentManager {
   private terminals = new Map<string, TrackedTerminal>();
   private onDirsChanged: ((terminalId: string, dirs: AgentContextDir[]) => void) | null = null;
   private onDetected: ((terminalId: string, agentId: string) => void) | null = null;
+  private onExited: ((terminalId: string) => void) | null = null;
 
   constructor() {
     this.providers.push(new ClaudeCodeProvider());
@@ -31,12 +33,17 @@ export class AgentManager {
     this.onDetected = callback;
   }
 
+  setOnAgentExited(callback: (terminalId: string) => void) {
+    this.onExited = callback;
+  }
+
   registerTerminal(terminalId: string, terminalPid: number, cwd: string) {
     const tracked: TrackedTerminal = {
       terminalPid,
       cwd,
       watcher: null,
       detectedAgent: null,
+      agentPid: null,
       pollTimer: null,
     };
 
@@ -63,6 +70,23 @@ export class AgentManager {
   private async tryDetectAgent(terminalId: string, tracked: TrackedTerminal) {
     if (tracked.watcher) return;
 
+    if (tracked.agentPid) {
+      let stillActive = false;
+      for (const provider of this.providers) {
+        if (await provider.detect(tracked.agentPid, tracked.cwd)) {
+          stillActive = true;
+          break;
+        }
+      }
+      if (!stillActive) {
+        console.log(`[Kraft] Agent session file removed before watcher was ready (pid=${tracked.agentPid}) for terminal ${terminalId}`);
+        tracked.detectedAgent = null;
+        tracked.agentPid = null;
+        this.onExited?.(terminalId);
+        return;
+      }
+    }
+
     const descendantPids = await this.getDescendantPids(tracked.terminalPid);
     const pidsToCheck = [tracked.terminalPid, ...descendantPids];
 
@@ -75,6 +99,7 @@ export class AgentManager {
           const firstDetection = tracked.detectedAgent === null;
           console.log(`[Kraft] Agent detected: ${result.displayName} (pid=${pid}) for terminal ${terminalId}`);
           tracked.detectedAgent = result.agentId;
+          tracked.agentPid = pid;
 
           if (firstDetection) {
             this.onDetected?.(terminalId, result.agentId);
@@ -94,6 +119,11 @@ export class AgentManager {
               this.onDirsChanged?.(terminalId, dirs);
             });
 
+            watcher.onSessionEnded(() => {
+              console.log(`[Kraft] Agent session ended for terminal ${terminalId}`);
+              this.handleAgentExited(terminalId, tracked);
+            });
+
             const initialDirs = watcher.getContextDirs();
             console.log(`[Kraft] Initial context dirs for ${terminalId}:`, initialDirs);
             this.onDirsChanged?.(terminalId, initialDirs);
@@ -106,6 +136,20 @@ export class AgentManager {
         }
       }
     }
+  }
+
+  private handleAgentExited(terminalId: string, tracked: TrackedTerminal) {
+    tracked.watcher?.stop();
+    tracked.watcher = null;
+    tracked.detectedAgent = null;
+    tracked.agentPid = null;
+
+    this.onDirsChanged?.(terminalId, []);
+    this.onExited?.(terminalId);
+
+    tracked.pollTimer = setInterval(() => {
+      this.tryDetectAgent(terminalId, tracked);
+    }, 3000);
   }
 
   private async getDescendantPids(parentPid: number): Promise<number[]> {

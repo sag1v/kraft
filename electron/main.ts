@@ -826,6 +826,12 @@ agentManager.setOnAgentDetected((terminalId, agentId) => {
   }
 });
 
+agentManager.setOnAgentExited((terminalId) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('agent-exited', terminalId);
+  }
+});
+
 app.setName('Kraft');
 
 app.whenReady().then(() => {

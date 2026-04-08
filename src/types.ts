@@ -148,6 +148,7 @@ export interface ElectronAPI {
   getAgentContextDirs: (terminalId: string) => Promise<AgentContextDir[]>;
   onAgentContextDirsChanged: (callback: (terminalId: string, dirs: AgentContextDir[]) => void) => () => void;
   onAgentDetected: (callback: (terminalId: string, agentId: string) => void) => () => void;
+  onAgentExited: (callback: (terminalId: string) => void) => () => void;
   getSettings: () => Promise<Record<string, any>>;
   saveSettings: (settings: Record<string, any>) => Promise<boolean>;
   getZoomLevel: () => Promise<number>;

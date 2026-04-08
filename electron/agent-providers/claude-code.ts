@@ -80,37 +80,62 @@ function contextDirsFromJsonlOrCwd(jsonlPath: string, projectCwd: string): Agent
 }
 
 class ClaudeCodeSessionWatcher implements AgentSessionWatcher {
-  private watcher: fs.FSWatcher | null = null;
+  private jsonlWatcher: fs.FSWatcher | null = null;
+  private sessionWatcher: fs.FSWatcher | null = null;
   private contextDirs: AgentContextDir[] = [];
-  private callback: ((dirs: AgentContextDir[]) => void) | null = null;
+  private dirsCallback: ((dirs: AgentContextDir[]) => void) | null = null;
+  private endedCallback: (() => void) | null = null;
   private jsonlPath: string;
   private projectCwd: string;
+  private sessionFilePath: string;
   private lastSize = 0;
 
-  constructor(jsonlPath: string, projectCwd: string) {
+  constructor(jsonlPath: string, projectCwd: string, sessionFilePath: string) {
     this.jsonlPath = jsonlPath;
     this.projectCwd = projectCwd;
+    this.sessionFilePath = sessionFilePath;
     this.contextDirs = contextDirsFromJsonlOrCwd(jsonlPath, projectCwd);
     this.lastSize = this.getFileSize();
-    this.startWatching();
+    this.startWatchingJsonl();
+    this.startWatchingSessionFile();
   }
 
   private getFileSize(): number {
     try { return fs.statSync(this.jsonlPath).size; } catch { return 0; }
   }
 
-  private startWatching() {
+  private startWatchingJsonl() {
     try {
       const dir = path.dirname(this.jsonlPath);
       const basename = path.basename(this.jsonlPath);
-      this.watcher = fs.watch(dir, (eventType, filename) => {
+      this.jsonlWatcher = fs.watch(dir, (eventType, filename) => {
         if (filename !== basename) return;
-        this.onFileChanged();
+        this.onJsonlChanged();
       });
     } catch { /* directory doesn't exist yet, will be retried */ }
   }
 
-  private onFileChanged() {
+  private startWatchingSessionFile() {
+    try {
+      const dir = path.dirname(this.sessionFilePath);
+      const basename = path.basename(this.sessionFilePath);
+      this.sessionWatcher = fs.watch(dir, (eventType, filename) => {
+        if (filename !== basename) return;
+        this.onSessionFileChanged();
+      });
+    } catch { /* directory doesn't exist */ }
+  }
+
+  private onSessionFileChanged() {
+    try {
+      fs.accessSync(this.sessionFilePath);
+    } catch {
+      console.log(`[Kraft] Session file removed: ${this.sessionFilePath}`);
+      this.endedCallback?.();
+    }
+  }
+
+  private onJsonlChanged() {
     const newSize = this.getFileSize();
     if (newSize <= this.lastSize) return;
 
@@ -119,7 +144,7 @@ class ClaudeCodeSessionWatcher implements AgentSessionWatcher {
 
     if (this.dirsChanged(newDirs)) {
       this.contextDirs = newDirs;
-      this.callback?.(this.contextDirs);
+      this.dirsCallback?.(this.contextDirs);
     }
   }
 
@@ -130,7 +155,11 @@ class ClaudeCodeSessionWatcher implements AgentSessionWatcher {
   }
 
   onContextDirsChanged(callback: (dirs: AgentContextDir[]) => void) {
-    this.callback = callback;
+    this.dirsCallback = callback;
+  }
+
+  onSessionEnded(callback: () => void) {
+    this.endedCallback = callback;
   }
 
   getContextDirs(): AgentContextDir[] {
@@ -138,9 +167,12 @@ class ClaudeCodeSessionWatcher implements AgentSessionWatcher {
   }
 
   stop() {
-    this.watcher?.close();
-    this.watcher = null;
-    this.callback = null;
+    this.jsonlWatcher?.close();
+    this.jsonlWatcher = null;
+    this.sessionWatcher?.close();
+    this.sessionWatcher = null;
+    this.dirsCallback = null;
+    this.endedCallback = null;
   }
 }
 
@@ -161,6 +193,7 @@ export class ClaudeCodeProvider implements AgentProvider {
     if (!session) return null;
 
     const jsonlPath = getProjectJsonlPath(session.cwd, session.sessionId);
+    const sessionFilePath = path.join(CLAUDE_SESSIONS_DIR, `${terminalPid}.json`);
     console.log(`[Kraft] Claude Code session: cwd=${session.cwd} sessionId=${session.sessionId}`);
     console.log(`[Kraft] Claude Code JSONL path: ${jsonlPath}`);
     try {
@@ -170,6 +203,6 @@ export class ClaudeCodeProvider implements AgentProvider {
       return null;
     }
 
-    return new ClaudeCodeSessionWatcher(jsonlPath, session.cwd);
+    return new ClaudeCodeSessionWatcher(jsonlPath, session.cwd, sessionFilePath);
   }
 }

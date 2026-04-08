@@ -10,6 +10,7 @@ export interface AgentDetectionResult {
 
 export interface AgentSessionWatcher {
   onContextDirsChanged: (callback: (dirs: AgentContextDir[]) => void) => void;
+  onSessionEnded: (callback: () => void) => void;
   getContextDirs: () => AgentContextDir[];
   stop: () => void;
 }
