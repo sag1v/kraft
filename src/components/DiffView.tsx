@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSessionContext } from '../context/AppContext';
 
 interface DiffHunk {
@@ -63,12 +63,75 @@ function buildNewFileHunks(content: string): DiffHunk[] {
   }];
 }
 
+function findTextMatches(
+  text: string,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+): Array<{ start: number; end: number }> {
+  if (!query) return [];
+  try {
+    let pattern = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (wholeWord) pattern = `\\b${pattern}\\b`;
+    const flags = caseSensitive ? 'g' : 'gi';
+    const regex = new RegExp(pattern, flags);
+    const matches: Array<{ start: number; end: number }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+      matches.push({ start: m.index, end: m.index + m[0].length });
+      if (m[0].length === 0) regex.lastIndex++;
+    }
+    return matches;
+  } catch {
+    return [];
+  }
+}
+
+function renderLineContent(
+  content: string,
+  matchRanges: Array<{ start: number; end: number }>,
+  lineMatchStart: number,
+  activeMatchIndex: number,
+): React.ReactNode {
+  if (matchRanges.length === 0) return content;
+
+  const parts: React.ReactNode[] = [];
+  let prev = 0;
+  matchRanges.forEach(({ start, end }, i) => {
+    if (start > prev) parts.push(content.slice(prev, start));
+    const globalIdx = lineMatchStart + i;
+    parts.push(
+      <mark key={i} className={`search-mark${globalIdx === activeMatchIndex ? ' search-mark-active' : ''}`}>
+        {content.slice(start, end)}
+      </mark>
+    );
+    prev = end;
+  });
+  if (prev < content.length) parts.push(content.slice(prev));
+  return <>{parts}</>;
+}
+
+interface AnnotatedLine extends DiffLine {
+  matchRanges: Array<{ start: number; end: number }>;
+  lineMatchStart: number;
+}
+
+interface AnnotatedHunk {
+  header: string;
+  lines: AnnotatedLine[];
+}
+
 interface DiffViewProps {
   filePath: string;
   version: number;
+  searchQuery: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  activeMatchIndex: number;
+  onMatchCountChange: (count: number) => void;
 }
 
-export function DiffView({ filePath, version }: DiffViewProps) {
+export function DiffView({ filePath, version, searchQuery, caseSensitive, wholeWord, activeMatchIndex, onMatchCountChange }: DiffViewProps) {
   const { getRepoRootForFile } = useSessionContext();
   const [hunks, setHunks] = useState<DiffHunk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +167,26 @@ export function DiffView({ filePath, version }: DiffViewProps) {
     return () => { cancelled = true; };
   }, [filePath, version, getRepoRootForFile]);
 
+  const { annotatedHunks, totalMatchCount } = useMemo(() => {
+    let globalIdx = 0;
+    let totalMatchCount = 0;
+    const annotatedHunks: AnnotatedHunk[] = hunks.map(hunk => ({
+      ...hunk,
+      lines: hunk.lines.map(line => {
+        const matchRanges = findTextMatches(line.content, searchQuery, caseSensitive, wholeWord);
+        const lineMatchStart = globalIdx;
+        globalIdx += matchRanges.length;
+        totalMatchCount += matchRanges.length;
+        return { ...line, matchRanges, lineMatchStart };
+      }),
+    }));
+    return { annotatedHunks, totalMatchCount };
+  }, [hunks, searchQuery, caseSensitive, wholeWord]);
+
+  useEffect(() => {
+    onMatchCountChange(totalMatchCount);
+  }, [totalMatchCount, onMatchCountChange]);
+
   const maxLineNum = useMemo(() => {
     let max = 0;
     for (const hunk of hunks) {
@@ -131,7 +214,7 @@ export function DiffView({ filePath, version }: DiffViewProps) {
 
   return (
     <div className="diff-view">
-      {hunks.map((hunk, hi) => (
+      {annotatedHunks.map((hunk, hi) => (
         <div key={hi} className="diff-hunk">
           <div className="diff-hunk-header">{hunk.header}</div>
           {hunk.lines.map((line, li) => (
@@ -145,7 +228,9 @@ export function DiffView({ filePath, version }: DiffViewProps) {
               <span className="diff-sign">
                 {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
               </span>
-              <span className="diff-content">{line.content}</span>
+              <span className="diff-content">
+                {renderLineContent(line.content, line.matchRanges, line.lineMatchStart, activeMatchIndex)}
+              </span>
             </div>
           ))}
         </div>

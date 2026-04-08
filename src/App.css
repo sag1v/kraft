@@ -2369,6 +2369,79 @@ body {
   padding-right: 16px;
 }
 
+/* ── Viewer Search ── */
+
+.viewer-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.viewer-search-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  outline: none;
+  width: 200px;
+}
+
+.viewer-search-input:focus {
+  border-color: var(--accent);
+}
+
+.viewer-search-count {
+  font-size: 11px;
+  color: var(--fg-muted);
+  min-width: 70px;
+  padding: 0 4px;
+}
+
+.viewer-search-btn {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.viewer-search-btn:hover {
+  color: var(--fg);
+  background: var(--bg-tertiary);
+}
+
+.viewer-search-toggle.active {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.viewer-search-toggle.active:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.search-mark {
+  background: rgba(255, 213, 0, 0.28);
+  border-radius: 2px;
+  color: inherit;
+}
+
+.search-mark-active {
+  background: rgba(255, 160, 0, 0.55);
+  border-radius: 2px;
+  color: inherit;
+}
+
 /* ── Terminal Link Tooltip ── */
 
 .terminal-link-tooltip {

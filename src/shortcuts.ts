@@ -28,6 +28,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'zoom-reset', category: 'View', label: 'Reset Zoom', keys: mod('0') },
 
   // Editor / Viewer
+  { id: 'search-in-file', category: 'Editor', label: 'Search in File', keys: mod('F') },
   { id: 'close-tab', category: 'Editor', label: 'Close File Tab', keys: mod('W') },
   { id: 'prev-tab', category: 'Editor', label: 'Previous File Tab', keys: mod('Shift+[') },
   { id: 'next-tab', category: 'Editor', label: 'Next File Tab', keys: mod('Shift+]') },

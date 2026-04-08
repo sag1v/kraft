@@ -80,6 +80,86 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function findTextMatches(
+  text: string,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+): Array<{ start: number; end: number }> {
+  if (!query) return [];
+  try {
+    let pattern = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (wholeWord) pattern = `\\b${pattern}\\b`;
+    const flags = caseSensitive ? 'g' : 'gi';
+    const regex = new RegExp(pattern, flags);
+    const matches: Array<{ start: number; end: number }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+      matches.push({ start: m.index, end: m.index + m[0].length });
+      if (m[0].length === 0) regex.lastIndex++;
+    }
+    return matches;
+  } catch {
+    return [];
+  }
+}
+
+function injectMarksIntoHtml(
+  html: string,
+  matches: Array<{ start: number; end: number }>,
+  activeMatchIndex: number,
+): string {
+  if (matches.length === 0) return html;
+
+  // Map each text-content character index to its byte range in the HTML string.
+  const charMap: Array<{ htmlStart: number; htmlEnd: number }> = [];
+  let j = 0;
+  while (j < html.length) {
+    if (html[j] === '<') {
+      while (j < html.length && html[j] !== '>') j++;
+      j++;
+    } else if (html[j] === '&') {
+      const start = j;
+      while (j < html.length && html[j] !== ';') j++;
+      j++;
+      charMap.push({ htmlStart: start, htmlEnd: j });
+    } else {
+      charMap.push({ htmlStart: j, htmlEnd: j + 1 });
+      j++;
+    }
+  }
+
+  const insertions: Array<{ htmlOffset: number; text: string }> = [];
+  for (let mi = 0; mi < matches.length; mi++) {
+    const { start, end } = matches[mi];
+    const cls = mi === activeMatchIndex ? 'search-mark search-mark-active' : 'search-mark';
+    if (start < charMap.length) {
+      insertions.push({ htmlOffset: charMap[start].htmlStart, text: `<mark class="${cls}">` });
+    }
+    const last = end - 1;
+    if (last >= 0 && last < charMap.length) {
+      insertions.push({ htmlOffset: charMap[last].htmlEnd, text: '</mark>' });
+    }
+  }
+
+  // Opening tags before closing tags at the same offset to keep nesting valid.
+  insertions.sort((a, b) =>
+    a.htmlOffset !== b.htmlOffset ? a.htmlOffset - b.htmlOffset : (a.text.startsWith('</') ? 1 : -1),
+  );
+
+  let result = '';
+  let prev = 0;
+  for (const { htmlOffset, text } of insertions) {
+    if (htmlOffset >= prev) {
+      result += html.slice(prev, htmlOffset);
+      result += text;
+      prev = htmlOffset;
+    }
+  }
+  result += html.slice(prev);
+  return result;
+}
+
 export function Viewer() {
   const {
     openFilePath,
@@ -99,6 +179,13 @@ export function Viewer() {
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
   const fetchedVersionRef = useRef<Record<string, number>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const [diffMatchCount, setDiffMatchCount] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [tabContextMenu, setTabContextMenu] = useState<{
     x: number;
@@ -144,6 +231,27 @@ export function Viewer() {
       unsubscribe();
     };
   }, [openFilePath]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && openFilePath) {
+        e.preventDefault();
+        setSearchVisible(true);
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openFilePath]);
+
+  useEffect(() => {
+    setActiveMatchIndex(0);
+  }, [searchQuery, caseSensitive, wholeWord, openFilePath]);
+
+  useEffect(() => {
+    if (!searchVisible) return;
+    document.querySelector('.search-mark-active')?.scrollIntoView({ block: 'nearest' });
+  }, [activeMatchIndex, searchVisible]);
 
   useEffect(() => {
     if (!openFilePath) {
@@ -212,6 +320,41 @@ export function Viewer() {
   const lineCount = content ? content.split('\n').length : 0;
   const isDiffMode = !!(openFilePath && diffFilePath === openFilePath);
   const fileHasChanges = !!(openFilePath && (gitStatus[openFilePath] || gitStagedStatus[openFilePath]));
+
+  const contentMatches = useMemo(
+    () => findTextMatches(content ?? '', searchQuery, caseSensitive, wholeWord),
+    [content, searchQuery, caseSensitive, wholeWord],
+  );
+
+  const totalMatches = isDiffMode ? diffMatchCount : contentMatches.length;
+
+  const highlightedHtmlWithMarks = useMemo(() => {
+    if (isDiffMode || !searchQuery) return highlightedHtml;
+    return injectMarksIntoHtml(highlightedHtml, contentMatches, activeMatchIndex);
+  }, [isDiffMode, highlightedHtml, contentMatches, activeMatchIndex, searchQuery]);
+
+  const goNext = useCallback(() => {
+    setActiveMatchIndex(i => totalMatches > 0 ? (i + 1) % totalMatches : 0);
+  }, [totalMatches]);
+
+  const goPrev = useCallback(() => {
+    setActiveMatchIndex(i => totalMatches > 0 ? (i - 1 + totalMatches) % totalMatches : 0);
+  }, [totalMatches]);
+
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) goPrev(); else goNext();
+    } else if (e.key === 'Escape') {
+      setSearchVisible(false);
+      setSearchQuery('');
+    }
+  }, [goNext, goPrev]);
+
+  const handleDiffMatchCountChange = useCallback((count: number) => {
+    setDiffMatchCount(count);
+    setActiveMatchIndex(i => i >= count ? 0 : i);
+  }, []);
 
   const duplicateNames = useMemo(() => {
     const names = openFiles.map(f => f.split('/').pop() || f);
@@ -318,9 +461,48 @@ export function Viewer() {
           </button>
         </div>
       )}
+      {searchVisible && openFilePath && (
+        <div className="viewer-search-bar">
+          <input
+            ref={searchInputRef}
+            className="viewer-search-input"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Search..."
+            spellCheck={false}
+          />
+          <span className="viewer-search-count">
+            {searchQuery
+              ? totalMatches === 0 ? 'No results' : `${activeMatchIndex + 1} / ${totalMatches}`
+              : ''}
+          </span>
+          <button className="viewer-search-btn" onClick={goPrev} title="Previous (Shift+Enter)">↑</button>
+          <button className="viewer-search-btn" onClick={goNext} title="Next (Enter)">↓</button>
+          <button
+            className={`viewer-search-btn viewer-search-toggle${caseSensitive ? ' active' : ''}`}
+            onClick={() => setCaseSensitive(v => !v)}
+            title="Match Case"
+          >Aa</button>
+          <button
+            className={`viewer-search-btn viewer-search-toggle${wholeWord ? ' active' : ''}`}
+            onClick={() => setWholeWord(v => !v)}
+            title="Match Whole Word"
+          >W</button>
+          <button className="viewer-search-btn" onClick={() => { setSearchVisible(false); setSearchQuery(''); }} title="Close (Esc)">✕</button>
+        </div>
+      )}
       <div className="panel-body viewer-body">
         {isDiffMode && openFilePath ? (
-          <DiffView filePath={openFilePath} version={fileVersion} />
+          <DiffView
+            filePath={openFilePath}
+            version={fileVersion}
+            searchQuery={searchQuery}
+            caseSensitive={caseSensitive}
+            wholeWord={wholeWord}
+            activeMatchIndex={activeMatchIndex}
+            onMatchCountChange={handleDiffMatchCountChange}
+          />
         ) : loading ? (
           <div className="viewer-placeholder">Loading...</div>
         ) : error ? (
@@ -340,7 +522,7 @@ export function Viewer() {
               ))}
             </div>
             <pre className="viewer-code">
-              <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+              <code dangerouslySetInnerHTML={{ __html: highlightedHtmlWithMarks }} />
             </pre>
           </div>
         ) : null}
