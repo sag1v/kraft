@@ -4,8 +4,10 @@ import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
 import { shortenPath, normPath, isPathWithinRoot } from '../utils';
-import type { DirEntry, GitFileStatus, AgentContextDir } from '../types';
+import type { DirEntry, GitFileStatus, AgentContextDir, DirReadResult } from '../types';
 import { tooltipWithShortcut } from '../shortcuts';
+
+const MAX_DIR_ENTRIES = 500;
 
 type ExplorerView = 'files' | 'source-control';
 
@@ -78,8 +80,8 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
     let cancelled = false;
     setLoading(true);
     window.api.readDirectory(entry.path)
-      .then((list) => {
-        if (!cancelled) setChildren(list);
+      .then((res) => {
+        if (!cancelled) setChildren(res.entries);
       })
       .catch(() => {
         if (!cancelled) setChildren([]);
@@ -110,8 +112,8 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
     if (!isOpen && children === null) {
       setLoading(true);
       try {
-        const entries = await window.api.readDirectory(entry.path);
-        setChildren(entries);
+        const res = await window.api.readDirectory(entry.path);
+        setChildren(res.entries);
       } catch {
         setChildren([]);
       }
@@ -528,7 +530,7 @@ function ContextDirSection({ dir, onFileClick, onFileDoubleClick, collapseKey, g
     if (!isOpen || entries !== null) return;
     setLoading(true);
     window.api.readDirectory(dir.path)
-      .then(setEntries)
+      .then((res) => setEntries(res.entries))
       .catch(() => setEntries([]))
       .finally(() => setLoading(false));
   }, [isOpen, entries, dir.path]);
@@ -585,10 +587,12 @@ function ContextDirSection({ dir, onFileClick, onFileDoubleClick, collapseKey, g
 interface TreeCache {
   root: string;
   entries: DirEntry[];
+  truncated?: boolean;
+  totalCount?: number;
 }
 
 export function Explorer() {
-  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath } = useUIContext();
+  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath, settings } = useUIContext();
   const {
     cwd,
     explorerRoot,
@@ -606,6 +610,7 @@ export function Explorer() {
 
   const [activeView, setActiveView] = useState<ExplorerView>('files');
   const [entries, setEntries] = useState<DirEntry[]>([]);
+  const [truncatedInfo, setTruncatedInfo] = useState<{ truncated: boolean; totalCount: number }>({ truncated: false, totalCount: 0 });
   const [loading, setLoading] = useState(false);
   const [collapseKey, setCollapseKey] = useState(0);
   const loadedRootRef = useRef<string | null>(null);
@@ -613,6 +618,8 @@ export function Explorer() {
   const prevSessionIdRef = useRef<string | null>(null);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+  const truncatedInfoRef = useRef(truncatedInfo);
+  truncatedInfoRef.current = truncatedInfo;
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -622,6 +629,8 @@ export function Explorer() {
       treeCacheRef.current.set(prevSessionIdRef.current, {
         root: loadedRootRef.current,
         entries: entriesRef.current,
+        truncated: truncatedInfoRef.current.truncated,
+        totalCount: truncatedInfoRef.current.totalCount,
       });
     }
 
@@ -631,9 +640,11 @@ export function Explorer() {
     if (cached) {
       loadedRootRef.current = cached.root;
       setEntries(cached.entries);
+      setTruncatedInfo({ truncated: cached.truncated ?? false, totalCount: cached.totalCount ?? 0 });
     } else {
       loadedRootRef.current = null;
       setEntries([]);
+      setTruncatedInfo({ truncated: false, totalCount: 0 });
     }
   }, [activeSessionId]);
 
@@ -646,20 +657,41 @@ export function Explorer() {
       setLoading(true);
     }
     try {
-      const result = await window.api.readDirectory(dirPath, forceRefresh);
+      const result = await window.api.readDirectory(dirPath, forceRefresh, MAX_DIR_ENTRIES);
       if (loadedRootRef.current === dirPath) {
-        setEntries(result);
-        treeCacheRef.current.set(activeSessionId, { root: dirPath, entries: result });
+        setEntries(result.entries);
+        setTruncatedInfo({ truncated: result.truncated, totalCount: result.totalCount });
+        treeCacheRef.current.set(activeSessionId, {
+          root: dirPath,
+          entries: result.entries,
+          truncated: result.truncated,
+          totalCount: result.totalCount,
+        });
       }
     } catch {
       if (loadedRootRef.current === dirPath) {
         setEntries([]);
+        setTruncatedInfo({ truncated: false, totalCount: 0 });
       }
     }
     if (loadedRootRef.current === dirPath) {
       setLoading(false);
     }
   }, [setExplorerRoot, activeSessionId]);
+
+  useEffect(() => {
+    if (!explorerRoot || !activeSessionId) return;
+    if (loadedRootRef.current === explorerRoot) return;
+    loadFolder(explorerRoot);
+  }, [explorerRoot, activeSessionId, loadFolder]);
+
+  useEffect(() => {
+    if (!settings.autoLoadExplorer || !cwd || !activeSessionId) return;
+    const normalizedCwd = normPath(cwd);
+    const normalizedRoot = explorerRoot ? normPath(explorerRoot) : null;
+    if (normalizedRoot === normalizedCwd) return;
+    loadFolder(cwd);
+  }, [settings.autoLoadExplorer, cwd, activeSessionId, explorerRoot, loadFolder]);
 
   useEffect(() => {
     if (!explorerRoot || !window.api?.watchDirectory || !window.api?.onDirectoryChanged) return;
@@ -818,6 +850,19 @@ export function Explorer() {
   const changesCount = Object.keys(gitStatus).length + Object.keys(gitStagedStatus).length;
 
   if (!explorerRoot) {
+    if (settings.autoLoadExplorer && cwd) {
+      return (
+        <div className="panel explorer-panel">
+          <div className="panel-header">
+            <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
+            <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
+          </div>
+          <div className="panel-body explorer-tree">
+            <div className="explorer-loading">Loading...</div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="panel explorer-panel">
         <div className="panel-header">
@@ -851,7 +896,7 @@ export function Explorer() {
       <div className="panel-header">
         <span className="panel-title panel-icon explorer-icon" data-tooltip={`${displayRoot} - drag to reorder`} data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
         <div className="explorer-actions">
-          {activeView === 'files' && explorerOutOfSync && (
+          {activeView === 'files' && explorerOutOfSync && !settings.autoLoadExplorer && (
             <IconButton
               className="explorer-action-btn explorer-sync-btn"
               tooltip="Sync to terminal directory"
@@ -913,7 +958,7 @@ export function Explorer() {
           {changesCount > 0 && <span className="explorer-view-tab-badge">{changesCount}</span>}
         </button>
       </div>
-      {activeView === 'files' && explorerOutOfSync && (
+      {activeView === 'files' && explorerOutOfSync && !settings.autoLoadExplorer && (
         <div className="explorer-sync-bar" onClick={handleLoadCwd}>
           <span>Terminal moved to </span>
           <span className="explorer-sync-path">
@@ -942,19 +987,26 @@ export function Explorer() {
               ) : entries.length === 0 ? (
                 <div className="explorer-empty">Empty directory</div>
               ) : (
-                entries.map((entry) => (
-                  <TreeNode
-                    key={entry.path}
-                    entry={entry}
-                    depth={1}
-                    onFileClick={handleFileClick}
-                    onFileDoubleClick={showViewerPanel}
-                    collapseKey={collapseKey}
-                    gitStatus={combinedGitStatus}
-                    syncedRevealFile={syncedRevealFile}
-                    revealGeneration={revealGeneration}
-                  />
-                ))
+                <>
+                  {entries.map((entry) => (
+                    <TreeNode
+                      key={entry.path}
+                      entry={entry}
+                      depth={1}
+                      onFileClick={handleFileClick}
+                      onFileDoubleClick={showViewerPanel}
+                      collapseKey={collapseKey}
+                      gitStatus={combinedGitStatus}
+                      syncedRevealFile={syncedRevealFile}
+                      revealGeneration={revealGeneration}
+                    />
+                  ))}
+                  {truncatedInfo.truncated && (
+                    <div className="explorer-truncated-row" style={{ paddingLeft: 16 }}>
+                      {truncatedInfo.totalCount - entries.length} more items not shown
+                    </div>
+                  )}
+                </>
               )
             )}
             {visibleContextDirs.map((dir) => (

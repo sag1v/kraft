@@ -23,6 +23,7 @@ let terminalIdCounter = 0;
 
 interface DirCacheEntry {
   entries: any[];
+  totalCount: number;
   timestamp: number;
 }
 const dirCache = new Map<string, DirCacheEntry>();
@@ -329,11 +330,14 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('read-directory', async (_event, dirPath: string, skipCache?: boolean) => {
+  ipcMain.handle('read-directory', async (_event, dirPath: string, skipCache?: boolean, maxEntries?: number) => {
+    const limit = maxEntries ?? 0;
+
     if (!skipCache) {
       const cached = dirCache.get(dirPath);
       if (cached && Date.now() - cached.timestamp < DIR_CACHE_TTL) {
-        return cached.entries;
+        const sliced = limit > 0 ? cached.entries.slice(0, limit) : cached.entries;
+        return { entries: sliced, truncated: limit > 0 && cached.totalCount > limit, totalCount: cached.totalCount };
       }
     }
 
@@ -354,7 +358,8 @@ function setupIPC() {
           return a.name.localeCompare(b.name);
         });
 
-      dirCache.set(dirPath, { entries: result, timestamp: Date.now() });
+      const totalCount = result.length;
+      dirCache.set(dirPath, { entries: result, totalCount, timestamp: Date.now() });
 
       if (dirCache.size > 200) {
         const oldest = [...dirCache.entries()]
@@ -363,9 +368,10 @@ function setupIPC() {
         for (const [key] of oldest) dirCache.delete(key);
       }
 
-      return result;
+      const sliced = limit > 0 ? result.slice(0, limit) : result;
+      return { entries: sliced, truncated: limit > 0 && totalCount > limit, totalCount };
     } catch {
-      return [];
+      return { entries: [], truncated: false, totalCount: 0 };
     }
   });
 

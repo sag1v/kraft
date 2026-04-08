@@ -8,6 +8,12 @@ export interface DirEntry {
   isSymlink: boolean;
 }
 
+export interface DirReadResult {
+  entries: DirEntry[];
+  truncated: boolean;
+  totalCount: number;
+}
+
 export interface FileResult {
   error: string | null;
   content: string | null;
@@ -28,7 +34,7 @@ const api = {
   getDefaultShell: (): Promise<string> => ipcRenderer.invoke('get-default-shell'),
   getHomeDir: (): Promise<string> => ipcRenderer.invoke('get-home-dir'),
 
-  readDirectory: (dirPath: string, skipCache?: boolean): Promise<DirEntry[]> => ipcRenderer.invoke('read-directory', dirPath, skipCache),
+  readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number): Promise<DirReadResult> => ipcRenderer.invoke('read-directory', dirPath, skipCache, maxEntries),
   readFile: (filePath: string): Promise<FileResult> => ipcRenderer.invoke('read-file', filePath),
   searchFiles: (rootDir: string, query: string): Promise<Array<{ path: string; isDirectory: boolean }>> => ipcRenderer.invoke('search-files', rootDir, query),
   getGitInfo: (dirPath: string): Promise<GitInfo> => ipcRenderer.invoke('get-git-info', dirPath),

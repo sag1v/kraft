@@ -451,10 +451,40 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       try { xterm.focus(); } catch { /* ignore */ }
     });
 
+    let lastReportedCwd: string | null = null;
+
+    const reportCwd = (newCwd: string) => {
+      if (newCwd && newCwd !== lastReportedCwd) {
+        lastReportedCwd = newCwd;
+        onCwdChangeRef.current(sessionIdRef.current, newCwd);
+      }
+    };
+
+    // After the user runs a command (Enter), check cwd once output settles
+    // so the explorer sync bar reacts quickly to `cd`.
+    // Only armed by user Enter keystrokes - not by arbitrary terminal output
+    // (avoids unnecessary lsof calls during AI agent chat, builds, etc.).
+    let cwdCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let cwdCheckArmed = false;
+
+    const checkCwdSoon = () => {
+      if (cwdCheckTimer !== null) clearTimeout(cwdCheckTimer);
+      cwdCheckTimer = setTimeout(async () => {
+        cwdCheckTimer = null;
+        cwdCheckArmed = false;
+        if (!sessionIdRef.current) return;
+        try {
+          const newCwd = await window.api.getTerminalCwd(sessionIdRef.current);
+          if (newCwd) reportCwd(newCwd);
+        } catch { /* ignore */ }
+      }, 500);
+    };
+
     const removeDataListener = window.api.onTerminalData((termId, data) => {
       if (termId === sessionIdRef.current) {
         if (!receivedFirstOutput) receivedFirstOutput = true;
         xterm.write(data);
+        if (cwdCheckArmed) checkCwdSoon();
       }
     });
 
@@ -466,16 +496,10 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
     xterm.onData((data) => {
       window.api.writeTerminal(sessionIdRef.current, data);
-    });
-
-    let lastReportedCwd: string | null = null;
-
-    const reportCwd = (newCwd: string) => {
-      if (newCwd && newCwd !== lastReportedCwd) {
-        lastReportedCwd = newCwd;
-        onCwdChangeRef.current(sessionIdRef.current, newCwd);
+      if (data.includes('\r') || data.includes('\n')) {
+        cwdCheckArmed = true;
       }
-    };
+    });
 
     // OSC 7 — instant cwd updates for shells that support it (zsh with oh-my-zsh/prezto,
     // fish, modern bash configs). Format: \e]7;file://hostname/path\a
@@ -509,6 +533,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       removeDataListener();
       removeExitListener();
       clearInterval(cwdPoll);
+      if (cwdCheckTimer !== null) clearTimeout(cwdCheckTimer);
       linkTooltip.remove();
       xtermRef.current = null;
       fitAddonRef.current = null;

@@ -298,7 +298,7 @@ export function Settings() {
   const showCustomLayout = !isSearching || matches('custom layout my');
   const showLayoutSection = !isSearching || filteredLayouts.length > 0 || showCustomLayout;
 
-  const showShell = !isSearching || matches('shell terminal bash zsh fish default');
+  const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder');
 
   const filteredShortcuts = SHORTCUT_CATEGORIES.map(category => {
     const items = SHORTCUTS.filter(s => s.category === category);
@@ -497,6 +497,18 @@ export function Settings() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="settings-row">
+                  <div className="settings-row-info">
+                    <span className="settings-row-title">Auto-load Explorer</span>
+                    <span className="settings-row-desc">Automatically load and follow the terminal's working directory in the explorer. When off, you can load folders on demand.</span>
+                  </div>
+                  <button
+                    className="settings-toggle"
+                    data-checked={settings.autoLoadExplorer}
+                    onClick={() => updateSettings({ autoLoadExplorer: !settings.autoLoadExplorer })}
+                  />
                 </div>
               </div>
             )}

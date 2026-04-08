@@ -555,6 +555,13 @@ body {
   text-align: center;
 }
 
+.explorer-truncated-row {
+  padding: 4px 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
 .explorer-actions {
   display: flex;
   align-items: center;
@@ -1750,6 +1757,39 @@ body {
 
 .settings-select:focus {
   border-color: var(--accent);
+}
+
+.settings-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  background: var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+  padding: 0;
+}
+
+.settings-toggle[data-checked="true"] {
+  background: var(--accent);
+}
+
+.settings-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--fg);
+  transition: transform 0.2s;
+}
+
+.settings-toggle[data-checked="true"]::after {
+  transform: translateX(16px);
 }
 
 .settings-font-size {

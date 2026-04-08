@@ -6,6 +6,12 @@ export interface DirEntry {
   isSymlink: boolean;
 }
 
+export interface DirReadResult {
+  entries: DirEntry[];
+  truncated: boolean;
+  totalCount: number;
+}
+
 export interface FileResult {
   error: string | null;
   content: string | null;
@@ -124,12 +130,13 @@ export interface AppSettings {
   savedCustomLayout: PanelId[][] | null;
   customPanelVisibility: PanelVisibility | null;
   theme: string;
+  autoLoadExplorer: boolean;
 }
 
 export interface ElectronAPI {
   getDefaultShell: () => Promise<string>;
   getHomeDir: () => Promise<string>;
-  readDirectory: (dirPath: string, skipCache?: boolean) => Promise<DirEntry[]>;
+  readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number) => Promise<DirReadResult>;
   readFile: (filePath: string) => Promise<FileResult>;
   searchFiles: (rootDir: string, query: string) => Promise<SearchFileResult[]>;
   getGitInfo: (dirPath: string) => Promise<GitInfo>;

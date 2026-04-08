@@ -124,6 +124,7 @@ const defaultSettings: AppSettings = {
   savedCustomLayout: null,
   customPanelVisibility: null,
   theme: 'kraft-dark',
+  autoLoadExplorer: true,
 };
 
 const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false };
@@ -162,6 +163,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
+
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
 
   const themeRef = useRef(theme);
   themeRef.current = theme;
@@ -306,12 +310,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   const addSession = useCallback((session: TerminalSession) => {
+    const prevId = activeSessionIdRef.current;
+
     setSessions(prev => {
       if (prev.length === 0) return [...prev, session];
       const usedColors = prev.map(s => s.iconColor).filter(Boolean) as string[];
       const color = session.iconColor || pickRandomColor(usedColors);
       return [...prev, { ...session, iconColor: color }];
     });
+
+    // If the previous session's explorer was synced with its cwd, auto-load
+    // the new session's explorer with its cwd so the user doesn't have to.
+    if (prevId && session.cwd) {
+      setExplorerRoots(prev => {
+        const prevRoot = prev[prevId];
+        if (!prevRoot) return prev;
+        const prevSession = sessionsRef.current.find(s => s.id === prevId);
+        if (!prevSession?.cwd) return prev;
+        if (normPath(prevRoot) !== normPath(prevSession.cwd)) return prev;
+        return { ...prev, [session.id]: normPath(session.cwd) };
+      });
+    }
+
     setActiveSessionId(session.id);
   }, []);
 
