@@ -94,7 +94,7 @@ export function Viewer() {
     diffFilePath,
     setDiffFilePath,
   } = useUIContext();
-  const { gitStatus, explorerRoot } = useSessionContext();
+  const { gitStatus, gitStagedStatus, explorerRoot } = useSessionContext();
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
@@ -208,7 +208,7 @@ export function Viewer() {
 
   const lineCount = content ? content.split('\n').length : 0;
   const isDiffMode = !!(openFilePath && diffFilePath === openFilePath);
-  const fileHasChanges = !!(openFilePath && gitStatus[openFilePath]);
+  const fileHasChanges = !!(openFilePath && (gitStatus[openFilePath] || gitStagedStatus[openFilePath]));
 
   const duplicateNames = useMemo(() => {
     const names = openFiles.map(f => f.split('/').pop() || f);

@@ -32,10 +32,14 @@ const api = {
   readFile: (filePath: string): Promise<FileResult> => ipcRenderer.invoke('read-file', filePath),
   searchFiles: (rootDir: string, query: string): Promise<Array<{ path: string; isDirectory: boolean }>> => ipcRenderer.invoke('search-files', rootDir, query),
   getGitInfo: (dirPath: string): Promise<GitInfo> => ipcRenderer.invoke('get-git-info', dirPath),
-  getGitStatus: (dirPath: string): Promise<{ files: Record<string, string>; repoRoot: string | null }> =>
+  getGitStatus: (dirPath: string): Promise<{ files: Record<string, string>; staged: Record<string, string>; repoRoot: string | null }> =>
     ipcRenderer.invoke('get-git-status', dirPath),
   getGitDiff: (filePath: string, repoRoot: string): Promise<{ diff: string | null; isNew: boolean; content: string | null }> =>
     ipcRenderer.invoke('get-git-diff', filePath, repoRoot),
+  gitStage: (filePaths: string[], repoRoot: string): Promise<boolean> =>
+    ipcRenderer.invoke('git-stage', filePaths, repoRoot),
+  gitUnstage: (filePaths: string[], repoRoot: string): Promise<boolean> =>
+    ipcRenderer.invoke('git-unstage', filePaths, repoRoot),
 
   createTerminal: (options: {
     cwd?: string;

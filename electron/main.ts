@@ -454,27 +454,76 @@ function setupIPC() {
       });
 
       const files: Record<string, string> = {};
+      const staged: Record<string, string> = {};
+
+      const simplifyStatus = (code: string): string => {
+        if (code === 'M') return 'modified';
+        if (code === 'A') return 'added';
+        if (code === 'D') return 'deleted';
+        if (code === 'R') return 'renamed';
+        if (code === 'U') return 'conflict';
+        return 'modified';
+      };
+
       for (const line of stdout.split('\n').filter(Boolean)) {
-        const status = line.substring(0, 2);
+        const indexStatus = line[0];
+        const workTreeStatus = line[1];
         let filePath = line.substring(3);
         if (filePath.includes(' -> ')) {
           filePath = filePath.split(' -> ')[1];
         }
         const fullPath = path.join(repoRoot, filePath);
 
-        let simplified = 'modified';
-        if (status.trim() === '??') simplified = 'untracked';
-        else if (status.includes('A')) simplified = 'added';
-        else if (status.includes('D')) simplified = 'deleted';
-        else if (status.includes('R')) simplified = 'renamed';
-        else if (status.includes('U')) simplified = 'conflict';
+        if (indexStatus === '?' && workTreeStatus === '?') {
+          files[fullPath] = 'untracked';
+          continue;
+        }
 
-        files[fullPath] = simplified;
+        if (indexStatus === 'U' || workTreeStatus === 'U' ||
+            (indexStatus === 'A' && workTreeStatus === 'A') ||
+            (indexStatus === 'D' && workTreeStatus === 'D')) {
+          files[fullPath] = 'conflict';
+          continue;
+        }
+
+        if (indexStatus !== ' ' && indexStatus !== '?') {
+          staged[fullPath] = simplifyStatus(indexStatus);
+        }
+
+        if (workTreeStatus !== ' ' && workTreeStatus !== '?') {
+          files[fullPath] = simplifyStatus(workTreeStatus);
+        }
       }
 
-      return { files, repoRoot };
+      return { files, staged, repoRoot };
     } catch {
-      return { files: {}, repoRoot: null };
+      return { files: {}, staged: {}, repoRoot: null };
+    }
+  });
+
+  ipcMain.handle('git-stage', async (_event, filePaths: string[], repoRoot: string) => {
+    try {
+      await execFileAsync('git', ['add', '--', ...filePaths], {
+        cwd: repoRoot,
+        encoding: 'utf-8',
+        timeout: 5000,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle('git-unstage', async (_event, filePaths: string[], repoRoot: string) => {
+    try {
+      await execFileAsync('git', ['reset', 'HEAD', '--', ...filePaths], {
+        cwd: repoRoot,
+        encoding: 'utf-8',
+        timeout: 5000,
+      });
+      return true;
+    } catch {
+      return false;
     }
   });
 

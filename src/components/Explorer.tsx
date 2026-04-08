@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { VscFolderOpened } from 'react-icons/vsc';
+import { VscFolderOpened, VscFiles, VscSourceControl } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
 import { shortenPath, normPath, isPathWithinRoot } from '../utils';
 import type { DirEntry, GitFileStatus, AgentContextDir } from '../types';
 import { tooltipWithShortcut } from '../shortcuts';
+
+type ExplorerView = 'files' | 'source-control';
 
 const STATUS_COLOR_VAR: Record<string, string> = {
   modified: 'var(--git-modified)',
@@ -172,199 +174,337 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
   );
 }
 
-const CHANGES_HEADER_HEIGHT = 28;
-const CHANGES_MIN_HEIGHT = CHANGES_HEADER_HEIGHT;
-const CHANGES_DEFAULT_HEIGHT = 180;
+/* ── Source Control View: repo-first grouping ── */
 
-interface ChangesListProps {
+interface SourceControlViewProps {
   gitStatus: Record<string, GitFileStatus>;
+  gitStagedStatus: Record<string, GitFileStatus>;
   allRoots: string[];
   onFileClick: (path: string) => void;
   onFileDoubleClick: () => void;
+  onStageFile: (path: string) => void;
+  onUnstageFile: (path: string) => void;
+  onStageAll: (repoRoot?: string) => void;
+  onUnstageAll: (repoRoot?: string) => void;
 }
 
-interface ChangesGroupProps {
+interface RepoChanges {
   rootPath: string;
   rootName: string;
-  files: [string, GitFileStatus][];
-  onFileClick: (path: string) => void;
-  onFileDoubleClick: () => void;
-  showRootHeader: boolean;
+  staged: [string, GitFileStatus][];
+  unstaged: [string, GitFileStatus][];
 }
 
-function ChangesGroup({ rootPath, rootName, files, onFileClick, onFileDoubleClick, showRootHeader }: ChangesGroupProps) {
-  const [groupOpen, setGroupOpen] = useState(true);
+function buildRepoGroups(
+  gitStatus: Record<string, GitFileStatus>,
+  gitStagedStatus: Record<string, GitFileStatus>,
+  allRoots: string[],
+): RepoChanges[] {
+  const statusOrder: Record<string, number> = { conflict: 0, modified: 1, added: 2, renamed: 3, untracked: 4, deleted: 5 };
+  const sortFiles = (entries: [string, GitFileStatus][]) =>
+    entries.sort(([, a], [, b]) => (statusOrder[a] ?? 99) - (statusOrder[b] ?? 99));
 
-  if (files.length === 0) return null;
+  const repoMap = new Map<string, RepoChanges>();
+  const assignedUnstaged = new Set<string>();
+  const assignedStaged = new Set<string>();
 
-  const prefix = rootPath.endsWith('/') ? rootPath : rootPath + '/';
+  for (const root of allRoots) {
+    const prefix = root.endsWith('/') ? root : root + '/';
+    const rootName = root.split('/').pop() || root;
+    const staged: [string, GitFileStatus][] = [];
+    const unstaged: [string, GitFileStatus][] = [];
+
+    for (const [fp, st] of Object.entries(gitStagedStatus)) {
+      if (fp.startsWith(prefix)) { staged.push([fp, st]); assignedStaged.add(fp); }
+    }
+    for (const [fp, st] of Object.entries(gitStatus)) {
+      if (fp.startsWith(prefix)) { unstaged.push([fp, st]); assignedUnstaged.add(fp); }
+    }
+
+    if (staged.length > 0 || unstaged.length > 0) {
+      repoMap.set(root, { rootPath: root, rootName, staged: sortFiles(staged), unstaged: sortFiles(unstaged) });
+    }
+  }
+
+  const otherStaged: [string, GitFileStatus][] = [];
+  const otherUnstaged: [string, GitFileStatus][] = [];
+  for (const [fp, st] of Object.entries(gitStagedStatus)) {
+    if (!assignedStaged.has(fp)) otherStaged.push([fp, st]);
+  }
+  for (const [fp, st] of Object.entries(gitStatus)) {
+    if (!assignedUnstaged.has(fp)) otherUnstaged.push([fp, st]);
+  }
+  if (otherStaged.length > 0 || otherUnstaged.length > 0) {
+    repoMap.set('__other', { rootPath: '', rootName: 'Other', staged: sortFiles(otherStaged), unstaged: sortFiles(otherUnstaged) });
+  }
+
+  return Array.from(repoMap.values());
+}
+
+function ChangeFileRow({ filePath, status, rootPrefix, onFileClick, onFileDoubleClick, onAction, actionIcon, actionTooltip }: {
+  filePath: string;
+  status: GitFileStatus;
+  rootPrefix: string;
+  onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
+  onAction?: (path: string) => void;
+  actionIcon?: string;
+  actionTooltip?: string;
+}) {
+  const name = filePath.split('/').pop() || filePath;
+  const relativePath = filePath.startsWith(rootPrefix) ? filePath.slice(rootPrefix.length) : filePath;
+  const dir = relativePath.includes('/') ? relativePath.slice(0, relativePath.lastIndexOf('/')) : '';
+  const color = STATUS_COLOR_VAR[status];
 
   return (
-    <div className="explorer-changes-group">
-      {showRootHeader && (
-        <div className="explorer-changes-group-header" onClick={() => setGroupOpen(prev => !prev)}>
-          <span className="explorer-changes-chevron">{groupOpen ? '▾' : '▸'}</span>
-          <span className="explorer-changes-group-name">{rootName}</span>
-          <span className="explorer-changes-count">{files.length}</span>
-        </div>
+    <div
+      className="explorer-change-item"
+      onClick={() => onFileClick(filePath)}
+      onDoubleClick={(e) => { e.stopPropagation(); onFileDoubleClick(); }}
+      data-tooltip={relativePath}
+      data-tooltip-pos="bottom"
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.setData('application/x-kraft-file-path', filePath);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+    >
+      <FileIcon name={name} isDirectory={false} />
+      <span className="explorer-change-name" style={{ color }}>{name}</span>
+      {dir && <span className="explorer-change-dir">{dir}</span>}
+      <span className="explorer-change-badge" style={{ color }}>{STATUS_LABEL[status]}</span>
+      {onAction && (
+        <button
+          className="explorer-change-action"
+          data-tooltip={actionTooltip}
+          data-tooltip-pos="left"
+          onClick={(e) => { e.stopPropagation(); onAction(filePath); }}
+        >
+          {actionIcon}
+        </button>
       )}
-      {groupOpen && files.map(([filePath, status]) => {
-        const name = filePath.split('/').pop() || filePath;
-        const relativePath = filePath.startsWith(prefix) ? filePath.slice(prefix.length) : filePath;
-        const dir = relativePath.includes('/')
-          ? relativePath.slice(0, relativePath.lastIndexOf('/'))
-          : '';
-        const color = STATUS_COLOR_VAR[status];
-        return (
-          <div
-            key={filePath}
-            className="explorer-change-item"
-            onClick={() => onFileClick(filePath)}
-            onDoubleClick={(e) => { e.stopPropagation(); onFileDoubleClick(); }}
-            data-tooltip={relativePath}
-            data-tooltip-pos="bottom"
-            draggable
-            onDragStart={(e) => {
-              e.stopPropagation();
-              e.dataTransfer.setData('application/x-kraft-file-path', filePath);
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
-          >
-            <FileIcon name={name} isDirectory={false} />
-            <span className="explorer-change-name" style={{ color }}>{name}</span>
-            {dir && <span className="explorer-change-dir">{dir}</span>}
-            <span className="explorer-change-badge" style={{ color }}>
-              {STATUS_LABEL[status]}
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }
 
-function ChangesList({ gitStatus, allRoots, onFileClick, onFileDoubleClick }: ChangesListProps) {
-  const [isOpen, setIsOpen] = useState(true);
-  const [height, setHeight] = useState(CHANGES_DEFAULT_HEIGHT);
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const heightBeforeCollapseRef = useRef(CHANGES_DEFAULT_HEIGHT);
-
-  const groupedChanges = useMemo(() => {
-    const statusOrder: Record<string, number> = { conflict: 0, modified: 1, added: 2, renamed: 3, untracked: 4, deleted: 5 };
-    const sortFiles = (entries: [string, GitFileStatus][]) =>
-      entries.sort(([, a], [, b]) => (statusOrder[a] ?? 99) - (statusOrder[b] ?? 99));
-
-    const groups: { rootPath: string; rootName: string; files: [string, GitFileStatus][] }[] = [];
-    const assigned = new Set<string>();
-
-    for (const root of allRoots) {
-      const prefix = root.endsWith('/') ? root : root + '/';
-      const rootName = root.split('/').pop() || root;
-      const files: [string, GitFileStatus][] = [];
-      for (const [filePath, status] of Object.entries(gitStatus)) {
-        if (filePath.startsWith(prefix)) {
-          files.push([filePath, status]);
-          assigned.add(filePath);
-        }
-      }
-      if (files.length > 0) {
-        groups.push({ rootPath: root, rootName, files: sortFiles(files) });
-      }
-    }
-
-    const unmatched: [string, GitFileStatus][] = [];
-    for (const [filePath, status] of Object.entries(gitStatus)) {
-      if (!assigned.has(filePath)) {
-        unmatched.push([filePath, status]);
-      }
-    }
-    if (unmatched.length > 0) {
-      groups.push({ rootPath: '', rootName: 'Other', files: sortFiles(unmatched) });
-    }
-
-    return groups;
-  }, [gitStatus, allRoots]);
-
-  const totalCount = useMemo(
-    () => groupedChanges.reduce((sum, g) => sum + g.files.length, 0),
-    [groupedChanges],
-  );
-
-  const onResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragRef.current = { startY: e.clientY, startHeight: height };
-    let lastHeight = height;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const delta = dragRef.current.startY - ev.clientY;
-      const newHeight = Math.max(CHANGES_MIN_HEIGHT, dragRef.current.startHeight + delta);
-      lastHeight = newHeight;
-      setHeight(newHeight);
-      setIsOpen(newHeight > CHANGES_MIN_HEIGHT + 4);
-    };
-
-    const onMouseUp = () => {
-      if (lastHeight > CHANGES_MIN_HEIGHT + 4) {
-        heightBeforeCollapseRef.current = lastHeight;
-      }
-      dragRef.current = null;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = 'ns-resize';
-    document.body.style.userSelect = 'none';
-  }, [height]);
-
-  const toggleOpen = useCallback(() => {
-    if (isOpen) {
-      heightBeforeCollapseRef.current = height;
-      setHeight(CHANGES_MIN_HEIGHT);
-      setIsOpen(false);
-    } else {
-      setHeight(heightBeforeCollapseRef.current);
-      setIsOpen(true);
-    }
-  }, [isOpen, height]);
-
-  if (totalCount === 0) return null;
-
-  const showRootHeaders = groupedChanges.length > 1;
+function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll, defaultOpen }: {
+  repo: RepoChanges;
+  onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
+  onStageFile: (path: string) => void;
+  onUnstageFile: (path: string) => void;
+  onStageAll: (repoRoot?: string) => void;
+  onUnstageAll: (repoRoot?: string) => void;
+  defaultOpen?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen ?? true);
+  const [stagedOpen, setStagedOpen] = useState(true);
+  const [unstagedOpen, setUnstagedOpen] = useState(true);
+  const totalCount = repo.staged.length + repo.unstaged.length;
+  const prefix = repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : '';
 
   return (
-    <div
-      ref={containerRef}
-      className="explorer-changes"
-      style={{ height: isOpen ? height : CHANGES_MIN_HEIGHT, minHeight: CHANGES_MIN_HEIGHT }}
-    >
-      <div className="explorer-changes-resize-handle" onMouseDown={onResizeStart} />
-      <div className="explorer-changes-header" onClick={toggleOpen}>
+    <div className="sc-repo">
+      <div className="sc-repo-header" onClick={() => setIsOpen(prev => !prev)}>
         <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
-        <span className="explorer-changes-title">Changes</span>
+        <span className="sc-repo-name">{repo.rootName}</span>
         <span className="explorer-changes-count">{totalCount}</span>
       </div>
       {isOpen && (
-        <div className="explorer-changes-list">
-          {groupedChanges.map((group) => (
-            <ChangesGroup
-              key={group.rootPath || '__other'}
-              rootPath={group.rootPath}
-              rootName={group.rootName}
-              files={group.files}
-              onFileClick={onFileClick}
-              onFileDoubleClick={onFileDoubleClick}
-              showRootHeader={showRootHeaders}
-            />
-          ))}
+        <div className="sc-repo-body">
+          {repo.staged.length > 0 && (
+            <div className="sc-category">
+              <div className="sc-category-header" onClick={() => setStagedOpen(prev => !prev)}>
+                <span className="explorer-changes-chevron">{stagedOpen ? '▾' : '▸'}</span>
+                <span className="sc-category-title">Staged Changes</span>
+                <span className="explorer-changes-count">{repo.staged.length}</span>
+                <button
+                  className="explorer-changes-section-action"
+                  data-tooltip="Unstage All"
+                  data-tooltip-pos="left"
+                  onClick={(e) => { e.stopPropagation(); onUnstageAll(repo.rootPath || undefined); }}
+                >
+                  −
+                </button>
+              </div>
+              {stagedOpen && repo.staged.map(([fp, st]) => (
+                <ChangeFileRow
+                  key={fp}
+                  filePath={fp}
+                  status={st}
+                  rootPrefix={prefix}
+                  onFileClick={onFileClick}
+                  onFileDoubleClick={onFileDoubleClick}
+                  onAction={onUnstageFile}
+                  actionIcon="−"
+                  actionTooltip="Unstage"
+                />
+              ))}
+            </div>
+          )}
+          {repo.unstaged.length > 0 && (
+            <div className="sc-category">
+              <div className="sc-category-header" onClick={() => setUnstagedOpen(prev => !prev)}>
+                <span className="explorer-changes-chevron">{unstagedOpen ? '▾' : '▸'}</span>
+                <span className="sc-category-title">Changes</span>
+                <span className="explorer-changes-count">{repo.unstaged.length}</span>
+                <button
+                  className="explorer-changes-section-action"
+                  data-tooltip="Stage All"
+                  data-tooltip-pos="left"
+                  onClick={(e) => { e.stopPropagation(); onStageAll(repo.rootPath || undefined); }}
+                >
+                  +
+                </button>
+              </div>
+              {unstagedOpen && repo.unstaged.map(([fp, st]) => (
+                <ChangeFileRow
+                  key={fp}
+                  filePath={fp}
+                  status={st}
+                  rootPrefix={prefix}
+                  onFileClick={onFileClick}
+                  onFileDoubleClick={onFileDoubleClick}
+                  onAction={onStageFile}
+                  actionIcon="+"
+                  actionTooltip="Stage"
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll }: SourceControlViewProps) {
+  const repos = useMemo(
+    () => buildRepoGroups(gitStatus, gitStagedStatus, allRoots),
+    [gitStatus, gitStagedStatus, allRoots],
+  );
+
+  const totalCount = useMemo(
+    () => Object.keys(gitStatus).length + Object.keys(gitStagedStatus).length,
+    [gitStatus, gitStagedStatus],
+  );
+
+  if (totalCount === 0) {
+    return (
+      <div className="sc-empty">
+        <span className="sc-empty-text">No changes detected</span>
+      </div>
+    );
+  }
+
+  const singleRepo = repos.length === 1;
+
+  return (
+    <div className="sc-view">
+      {repos.map((repo) => (
+        singleRepo ? (
+          <div key={repo.rootPath || '__other'} className="sc-single-repo">
+            {repo.staged.length > 0 && (
+              <StagedSection
+                files={repo.staged}
+                rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
+                onFileClick={onFileClick}
+                onFileDoubleClick={onFileDoubleClick}
+                onUnstageFile={onUnstageFile}
+                onUnstageAll={() => onUnstageAll(repo.rootPath || undefined)}
+              />
+            )}
+            {repo.unstaged.length > 0 && (
+              <UnstagedSection
+                files={repo.unstaged}
+                rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
+                onFileClick={onFileClick}
+                onFileDoubleClick={onFileDoubleClick}
+                onStageFile={onStageFile}
+                onStageAll={() => onStageAll(repo.rootPath || undefined)}
+              />
+            )}
+          </div>
+        ) : (
+          <RepoSection
+            key={repo.rootPath || '__other'}
+            repo={repo}
+            onFileClick={onFileClick}
+            onFileDoubleClick={onFileDoubleClick}
+            onStageFile={onStageFile}
+            onUnstageFile={onUnstageFile}
+            onStageAll={onStageAll}
+            onUnstageAll={onUnstageAll}
+          />
+        )
+      ))}
+    </div>
+  );
+}
+
+function StagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, onUnstageFile, onUnstageAll }: {
+  files: [string, GitFileStatus][];
+  rootPrefix: string;
+  onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
+  onUnstageFile: (path: string) => void;
+  onUnstageAll: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <div className="sc-category">
+      <div className="sc-category-header" onClick={() => setIsOpen(prev => !prev)}>
+        <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
+        <span className="sc-category-title">Staged Changes</span>
+        <span className="explorer-changes-count">{files.length}</span>
+        <button
+          className="explorer-changes-section-action"
+          data-tooltip="Unstage All"
+          data-tooltip-pos="left"
+          onClick={(e) => { e.stopPropagation(); onUnstageAll(); }}
+        >
+          −
+        </button>
+      </div>
+      {isOpen && files.map(([fp, st]) => (
+        <ChangeFileRow key={fp} filePath={fp} status={st} rootPrefix={rootPrefix}
+          onFileClick={onFileClick} onFileDoubleClick={onFileDoubleClick}
+          onAction={onUnstageFile} actionIcon="−" actionTooltip="Unstage" />
+      ))}
+    </div>
+  );
+}
+
+function UnstagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, onStageFile, onStageAll }: {
+  files: [string, GitFileStatus][];
+  rootPrefix: string;
+  onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
+  onStageFile: (path: string) => void;
+  onStageAll: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <div className="sc-category">
+      <div className="sc-category-header" onClick={() => setIsOpen(prev => !prev)}>
+        <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
+        <span className="sc-category-title">Changes</span>
+        <span className="explorer-changes-count">{files.length}</span>
+        <button
+          className="explorer-changes-section-action"
+          data-tooltip="Stage All"
+          data-tooltip-pos="left"
+          onClick={(e) => { e.stopPropagation(); onStageAll(); }}
+        >
+          +
+        </button>
+      </div>
+      {isOpen && files.map(([fp, st]) => (
+        <ChangeFileRow key={fp} filePath={fp} status={st} rootPrefix={rootPrefix}
+          onFileClick={onFileClick} onFileDoubleClick={onFileDoubleClick}
+          onAction={onStageFile} actionIcon="+" actionTooltip="Stage" />
+      ))}
     </div>
   );
 }
@@ -457,10 +597,14 @@ export function Explorer() {
     activeSessionId,
     updateSessionCwd,
     gitStatus,
+    gitStagedStatus,
     refreshGitStatus,
+    stageFiles,
+    unstageFiles,
     agentContextDirs,
   } = useSessionContext();
 
+  const [activeView, setActiveView] = useState<ExplorerView>('files');
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [collapseKey, setCollapseKey] = useState(0);
@@ -602,6 +746,26 @@ export function Explorer() {
     [setDiffFilePath]
   );
 
+  const handleStageAll = useCallback((repoRoot?: string) => {
+    if (repoRoot) {
+      const prefix = repoRoot.endsWith('/') ? repoRoot : repoRoot + '/';
+      const paths = Object.keys(gitStatus).filter(fp => fp.startsWith(prefix));
+      if (paths.length > 0) stageFiles(paths);
+    } else {
+      stageFiles(Object.keys(gitStatus));
+    }
+  }, [gitStatus, stageFiles]);
+
+  const handleUnstageAll = useCallback((repoRoot?: string) => {
+    if (repoRoot) {
+      const prefix = repoRoot.endsWith('/') ? repoRoot : repoRoot + '/';
+      const paths = Object.keys(gitStagedStatus).filter(fp => fp.startsWith(prefix));
+      if (paths.length > 0) unstageFiles(paths);
+    } else {
+      unstageFiles(Object.keys(gitStagedStatus));
+    }
+  }, [gitStagedStatus, unstageFiles]);
+
   const showViewerPanel = useCallback(() => {
     setPanelVisibility('viewer', true);
   }, [setPanelVisibility]);
@@ -641,6 +805,13 @@ export function Explorer() {
     return roots.concat(agentContextDirs.map(d => d.path));
   }, [explorerRoot, agentContextDirs]);
 
+  const combinedGitStatus = useMemo(() => {
+    if (Object.keys(gitStagedStatus).length === 0) return gitStatus;
+    return { ...gitStagedStatus, ...gitStatus };
+  }, [gitStatus, gitStagedStatus]);
+
+  const changesCount = Object.keys(gitStatus).length + Object.keys(gitStagedStatus).length;
+
   if (!explorerRoot) {
     return (
       <div className="panel explorer-panel">
@@ -666,7 +837,7 @@ export function Explorer() {
   }
 
   const rootFolderName = explorerRoot.split('/').pop() || explorerRoot;
-  const rootFolderStatus = getFolderStatus(explorerRoot, gitStatus);
+  const rootFolderStatus = getFolderStatus(explorerRoot, combinedGitStatus);
   const rootNameColor = rootFolderStatus ? STATUS_COLOR_VAR[rootFolderStatus] : undefined;
 
   return (
@@ -674,7 +845,7 @@ export function Explorer() {
       <div className="panel-header">
         <span className="panel-title panel-icon explorer-icon" data-tooltip={`${displayRoot} - drag to reorder`} data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
         <div className="explorer-actions">
-          {explorerOutOfSync && (
+          {activeView === 'files' && explorerOutOfSync && (
             <IconButton
               className="explorer-action-btn explorer-sync-btn"
               tooltip="Sync to terminal directory"
@@ -684,26 +855,59 @@ export function Explorer() {
               ↻
             </IconButton>
           )}
-          <IconButton
-            className="explorer-action-btn"
-            tooltip="Collapse all folders"
-            tooltipPos="bottom"
-            onClick={(e) => { e.stopPropagation(); setRootOpen(false); setCollapseKey(k => k + 1); }}
-          >
-            ⊟
-          </IconButton>
-          <IconButton
-            className="explorer-action-btn"
-            tooltip="Refresh file tree"
-            tooltipPos="bottom"
-            onClick={handleRefresh}
-          >
-            ⟳
-          </IconButton>
+          {activeView === 'files' && (
+            <>
+              <IconButton
+                className="explorer-action-btn"
+                tooltip="Collapse all folders"
+                tooltipPos="bottom"
+                onClick={(e) => { e.stopPropagation(); setRootOpen(false); setCollapseKey(k => k + 1); }}
+              >
+                ⊟
+              </IconButton>
+              <IconButton
+                className="explorer-action-btn"
+                tooltip="Refresh file tree"
+                tooltipPos="bottom"
+                onClick={handleRefresh}
+              >
+                ⟳
+              </IconButton>
+            </>
+          )}
+          {activeView === 'source-control' && (
+            <IconButton
+              className="explorer-action-btn"
+              tooltip="Refresh"
+              tooltipPos="bottom"
+              onClick={refreshGitStatus}
+            >
+              ⟳
+            </IconButton>
+          )}
           <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
         </div>
       </div>
-      {explorerOutOfSync && (
+      <div className="explorer-view-tabs">
+        <button
+          className={`explorer-view-tab ${activeView === 'files' ? 'explorer-view-tab-active' : ''}`}
+          onClick={() => setActiveView('files')}
+          data-tooltip="Explorer"
+          data-tooltip-pos="bottom"
+        >
+          <VscFiles size={16} />
+        </button>
+        <button
+          className={`explorer-view-tab ${activeView === 'source-control' ? 'explorer-view-tab-active' : ''}`}
+          onClick={() => setActiveView('source-control')}
+          data-tooltip="Source Control"
+          data-tooltip-pos="bottom"
+        >
+          <VscSourceControl size={16} />
+          {changesCount > 0 && <span className="explorer-view-tab-badge">{changesCount}</span>}
+        </button>
+      </div>
+      {activeView === 'files' && explorerOutOfSync && (
         <div className="explorer-sync-bar" onClick={handleLoadCwd}>
           <span>Terminal moved to </span>
           <span className="explorer-sync-path">
@@ -713,58 +917,64 @@ export function Explorer() {
         </div>
       )}
       <div className="panel-body explorer-body">
-        <div className="explorer-tree">
-          <div
-            className="explorer-root-label"
-            data-tooltip={explorerRoot}
-            data-tooltip-pos="bottom"
-            onClick={() => setRootOpen(prev => !prev)}
-          >
-            <FileIcon name={rootFolderName} isDirectory isOpen={rootOpen} />
-            <span className="explorer-root-name" style={rootNameColor ? { color: rootNameColor } : undefined}>
-              {rootFolderName}
-            </span>
+        {activeView === 'files' ? (
+          <div className="explorer-tree">
+            <div
+              className="explorer-root-label"
+              data-tooltip={explorerRoot}
+              data-tooltip-pos="bottom"
+              onClick={() => setRootOpen(prev => !prev)}
+            >
+              <FileIcon name={rootFolderName} isDirectory isOpen={rootOpen} />
+              <span className="explorer-root-name" style={rootNameColor ? { color: rootNameColor } : undefined}>
+                {rootFolderName}
+              </span>
+            </div>
+            {rootOpen && (
+              loading ? (
+                <div className="explorer-loading">Loading...</div>
+              ) : entries.length === 0 ? (
+                <div className="explorer-empty">Empty directory</div>
+              ) : (
+                entries.map((entry) => (
+                  <TreeNode
+                    key={entry.path}
+                    entry={entry}
+                    depth={1}
+                    onFileClick={handleFileClick}
+                    onFileDoubleClick={showViewerPanel}
+                    collapseKey={collapseKey}
+                    gitStatus={combinedGitStatus}
+                    syncedRevealFile={syncedRevealFile}
+                    revealGeneration={revealGeneration}
+                  />
+                ))
+              )
+            )}
+            {agentContextDirs.map((dir) => (
+              <ContextDirSection
+                key={dir.path}
+                dir={dir}
+                onFileClick={handleFileClick}
+                onFileDoubleClick={showViewerPanel}
+                collapseKey={collapseKey}
+                gitStatus={combinedGitStatus}
+                syncedRevealFile={syncedRevealFile}
+                revealGeneration={revealGeneration}
+              />
+            ))}
           </div>
-          {rootOpen && (
-            loading ? (
-              <div className="explorer-loading">Loading...</div>
-            ) : entries.length === 0 ? (
-              <div className="explorer-empty">Empty directory</div>
-            ) : (
-              entries.map((entry) => (
-                <TreeNode
-                  key={entry.path}
-                  entry={entry}
-                  depth={1}
-                  onFileClick={handleFileClick}
-                  onFileDoubleClick={showViewerPanel}
-                  collapseKey={collapseKey}
-                  gitStatus={gitStatus}
-                  syncedRevealFile={syncedRevealFile}
-                  revealGeneration={revealGeneration}
-                />
-              ))
-            )
-          )}
-          {agentContextDirs.map((dir) => (
-            <ContextDirSection
-              key={dir.path}
-              dir={dir}
-              onFileClick={handleFileClick}
-              onFileDoubleClick={showViewerPanel}
-              collapseKey={collapseKey}
-              gitStatus={gitStatus}
-              syncedRevealFile={syncedRevealFile}
-              revealGeneration={revealGeneration}
-            />
-          ))}
-        </div>
-        {allRoots.length > 0 && Object.keys(gitStatus).length > 0 && (
-          <ChangesList
+        ) : (
+          <SourceControlView
             gitStatus={gitStatus}
+            gitStagedStatus={gitStagedStatus}
             allRoots={allRoots}
             onFileClick={handleChangeFileClick}
             onFileDoubleClick={showViewerPanel}
+            onStageFile={(path) => stageFiles([path])}
+            onUnstageFile={(path) => unstageFiles([path])}
+            onStageAll={handleStageAll}
+            onUnstageAll={handleUnstageAll}
           />
         )}
       </div>

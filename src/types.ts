@@ -49,6 +49,7 @@ export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'untracked' | 're
 
 export interface GitStatusResult {
   files: Record<string, GitFileStatus>;
+  staged: Record<string, GitFileStatus>;
   repoRoot: string | null;
 }
 
@@ -130,6 +131,8 @@ export interface ElectronAPI {
   getGitInfo: (dirPath: string) => Promise<GitInfo>;
   getGitStatus: (dirPath: string) => Promise<GitStatusResult>;
   getGitDiff: (filePath: string, repoRoot: string) => Promise<GitDiffResult>;
+  gitStage: (filePaths: string[], repoRoot: string) => Promise<boolean>;
+  gitUnstage: (filePaths: string[], repoRoot: string) => Promise<boolean>;
   createTerminal: (options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => Promise<TerminalInfo>;
   writeTerminal: (id: string, data: string) => void;
   resizeTerminal: (id: string, cols: number, rows: number) => void;

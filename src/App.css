@@ -430,6 +430,52 @@ body {
   height: 100%;
 }
 
+.explorer-view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.explorer-view-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--fg-dim);
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  position: relative;
+}
+
+.explorer-view-tab:hover {
+  color: var(--fg);
+}
+
+.explorer-view-tab-active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.explorer-view-tab-badge {
+  font-size: 9px;
+  font-weight: 600;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--bg);
+  padding: 0 4px;
+}
+
 .explorer-body {
   display: flex;
   flex-direction: column;
@@ -620,52 +666,97 @@ body {
   padding-right: 6px;
 }
 
-/* ── Explorer: Changes section ── */
+/* ── Source Control View ── */
 
-.explorer-changes {
-  flex-shrink: 0;
+.sc-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.sc-empty {
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  position: relative;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 80px;
+  padding: 24px;
 }
 
-.explorer-changes-resize-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  cursor: ns-resize;
-  z-index: 2;
-  background: transparent;
-  transition: background 0.15s;
+.sc-empty-text {
+  color: var(--fg-dim);
+  font-size: 12px;
 }
 
-.explorer-changes-resize-handle:hover,
-.explorer-changes-resize-handle:active {
-  background: var(--accent);
+.sc-repo {
+  margin-bottom: 2px;
 }
 
-.explorer-changes-header {
+.sc-repo-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.sc-repo-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.sc-repo-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-repo-body {
+  padding-left: 0;
+}
+
+.sc-single-repo {
+  padding: 0;
+}
+
+.sc-category {
+  margin-bottom: 2px;
+}
+
+.sc-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 14px;
   font-size: 11px;
   font-weight: 600;
   color: var(--fg-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   cursor: pointer;
   user-select: none;
   transition: color 0.15s;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
 }
 
-.explorer-changes-header:hover {
+.sc-repo-body .sc-category-header {
+  padding-left: 22px;
+}
+
+.sc-category-header:hover {
   color: var(--fg);
+}
+
+.sc-category-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .explorer-changes-chevron {
@@ -673,10 +764,6 @@ body {
   width: 10px;
   text-align: center;
   flex-shrink: 0;
-}
-
-.explorer-changes-title {
-  flex: 1;
 }
 
 .explorer-changes-count {
@@ -690,41 +777,6 @@ body {
   font-weight: 500;
 }
 
-.explorer-changes-list {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding-bottom: 4px;
-}
-
-.explorer-changes-group {
-  margin-bottom: 2px;
-}
-
-.explorer-changes-group-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg-muted);
-  cursor: pointer;
-  user-select: none;
-  transition: color 0.15s;
-}
-
-.explorer-changes-group-header:hover {
-  color: var(--fg);
-}
-
-.explorer-changes-group-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .explorer-change-item {
   display: flex;
   align-items: center;
@@ -734,6 +786,10 @@ body {
   font-size: 13px;
   color: var(--fg-muted);
   transition: background 0.1s;
+}
+
+.sc-repo-body .explorer-change-item {
+  padding-left: 28px;
 }
 
 .explorer-change-item:hover {
@@ -765,6 +821,63 @@ body {
   opacity: 0.8;
   flex-shrink: 0;
   padding-right: 2px;
+}
+
+.explorer-change-action {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-weight: 600;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-left: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.explorer-change-item:hover .explorer-change-action {
+  display: flex;
+}
+
+.explorer-change-action:hover {
+  color: var(--fg);
+  background: var(--bg-tertiary);
+}
+
+.explorer-changes-section-action {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-weight: 600;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sc-category-header:hover .explorer-changes-section-action {
+  display: flex;
+}
+
+.explorer-changes-section-action:hover {
+  color: var(--fg);
+  background: var(--bg-tertiary);
 }
 
 /* ── Explorer multi-root / context dirs ── */

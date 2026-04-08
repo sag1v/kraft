@@ -106,9 +106,12 @@ interface SessionContextValue {
   explorerOutOfSync: boolean;
   gitInfo: GitInfo;
   gitStatus: Record<string, GitFileStatus>;
+  gitStagedStatus: Record<string, GitFileStatus>;
   gitRepoRoot: string | null;
   getRepoRootForFile: (filePath: string) => string | null;
   refreshGitStatus: () => void;
+  stageFiles: (filePaths: string[]) => Promise<void>;
+  unstageFiles: (filePaths: string[]) => Promise<void>;
   agentContextDirs: AgentContextDir[];
 }
 
@@ -148,6 +151,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     terminal: true,
   });
   const [gitStatus, setGitStatus] = useState<Record<string, GitFileStatus>>({});
+  const [gitStagedStatus, setGitStagedStatus] = useState<Record<string, GitFileStatus>>({});
   const [gitRepoRoot, setGitRepoRoot] = useState<string | null>(null);
   const [gitRepoRootsMap, setGitRepoRootsMap] = useState<Record<string, string>>({});
   const [diffFilePath, setDiffFilePathState] = useState<string | null>(null);
@@ -463,6 +467,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const results = await Promise.all(dirs.map(d => window.api.getGitStatus(d)));
       const mergedFiles: Record<string, GitFileStatus> = {};
+      const mergedStaged: Record<string, GitFileStatus> = {};
       let primaryRepoRoot: string | null = null;
       const rootsMap: Record<string, string> = {};
       for (let i = 0; i < results.length; i++) {
@@ -470,12 +475,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (!primaryRepoRoot && result.repoRoot) primaryRepoRoot = result.repoRoot;
         if (result.repoRoot) rootsMap[dirs[i]] = result.repoRoot;
         Object.assign(mergedFiles, result.files as Record<string, GitFileStatus>);
+        if (result.staged) {
+          Object.assign(mergedStaged, result.staged as Record<string, GitFileStatus>);
+        }
       }
       setGitStatus(mergedFiles);
+      setGitStagedStatus(mergedStaged);
       setGitRepoRoot(primaryRepoRoot);
       setGitRepoRootsMap(rootsMap);
     } catch {
       setGitStatus({});
+      setGitStagedStatus({});
       setGitRepoRoot(null);
       setGitRepoRootsMap({});
     }
@@ -485,6 +495,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const allRoots = [explorerRoot, ...agentContextDirs.map(d => d.path)].filter(Boolean) as string[];
     if (allRoots.length === 0) {
       setGitStatus({});
+      setGitStagedStatus({});
       setGitRepoRoot(null);
       return;
     }
@@ -513,6 +524,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     return gitRepoRootRef.current;
   }, []);
+
+  const stageFiles = useCallback(async (filePaths: string[]) => {
+    if (!window.api?.gitStage || filePaths.length === 0) return;
+    const repoRoot = getRepoRootForFile(filePaths[0]);
+    if (!repoRoot) return;
+    await window.api.gitStage(filePaths, repoRoot);
+    refreshGitStatus();
+  }, [getRepoRootForFile, refreshGitStatus]);
+
+  const unstageFiles = useCallback(async (filePaths: string[]) => {
+    if (!window.api?.gitUnstage || filePaths.length === 0) return;
+    const repoRoot = getRepoRootForFile(filePaths[0]);
+    if (!repoRoot) return;
+    await window.api.gitUnstage(filePaths, repoRoot);
+    refreshGitStatus();
+  }, [getRepoRootForFile, refreshGitStatus]);
 
   const setDiffFilePath = useCallback((path: string | null) => {
     setDiffFilePathState(path);
@@ -647,12 +674,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     explorerOutOfSync,
     gitInfo,
     gitStatus,
+    gitStagedStatus,
     gitRepoRoot,
     getRepoRootForFile,
     refreshGitStatus,
+    stageFiles,
+    unstageFiles,
     agentContextDirs,
-  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitRepoRoot, agentContextDirs,
-       addSession, removeSession, setActiveSession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, getRepoRootForFile]);
+  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitRepoRoot, agentContextDirs,
+       addSession, removeSession, setActiveSession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, getRepoRootForFile]);
 
   return (
     <UIContext.Provider value={uiValue}>
