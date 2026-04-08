@@ -18,6 +18,15 @@ const layouts: { value: LayoutPreset; label: string }[] = [
   { value: 'really', label: 'Really?!' },
 ];
 
+type SettingsCategory = 'appearance' | 'layout' | 'terminal' | 'keybindings';
+
+const CATEGORIES: { id: SettingsCategory; label: string; icon: string }[] = [
+  { id: 'appearance', label: 'Appearance', icon: '◑' },
+  { id: 'layout', label: 'Layout', icon: '⊞' },
+  { id: 'terminal', label: 'Terminal', icon: '▸' },
+  { id: 'keybindings', label: 'Keybindings', icon: '⌨' },
+];
+
 function renderGridPreview(grid: PanelId[][]): React.ReactNode {
   if (!grid || grid.length === 0) return null;
   const numRows = grid.length;
@@ -131,8 +140,11 @@ function ZoomControl() {
   const percent = zoomLevelToPercent(zoomLevel);
 
   return (
-    <div className="settings-group">
-      <label className="settings-label">Zoom</label>
+    <div className="settings-row">
+      <div className="settings-row-info">
+        <span className="settings-row-title">Zoom Level</span>
+        <span className="settings-row-desc">Adjust the zoom level of the entire application. Use {MOD_KEY}+/- keys anywhere.</span>
+      </div>
       <div className="settings-font-size">
         <button
           className="settings-font-btn"
@@ -160,7 +172,6 @@ function ZoomControl() {
           +
         </button>
       </div>
-      <span className="settings-hint">Or use {MOD_KEY}+/- keys anywhere</span>
     </div>
   );
 }
@@ -168,6 +179,16 @@ function ZoomControl() {
 export function Settings() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, theme, setThemeId } = useUIContext();
   const [reallyStep, setReallyStep] = useState<0 | 1 | 2>(0);
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>('appearance');
+  const [searchQuery, setSearchQuery] = useState('');
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Record<SettingsCategory, HTMLDivElement | null>>({
+    appearance: null,
+    layout: null,
+    terminal: null,
+    keybindings: null,
+  });
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -186,6 +207,36 @@ export function Settings() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  useEffect(() => {
+    if (settingsOpen) {
+      setSearchQuery('');
+      setActiveCategory('appearance');
+      setTimeout(() => searchRef.current?.focus(), 50);
+    }
+  }, [settingsOpen]);
+
+  const scrollToCategory = useCallback((id: SettingsCategory) => {
+    setActiveCategory(id);
+    const el = sectionRefs.current[id];
+    if (el && bodyRef.current) {
+      bodyRef.current.scrollTo({ top: el.offsetTop - bodyRef.current.offsetTop, behavior: 'smooth' });
+    }
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const scrollTop = body.scrollTop + body.offsetTop + 40;
+    let current: SettingsCategory = 'appearance';
+    for (const cat of CATEGORIES) {
+      const el = sectionRefs.current[cat.id];
+      if (el && el.offsetTop <= scrollTop) {
+        current = cat.id;
+      }
+    }
+    setActiveCategory(current);
+  }, []);
 
   const handleLayoutClick = useCallback((preset: LayoutPreset) => {
     if (preset === 'really') {
@@ -206,6 +257,43 @@ export function Settings() {
 
   if (!settingsOpen) return null;
 
+  const q = searchQuery.toLowerCase().trim();
+  const isSearching = q.length > 0;
+  const matches = (text: string) => text.toLowerCase().includes(q);
+
+  const filteredThemes = isSearching
+    ? themes.filter(t => matches(t.name) || matches(t.type) || matches('theme color appearance'))
+    : themes;
+  const showTheme = !isSearching || filteredThemes.length > 0;
+  const showZoom = !isSearching || matches('zoom level scale size');
+
+  const filteredLayouts = isSearching
+    ? layouts.filter(l => matches(l.label) || matches(l.value) || matches('layout panel arrange'))
+    : layouts;
+  const showCustomLayout = !isSearching || matches('custom layout my');
+  const showLayoutSection = !isSearching || filteredLayouts.length > 0 || showCustomLayout;
+
+  const showShell = !isSearching || matches('shell terminal bash zsh fish default');
+
+  const filteredShortcuts = SHORTCUT_CATEGORIES.map(category => {
+    const items = SHORTCUTS.filter(s => s.category === category);
+    const filtered = isSearching
+      ? items.filter(s => matches(s.label) || matches(s.keys) || matches(s.category) || matches(s.id))
+      : items;
+    return { category, items: filtered };
+  }).filter(g => g.items.length > 0);
+  const showKeybindings = !isSearching || filteredShortcuts.length > 0;
+
+  const showAppearance = showTheme || showZoom;
+
+  const visibleCategories = new Set<SettingsCategory>();
+  if (showAppearance) visibleCategories.add('appearance');
+  if (showLayoutSection) visibleCategories.add('layout');
+  if (showShell) visibleCategories.add('terminal');
+  if (showKeybindings) visibleCategories.add('keybindings');
+
+  const noResults = isSearching && visibleCategories.size === 0;
+
   return (
     <div className="settings-overlay" onClick={() => setSettingsOpen(false)}>
       <div
@@ -220,6 +308,16 @@ export function Settings() {
           <span className="settings-title" style={{ color: theme.colors.accent }}>
             Settings
           </span>
+          <div className="settings-search-wrap">
+            <input
+              ref={searchRef}
+              type="text"
+              className="settings-search"
+              placeholder="Search settings..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
           <button
             className="settings-close"
             onClick={() => setSettingsOpen(false)}
@@ -227,109 +325,184 @@ export function Settings() {
             ✕
           </button>
         </div>
-        <div className="settings-body">
-          <div className="settings-group">
-            <label className="settings-label">Theme</label>
-            <div className="settings-theme-list">
-              {themes.map((t) => (
+        <div className="settings-content">
+          <nav className="settings-sidebar">
+            {CATEGORIES.map((cat) => {
+              const visible = visibleCategories.has(cat.id);
+              if (isSearching && !visible) return null;
+              return (
                 <button
-                  key={t.id}
-                  className={`settings-theme-btn ${theme.id === t.id ? 'active' : ''}`}
-                  onClick={() => setThemeId(t.id)}
+                  key={cat.id}
+                  className={`settings-sidebar-item ${activeCategory === cat.id ? 'active' : ''}`}
+                  onClick={() => scrollToCategory(cat.id)}
                 >
-                  <span
-                    className="settings-theme-dot"
-                    style={{ backgroundColor: t.dot }}
-                  />
-                  <span className="settings-theme-name">{t.name}</span>
-                  <span className="settings-theme-type">{t.type}</span>
+                  <span className="settings-sidebar-icon">{cat.icon}</span>
+                  <span className="settings-sidebar-label">{cat.label}</span>
                 </button>
-              ))}
-            </div>
-          </div>
-          <div className="settings-group">
-            <label className="settings-label">Shell</label>
-            <select
-              className="settings-select"
-              value={settings.shellOverride || ''}
-              onChange={(e) =>
-                updateSettings({ shellOverride: e.target.value || null })
-              }
-            >
-              {shells.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-            <span className="settings-hint">Requires restart of terminal</span>
-          </div>
-          <div className="settings-group">
-            <label className="settings-label">Layout</label>
-            <div className="settings-layout-legend">
-              <span className="settings-legend-item">
-                <span className="settings-legend-dot explorer" />
-                Explorer
-              </span>
-              <span className="settings-legend-item">
-                <span className="settings-legend-dot viewer" />
-                Viewer
-              </span>
-              <span className="settings-legend-item">
-                <span className="settings-legend-dot terminal" />
-                Terminal
-              </span>
-            </div>
-            <div className="settings-layout-grid">
-              {layouts.map((l) => (
-                <div
-                  key={l.value}
-                  className={`settings-layout-card ${settings.defaultLayout === l.value ? 'active' : ''}`}
-                  onClick={() => handleLayoutClick(l.value)}
-                >
-                  <div className="settings-layout-preview">
-                    {renderLayoutPreview(l.value, null)}
-                  </div>
-                  <span className="settings-layout-name">{l.label}</span>
-                </div>
-              ))}
-              <div
-                className={`settings-layout-card settings-layout-card-custom ${settings.defaultLayout === 'custom' ? 'active' : ''}`}
-                onClick={() => updateSettings({ defaultLayout: 'custom' })}
-                data-tooltip={settings.savedCustomLayout ? 'Restore your custom layout' : 'Save current layout as yours'}
-                data-tooltip-pos="bottom"
-              >
-                <div className="settings-layout-preview">
-                  {renderLayoutPreview('custom', settings.savedCustomLayout)}
-                </div>
-                <span className="settings-layout-name">¯\_(ツ)_/¯</span>
+              );
+            })}
+          </nav>
+          <div className="settings-body" ref={bodyRef} onScroll={handleScroll}>
+            {noResults && (
+              <div className="settings-no-results">
+                No settings matching "<span className="settings-no-results-query">{searchQuery}</span>"
               </div>
-            </div>
-          </div>
-          <ZoomControl />
-          <div className="settings-group">
-            <label className="settings-label">Keyboard Shortcuts</label>
-            <div className="settings-shortcuts">
-              {SHORTCUT_CATEGORIES.map(category => {
-                const items = SHORTCUTS.filter(s => s.category === category);
-                if (items.length === 0) return null;
-                return (
-                  <div key={category} className="settings-shortcuts-category">
-                    <div className="settings-shortcuts-category-title">{category}</div>
-                    {items.map(s => (
-                      <div key={s.id} className="settings-shortcut-row">
-                        <span className="settings-shortcut-label">{s.label}</span>
-                        <span className="settings-shortcut-keys">
-                          {s.keys.split('+').map((key, i) => (
-                            <kbd key={i} className="settings-shortcut-kbd">{key}</kbd>
-                          ))}
-                        </span>
+            )}
+
+            {/* Appearance */}
+            {showAppearance && (
+              <div
+                className="settings-section"
+                ref={(el) => { sectionRefs.current.appearance = el; }}
+              >
+                <h2 className="settings-section-title">Appearance</h2>
+
+                {showTheme && (
+                  <>
+                    <div className="settings-row">
+                      <div className="settings-row-info">
+                        <span className="settings-row-title">Color Theme</span>
+                        <span className="settings-row-desc">Specifies the color theme used in the application.</span>
                       </div>
-                    ))}
+                    </div>
+                    <div className="settings-theme-list">
+                      {filteredThemes.map((t) => (
+                        <button
+                          key={t.id}
+                          className={`settings-theme-btn ${theme.id === t.id ? 'active' : ''}`}
+                          onClick={() => setThemeId(t.id)}
+                        >
+                          <span
+                            className="settings-theme-dot"
+                            style={{ backgroundColor: t.dot }}
+                          />
+                          <span className="settings-theme-name">{t.name}</span>
+                          <span className="settings-theme-type">{t.type}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {showZoom && <ZoomControl />}
+              </div>
+            )}
+
+            {/* Layout */}
+            {showLayoutSection && (
+              <div
+                className="settings-section"
+                ref={(el) => { sectionRefs.current.layout = el; }}
+              >
+                <h2 className="settings-section-title">Layout</h2>
+
+                <div className="settings-row">
+                  <div className="settings-row-info">
+                    <span className="settings-row-title">Default Layout</span>
+                    <span className="settings-row-desc">Choose how panels are arranged when the application starts.</span>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+                <div className="settings-layout-legend">
+                  <span className="settings-legend-item">
+                    <span className="settings-legend-dot explorer" />
+                    Explorer
+                  </span>
+                  <span className="settings-legend-item">
+                    <span className="settings-legend-dot viewer" />
+                    Viewer
+                  </span>
+                  <span className="settings-legend-item">
+                    <span className="settings-legend-dot terminal" />
+                    Terminal
+                  </span>
+                </div>
+                <div className="settings-layout-grid">
+                  {(isSearching ? filteredLayouts : layouts).map((l) => (
+                    <div
+                      key={l.value}
+                      className={`settings-layout-card ${settings.defaultLayout === l.value ? 'active' : ''}`}
+                      onClick={() => handleLayoutClick(l.value)}
+                    >
+                      <div className="settings-layout-preview">
+                        {renderLayoutPreview(l.value, null)}
+                      </div>
+                      <span className="settings-layout-name">{l.label}</span>
+                    </div>
+                  ))}
+                  {showCustomLayout && (
+                    <div
+                      className={`settings-layout-card settings-layout-card-custom ${settings.defaultLayout === 'custom' ? 'active' : ''}`}
+                      onClick={() => updateSettings({ defaultLayout: 'custom' })}
+                      data-tooltip={settings.savedCustomLayout ? 'Restore your custom layout' : 'Save current layout as yours'}
+                      data-tooltip-pos="bottom"
+                    >
+                      <div className="settings-layout-preview">
+                        {renderLayoutPreview('custom', settings.savedCustomLayout)}
+                      </div>
+                      <span className="settings-layout-name">¯\_(ツ)_/¯</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Terminal */}
+            {showShell && (
+              <div
+                className="settings-section"
+                ref={(el) => { sectionRefs.current.terminal = el; }}
+              >
+                <h2 className="settings-section-title">Terminal</h2>
+
+                <div className="settings-row">
+                  <div className="settings-row-info">
+                    <span className="settings-row-title">Default Shell</span>
+                    <span className="settings-row-desc">The shell program to use for new terminal sessions. Requires restart of terminal.</span>
+                  </div>
+                  <select
+                    className="settings-select"
+                    value={settings.shellOverride || ''}
+                    onChange={(e) =>
+                      updateSettings({ shellOverride: e.target.value || null })
+                    }
+                  >
+                    {shells.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Keybindings */}
+            {showKeybindings && (
+              <div
+                className="settings-section"
+                ref={(el) => { sectionRefs.current.keybindings = el; }}
+              >
+                <h2 className="settings-section-title">Keyboard Shortcuts</h2>
+
+                <div className="settings-shortcuts">
+                  {filteredShortcuts.map(({ category, items }) => (
+                    <div key={category} className="settings-shortcuts-category">
+                      <div className="settings-shortcuts-category-title">{category}</div>
+                      {items.map(s => (
+                        <div key={s.id} className="settings-shortcut-row">
+                          <span className="settings-shortcut-label">{s.label}</span>
+                          <span className="settings-shortcut-keys">
+                            {s.keys.split('+').map((key, i) => (
+                              <kbd key={i} className="settings-shortcut-kbd">{key}</kbd>
+                            ))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
