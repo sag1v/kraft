@@ -29,6 +29,7 @@ const dirCache = new Map<string, DirCacheEntry>();
 const DIR_CACHE_TTL = 5000;
 
 const activeWatchers = new Map<string, fs.FSWatcher>();
+const gitWatchers = new Map<string, fs.FSWatcher[]>();
 
 function getDefaultShell(): string {
   if (process.platform === 'win32') {
@@ -754,6 +755,56 @@ function setupIPC() {
     }
   });
 
+  ipcMain.on('watch-git-repo', (_event, repoRoot: string) => {
+    if (gitWatchers.has(repoRoot)) return;
+    const gitDir = path.join(repoRoot, '.git');
+    const watchers: fs.FSWatcher[] = [];
+
+    const notify = () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('git-changed', repoRoot);
+      }
+    };
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedNotify = () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(notify, 150);
+    };
+
+    const tryWatch = (target: string) => {
+      try {
+        const w = fs.watch(target, { recursive: false }, debouncedNotify);
+        watchers.push(w);
+      } catch {
+        // target may not exist yet
+      }
+    };
+
+    tryWatch(path.join(gitDir, 'index'));
+    tryWatch(path.join(gitDir, 'HEAD'));
+
+    try {
+      const refsDir = path.join(gitDir, 'refs');
+      const w = fs.watch(refsDir, { recursive: true }, debouncedNotify);
+      watchers.push(w);
+    } catch {
+      // refs dir may not exist
+    }
+
+    if (watchers.length > 0) {
+      gitWatchers.set(repoRoot, watchers);
+    }
+  });
+
+  ipcMain.on('unwatch-git-repo', (_event, repoRoot: string) => {
+    const watchers = gitWatchers.get(repoRoot);
+    if (watchers) {
+      for (const w of watchers) w.close();
+      gitWatchers.delete(repoRoot);
+    }
+  });
+
   ipcMain.on('toggle-devtools', () => {
     mainWindow?.webContents.toggleDevTools();
   });
@@ -793,6 +844,10 @@ app.on('window-all-closed', () => {
     watcher.close();
   }
   activeWatchers.clear();
+  for (const [, watchers] of gitWatchers) {
+    for (const w of watchers) w.close();
+  }
+  gitWatchers.clear();
   app.quit();
 });
 

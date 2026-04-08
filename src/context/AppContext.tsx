@@ -523,6 +523,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (allRoots.length > 0) fetchGitStatus(allRoots);
   }, [explorerRoot, agentContextDirs, fetchGitStatus]);
 
+  const refreshGitStatusRef = useRef(refreshGitStatus);
+  refreshGitStatusRef.current = refreshGitStatus;
+
+  useEffect(() => {
+    if (!window.api?.watchGitRepo || !window.api?.onGitChanged) return;
+    const repoRoots = new Set(Object.values(gitRepoRootsMap));
+    if (repoRoots.size === 0) return;
+
+    for (const root of repoRoots) {
+      window.api.watchGitRepo(root);
+    }
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = window.api.onGitChanged(() => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        refreshGitStatusRef.current();
+      }, 200);
+    });
+
+    return () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      unsubscribe();
+      for (const root of repoRoots) {
+        window.api.unwatchGitRepo(root);
+      }
+    };
+  }, [gitRepoRootsMap]);
+
   const gitRepoRootsMapRef = useRef(gitRepoRootsMap);
   gitRepoRootsMapRef.current = gitRepoRootsMap;
   const gitRepoRootRef = useRef(gitRepoRoot);

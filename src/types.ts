@@ -161,6 +161,9 @@ export interface ElectronAPI {
   onDirectoryChanged: (
     callback: (dirPath: string, eventType: string, filename: string | null) => void
   ) => () => void;
+  watchGitRepo: (repoRoot: string) => void;
+  unwatchGitRepo: (repoRoot: string) => void;
+  onGitChanged: (callback: (repoRoot: string) => void) => () => void;
 }
 
 declare global {

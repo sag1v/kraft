@@ -273,7 +273,6 @@ function ChangeFileRow({ filePath, status, rootPrefix, onFileClick, onFileDouble
       <FileIcon name={name} isDirectory={false} />
       <span className="explorer-change-name" style={{ color }}>{name}</span>
       {dir && <span className="explorer-change-dir">{dir}</span>}
-      <span className="explorer-change-badge" style={{ color }}>{STATUS_LABEL[status]}</span>
       {onAction && (
         <button
           className="explorer-change-action"
@@ -284,6 +283,7 @@ function ChangeFileRow({ filePath, status, rootPrefix, onFileClick, onFileDouble
           {actionIcon}
         </button>
       )}
+      <span className="explorer-change-badge" style={{ color }}>{STATUS_LABEL[status]}</span>
     </div>
   );
 }
@@ -313,12 +313,12 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
       </div>
       {isOpen && (
         <div className="sc-repo-body">
-          {repo.staged.length > 0 && (
-            <div className="sc-category">
-              <div className="sc-category-header" onClick={() => setStagedOpen(prev => !prev)}>
-                <span className="explorer-changes-chevron">{stagedOpen ? '▾' : '▸'}</span>
-                <span className="sc-category-title">Staged Changes</span>
-                <span className="explorer-changes-count">{repo.staged.length}</span>
+          <div className="sc-category">
+            <div className="sc-category-header" onClick={() => setStagedOpen(prev => !prev)}>
+              <span className="explorer-changes-chevron">{stagedOpen ? '▾' : '▸'}</span>
+              <span className="sc-category-title">Staged Changes</span>
+              <span className="explorer-changes-count">{repo.staged.length}</span>
+              {repo.staged.length > 0 && (
                 <button
                   className="explorer-changes-section-action"
                   data-tooltip="Unstage All"
@@ -327,28 +327,28 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
                 >
                   −
                 </button>
-              </div>
-              {stagedOpen && repo.staged.map(([fp, st]) => (
-                <ChangeFileRow
-                  key={fp}
-                  filePath={fp}
-                  status={st}
-                  rootPrefix={prefix}
-                  onFileClick={onFileClick}
-                  onFileDoubleClick={onFileDoubleClick}
-                  onAction={onUnstageFile}
-                  actionIcon="−"
-                  actionTooltip="Unstage"
-                />
-              ))}
+              )}
             </div>
-          )}
-          {repo.unstaged.length > 0 && (
-            <div className="sc-category">
-              <div className="sc-category-header" onClick={() => setUnstagedOpen(prev => !prev)}>
-                <span className="explorer-changes-chevron">{unstagedOpen ? '▾' : '▸'}</span>
-                <span className="sc-category-title">Changes</span>
-                <span className="explorer-changes-count">{repo.unstaged.length}</span>
+            {stagedOpen && repo.staged.map(([fp, st]) => (
+              <ChangeFileRow
+                key={fp}
+                filePath={fp}
+                status={st}
+                rootPrefix={prefix}
+                onFileClick={onFileClick}
+                onFileDoubleClick={onFileDoubleClick}
+                onAction={onUnstageFile}
+                actionIcon="−"
+                actionTooltip="Unstage"
+              />
+            ))}
+          </div>
+          <div className="sc-category">
+            <div className="sc-category-header" onClick={() => setUnstagedOpen(prev => !prev)}>
+              <span className="explorer-changes-chevron">{unstagedOpen ? '▾' : '▸'}</span>
+              <span className="sc-category-title">Changes</span>
+              <span className="explorer-changes-count">{repo.unstaged.length}</span>
+              {repo.unstaged.length > 0 && (
                 <button
                   className="explorer-changes-section-action"
                   data-tooltip="Stage All"
@@ -357,22 +357,22 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
                 >
                   +
                 </button>
-              </div>
-              {unstagedOpen && repo.unstaged.map(([fp, st]) => (
-                <ChangeFileRow
-                  key={fp}
-                  filePath={fp}
-                  status={st}
-                  rootPrefix={prefix}
-                  onFileClick={onFileClick}
-                  onFileDoubleClick={onFileDoubleClick}
-                  onAction={onStageFile}
-                  actionIcon="+"
-                  actionTooltip="Stage"
-                />
-              ))}
+              )}
             </div>
-          )}
+            {unstagedOpen && repo.unstaged.map(([fp, st]) => (
+              <ChangeFileRow
+                key={fp}
+                filePath={fp}
+                status={st}
+                rootPrefix={prefix}
+                onFileClick={onFileClick}
+                onFileDoubleClick={onFileDoubleClick}
+                onAction={onStageFile}
+                actionIcon="+"
+                actionTooltip="Stage"
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -405,26 +405,22 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
       {repos.map((repo) => (
         singleRepo ? (
           <div key={repo.rootPath || '__other'} className="sc-single-repo">
-            {repo.staged.length > 0 && (
-              <StagedSection
-                files={repo.staged}
-                rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
-                onFileClick={onFileClick}
-                onFileDoubleClick={onFileDoubleClick}
-                onUnstageFile={onUnstageFile}
-                onUnstageAll={() => onUnstageAll(repo.rootPath || undefined)}
-              />
-            )}
-            {repo.unstaged.length > 0 && (
-              <UnstagedSection
-                files={repo.unstaged}
-                rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
-                onFileClick={onFileClick}
-                onFileDoubleClick={onFileDoubleClick}
-                onStageFile={onStageFile}
-                onStageAll={() => onStageAll(repo.rootPath || undefined)}
-              />
-            )}
+            <StagedSection
+              files={repo.staged}
+              rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
+              onFileClick={onFileClick}
+              onFileDoubleClick={onFileDoubleClick}
+              onUnstageFile={onUnstageFile}
+              onUnstageAll={() => onUnstageAll(repo.rootPath || undefined)}
+            />
+            <UnstagedSection
+              files={repo.unstaged}
+              rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
+              onFileClick={onFileClick}
+              onFileDoubleClick={onFileDoubleClick}
+              onStageFile={onStageFile}
+              onStageAll={() => onStageAll(repo.rootPath || undefined)}
+            />
           </div>
         ) : (
           <RepoSection
@@ -458,14 +454,16 @@ function StagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, onUn
         <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
         <span className="sc-category-title">Staged Changes</span>
         <span className="explorer-changes-count">{files.length}</span>
-        <button
-          className="explorer-changes-section-action"
-          data-tooltip="Unstage All"
-          data-tooltip-pos="left"
-          onClick={(e) => { e.stopPropagation(); onUnstageAll(); }}
-        >
-          −
-        </button>
+        {files.length > 0 && (
+          <button
+            className="explorer-changes-section-action"
+            data-tooltip="Unstage All"
+            data-tooltip-pos="left"
+            onClick={(e) => { e.stopPropagation(); onUnstageAll(); }}
+          >
+            −
+          </button>
+        )}
       </div>
       {isOpen && files.map(([fp, st]) => (
         <ChangeFileRow key={fp} filePath={fp} status={st} rootPrefix={rootPrefix}
@@ -491,14 +489,16 @@ function UnstagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, on
         <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
         <span className="sc-category-title">Changes</span>
         <span className="explorer-changes-count">{files.length}</span>
-        <button
-          className="explorer-changes-section-action"
-          data-tooltip="Stage All"
-          data-tooltip-pos="left"
-          onClick={(e) => { e.stopPropagation(); onStageAll(); }}
-        >
-          +
-        </button>
+        {files.length > 0 && (
+          <button
+            className="explorer-changes-section-action"
+            data-tooltip="Stage All"
+            data-tooltip-pos="left"
+            onClick={(e) => { e.stopPropagation(); onStageAll(); }}
+          >
+            +
+          </button>
+        )}
       </div>
       {isOpen && files.map(([fp, st]) => (
         <ChangeFileRow key={fp} filePath={fp} status={st} rootPrefix={rootPrefix}

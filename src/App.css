@@ -873,15 +873,6 @@ body {
   min-width: 0;
 }
 
-.explorer-change-badge {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 600;
-  opacity: 0.8;
-  flex-shrink: 0;
-  padding-right: 2px;
-}
-
 .explorer-change-action {
   display: none;
   align-items: center;
@@ -898,7 +889,7 @@ body {
   cursor: pointer;
   flex-shrink: 0;
   line-height: 1;
-  margin-left: 4px;
+  margin-left: auto;
   transition: color 0.1s, background 0.1s;
 }
 
@@ -906,9 +897,23 @@ body {
   display: flex;
 }
 
+.explorer-change-item:hover .explorer-change-action + .explorer-change-badge {
+  margin-left: 0;
+}
+
 .explorer-change-action:hover {
   color: var(--fg);
   background: var(--bg-tertiary);
+}
+
+.explorer-change-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.8;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: right;
 }
 
 .explorer-changes-section-action {

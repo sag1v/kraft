@@ -129,6 +129,17 @@ const api = {
   unwatchDirectory: (dirPath: string): void => {
     ipcRenderer.send('unwatch-directory', dirPath);
   },
+  watchGitRepo: (repoRoot: string): void => {
+    ipcRenderer.send('watch-git-repo', repoRoot);
+  },
+  unwatchGitRepo: (repoRoot: string): void => {
+    ipcRenderer.send('unwatch-git-repo', repoRoot);
+  },
+  onGitChanged: (callback: (repoRoot: string) => void): (() => void) => {
+    const handler = (_event: any, repoRoot: string) => callback(repoRoot);
+    ipcRenderer.on('git-changed', handler);
+    return () => ipcRenderer.removeListener('git-changed', handler);
+  },
   onDirectoryChanged: (
     callback: (dirPath: string, eventType: string, filename: string | null) => void
   ): (() => void) => {
