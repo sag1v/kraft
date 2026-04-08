@@ -38,6 +38,7 @@ function AppInner() {
     root.style.setProperty('--fg-dim', c.fgDim);
     root.style.setProperty('--accent', c.accent);
     root.style.setProperty('--accent-secondary', c.accentSecondary);
+    root.style.setProperty('--accent-tertiary', c.accentTertiary);
     root.style.setProperty('--border', c.border);
     root.style.setProperty('--selection', c.selection);
     root.style.setProperty('--scrollbar', c.scrollbar);

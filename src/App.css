@@ -25,8 +25,9 @@
   --fg: #e8eaf0;
   --fg-muted: #9da0a8;
   --fg-dim: #5c6370;
-  --accent: #6c9ced;
+  --accent: #73e07a;
   --accent-secondary: #da7fcb;
+  --accent-tertiary: #6c9ced;
   --border: #393b40;
   --selection: #2d4f67;
   --scrollbar: #393b40;
@@ -407,7 +408,7 @@ body {
 }
 
 .panel-icon.explorer-icon {
-  color: var(--accent);
+  color: var(--accent-tertiary);
 }
 
 .panel-icon.viewer-icon {
@@ -630,7 +631,7 @@ body {
 
 .explorer-prompt-text {
   color: var(--fg-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .explorer-load-btn {
@@ -1177,7 +1178,9 @@ body {
   justify-content: center;
   height: 100%;
   color: var(--fg-muted);
-  gap: 8px;
+  font-size: 13px;
+  gap: 12px;
+  padding: 24px 16px;
 }
 
 .viewer-empty-icon {

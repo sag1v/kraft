@@ -821,6 +821,7 @@ export function Explorer() {
         </div>
         <div className="panel-body explorer-tree">
           <div className="explorer-prompt">
+            <div className="viewer-empty-icon">~</div>
             <div className="explorer-prompt-text">
               No folder loaded
             </div>

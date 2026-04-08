@@ -73,6 +73,7 @@ export interface Theme {
     fgDim: string;
     accent: string;
     accentSecondary: string;
+    accentTertiary: string;
     border: string;
     selection: string;
     scrollbar: string;

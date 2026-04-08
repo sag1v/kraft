@@ -61,7 +61,7 @@ app.whenReady().then(async () => {
 
           ctx.beginPath();
           ctx.roundRect(pad, pad, icon, icon, r);
-          ctx.fillStyle = '#1e1f22';
+          ctx.fillStyle = '#2b2d30';
           ctx.fill();
 
           ctx.fillStyle = '#73e07a';
