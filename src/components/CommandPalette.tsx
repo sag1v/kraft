@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
+import { shortcutLabel } from '../shortcuts';
 
 type CommandDef = {
   id: string;
@@ -10,11 +11,8 @@ type CommandDef = {
   run: () => void;
 };
 
-const IS_MAC = navigator.platform.startsWith('Mac');
-const MOD = IS_MAC ? '⌘' : 'Ctrl';
-
 export function CommandPalette() {
-  const { setSettingsOpen, setThemeId, setOpenFilePath, homeDir, setPanelVisibility } = useUIContext();
+  const { setSettingsOpen, setThemeId, setOpenFilePath, homeDir, panelVisibility, setPanelVisibility } = useUIContext();
   const { explorerRoot, cwd } = useSessionContext();
 
   const commands = useMemo<CommandDef[]>(
@@ -23,20 +21,21 @@ export function CommandPalette() {
         id: 'reload-window',
         category: 'Developer',
         label: 'Reload Window',
+        shortcut: shortcutLabel('reload-window'),
         run: () => window.api?.reloadWindow?.(),
       },
       {
         id: 'devtools',
         category: 'Developer',
         label: 'Toggle Developer Tools',
-        shortcut: `${MOD}+Alt+I`,
+        shortcut: shortcutLabel('toggle-devtools'),
         run: () => window.api?.toggleDevTools?.(),
       },
       {
         id: 'settings',
         category: 'Preferences',
         label: 'Open Settings',
-        shortcut: `${MOD}+,`,
+        shortcut: shortcutLabel('open-settings'),
         run: () => setSettingsOpen(true),
       },
       {
@@ -67,22 +66,25 @@ export function CommandPalette() {
         id: 'toggle-explorer',
         category: 'View',
         label: 'Toggle Explorer',
-        run: () => setPanelVisibility('explorer', true),
+        shortcut: shortcutLabel('toggle-explorer'),
+        run: () => setPanelVisibility('explorer', !panelVisibility.explorer),
       },
       {
         id: 'toggle-viewer',
         category: 'View',
         label: 'Toggle Viewer',
-        run: () => setPanelVisibility('viewer', true),
+        shortcut: shortcutLabel('toggle-viewer'),
+        run: () => setPanelVisibility('viewer', !panelVisibility.viewer),
       },
       {
         id: 'toggle-terminal',
         category: 'View',
         label: 'Toggle Terminal',
-        run: () => setPanelVisibility('terminal', true),
+        shortcut: shortcutLabel('toggle-terminal'),
+        run: () => setPanelVisibility('terminal', !panelVisibility.terminal),
       },
     ],
-    [setSettingsOpen, setThemeId, setPanelVisibility]
+    [setSettingsOpen, setThemeId, panelVisibility, setPanelVisibility]
   );
 
   const [open, setOpen] = useState(false);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUIContext } from '../context/AppContext';
 import { themes } from '../themes';
 import type { LayoutPreset, PanelId } from '../types';
+import { SHORTCUTS, SHORTCUT_CATEGORIES, MOD_KEY } from '../shortcuts';
 
 const shells = [
   { value: '', label: 'System Default' },
@@ -136,7 +137,7 @@ function ZoomControl() {
         <button
           className="settings-font-btn"
           onClick={() => changeZoom(-0.5)}
-          data-tooltip="Zoom out (Cmd -)"
+          data-tooltip={`Zoom out (${MOD_KEY}+-)`}
           data-tooltip-pos="bottom"
         >
           −
@@ -145,7 +146,7 @@ function ZoomControl() {
           className="settings-font-value"
           onClick={resetZoom}
           style={{ cursor: 'pointer' }}
-          data-tooltip="Reset to 100%"
+          data-tooltip={`Reset to 100% (${MOD_KEY}+0)`}
           data-tooltip-pos="bottom"
         >
           {percent}%
@@ -153,13 +154,13 @@ function ZoomControl() {
         <button
           className="settings-font-btn"
           onClick={() => changeZoom(0.5)}
-          data-tooltip="Zoom in (Cmd +)"
+          data-tooltip={`Zoom in (${MOD_KEY}++)`}
           data-tooltip-pos="bottom"
         >
           +
         </button>
       </div>
-      <span className="settings-hint">Or use {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+/- keys anywhere</span>
+      <span className="settings-hint">Or use {MOD_KEY}+/- keys anywhere</span>
     </div>
   );
 }
@@ -306,6 +307,30 @@ export function Settings() {
             </div>
           </div>
           <ZoomControl />
+          <div className="settings-group">
+            <label className="settings-label">Keyboard Shortcuts</label>
+            <div className="settings-shortcuts">
+              {SHORTCUT_CATEGORIES.map(category => {
+                const items = SHORTCUTS.filter(s => s.category === category);
+                if (items.length === 0) return null;
+                return (
+                  <div key={category} className="settings-shortcuts-category">
+                    <div className="settings-shortcuts-category-title">{category}</div>
+                    {items.map(s => (
+                      <div key={s.id} className="settings-shortcut-row">
+                        <span className="settings-shortcut-label">{s.label}</span>
+                        <span className="settings-shortcut-keys">
+                          {s.keys.split('+').map((key, i) => (
+                            <kbd key={i} className="settings-shortcut-kbd">{key}</kbd>
+                          ))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
       {reallyStep > 0 && (

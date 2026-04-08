@@ -1,6 +1,7 @@
 import React from 'react';
 import { useUIContext } from '../context/AppContext';
 import { IconButton } from './IconButton';
+import { tooltipWithShortcut } from '../shortcuts';
 
 export function TopBar() {
   const { theme, setSettingsOpen } = useUIContext();
@@ -15,7 +16,7 @@ export function TopBar() {
       <div className="topbar-right" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <IconButton
           className="topbar-settings-btn"
-          tooltip="Settings (Ctrl+,)"
+          tooltip={tooltipWithShortcut('Settings', 'open-settings')}
           tooltipPos="bottom"
           onClick={() => setSettingsOpen(true)}
         >

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { PanelMinimizeButton } from './IconButton';
+import { tooltipWithShortcut } from '../shortcuts';
 import { FileIcon } from './FileIcon';
 import { TabBar, type TabItem } from './TabBar';
 import { DiffView } from './DiffView';
@@ -265,7 +266,7 @@ export function Viewer() {
             Diff
           </button>
         )}
-        <PanelMinimizeButton onMinimize={() => setPanelVisibility('viewer', false)} />
+        <PanelMinimizeButton onMinimize={() => setPanelVisibility('viewer', false)} tooltip={tooltipWithShortcut('Hide Viewer', 'toggle-viewer')} />
       </div>
       {tabContextMenu && openFiles.length > 0 && (
         <div

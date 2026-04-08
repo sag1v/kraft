@@ -5,6 +5,7 @@ import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
 import { shortenPath, normPath, isPathWithinRoot } from '../utils';
 import type { DirEntry, GitFileStatus, AgentContextDir } from '../types';
+import { tooltipWithShortcut } from '../shortcuts';
 
 const STATUS_COLOR_VAR: Record<string, string> = {
   modified: 'var(--git-modified)',
@@ -645,7 +646,7 @@ export function Explorer() {
       <div className="panel explorer-panel">
         <div className="panel-header">
           <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
-          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} />
+          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
         </div>
         <div className="panel-body explorer-tree">
           <div className="explorer-prompt">
@@ -699,7 +700,7 @@ export function Explorer() {
           >
             ⟳
           </IconButton>
-          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} />
+          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
         </div>
       </div>
       {explorerOutOfSync && (

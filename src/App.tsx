@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import { AppProvider, useUIContext } from './context/AppContext';
 import { TopBar } from './components/TopBar';
 import { Footer } from './components/Footer';
@@ -8,7 +8,24 @@ import { CommandPalette } from './components/CommandPalette';
 import { GlobalTooltip } from './components/GlobalTooltip';
 
 function AppInner() {
-  const { theme, setSettingsOpen, settingsLoaded } = useUIContext();
+  const {
+    theme,
+    setSettingsOpen,
+    settingsLoaded,
+    panelVisibility,
+    setPanelVisibility,
+    openFilePath,
+    openFiles,
+    closeFileTab,
+    setActiveFileTab,
+  } = useUIContext();
+
+  const panelVisRef = useRef(panelVisibility);
+  panelVisRef.current = panelVisibility;
+  const openFilePathRef = useRef(openFilePath);
+  openFilePathRef.current = openFilePath;
+  const openFilesRef = useRef(openFiles);
+  openFilesRef.current = openFiles;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -37,12 +54,72 @@ function AppInner() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+
+      if (e.key === ',') {
         e.preventDefault();
         setSettingsOpen(true);
+        return;
+      }
+
+      if (e.key === 'b' || e.key === 'B') {
+        if (e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        setPanelVisibility('explorer', !panelVisRef.current.explorer);
+        return;
+      }
+
+      if (e.key === 'j' || e.key === 'J') {
+        if (e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        setPanelVisibility('terminal', !panelVisRef.current.terminal);
+        return;
+      }
+
+      if (e.key === '\\') {
+        if (e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        setPanelVisibility('viewer', !panelVisRef.current.viewer);
+        return;
+      }
+
+      if ((e.key === 'w' || e.key === 'W') && !e.shiftKey) {
+        e.preventDefault();
+        const fp = openFilePathRef.current;
+        if (fp) closeFileTab(fp);
+        return;
+      }
+
+      if (e.shiftKey && (e.key === '[' || e.key === '{')) {
+        e.preventDefault();
+        const files = openFilesRef.current;
+        const active = openFilePathRef.current;
+        if (files.length < 2 || !active) return;
+        const idx = files.indexOf(active);
+        const prev = (idx - 1 + files.length) % files.length;
+        setActiveFileTab(files[prev]);
+        return;
+      }
+
+      if (e.shiftKey && (e.key === ']' || e.key === '}')) {
+        e.preventDefault();
+        const files = openFilesRef.current;
+        const active = openFilePathRef.current;
+        if (files.length < 2 || !active) return;
+        const idx = files.indexOf(active);
+        const next = (idx + 1) % files.length;
+        setActiveFileTab(files[next]);
+        return;
+      }
+
+      if (e.shiftKey && (e.key === 'r' || e.key === 'R') && !e.altKey) {
+        e.preventDefault();
+        window.api?.reloadWindow?.();
+        return;
       }
     },
-    [setSettingsOpen]
+    [setSettingsOpen, setPanelVisibility, closeFileTab, setActiveFileTab]
   );
 
   useEffect(() => {

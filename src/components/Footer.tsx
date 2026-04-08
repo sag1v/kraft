@@ -1,6 +1,7 @@
 import React from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { shortenPath } from '../utils';
+import { shortcutLabel } from '../shortcuts';
 
 export function Footer() {
   const { homeDir, theme } = useUIContext();
@@ -34,7 +35,7 @@ export function Footer() {
         <span className="footer-path" data-tooltip="Current working directory">{displayPath}</span>
       </div>
       <div className="footer-right">
-        <span className="footer-hint" data-tooltip="Open settings" data-tooltip-pos="left">Ctrl+, settings</span>
+        <span className="footer-hint" data-tooltip="Open settings" data-tooltip-pos="left">{shortcutLabel('open-settings')} settings</span>
       </div>
     </div>
   );

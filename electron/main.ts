@@ -239,8 +239,6 @@ function createWindow() {
         { role: 'minimize' },
         { role: 'zoom' },
         { role: 'togglefullscreen' },
-        { type: 'separator' },
-        { role: 'close' },
       ],
     },
   ]);

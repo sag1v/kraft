@@ -1738,6 +1738,70 @@ body {
   color: var(--bg);
 }
 
+/* ── Keyboard shortcuts in settings ── */
+
+.settings-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-shortcuts-category {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.settings-shortcuts-category-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  padding: 0 0 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.settings-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 4px;
+  border-radius: 4px;
+}
+
+.settings-shortcut-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.settings-shortcut-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.settings-shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.settings-shortcut-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-muted);
+  line-height: 1;
+}
+
 /* ── Selection ── */
 
 ::selection {

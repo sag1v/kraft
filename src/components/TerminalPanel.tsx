@@ -4,6 +4,7 @@ import { TerminalInstance } from './TerminalInstance';
 import { IconButton, PanelMinimizeButton } from './IconButton';
 import { TabBar, type TabItem, type TabBarHandle } from './TabBar';
 import { TerminalTabIcon, TERMINAL_ICONS, TAB_COLORS } from '../terminalIcons';
+import { tooltipWithShortcut } from '../shortcuts';
 
 let tabCounter = 0;
 
@@ -194,7 +195,7 @@ export function TerminalPanel() {
           trailing={
             <IconButton
               className="terminal-tab-add"
-              tooltip="New terminal session (Ctrl+Shift+T)"
+              tooltip={tooltipWithShortcut('New terminal', 'new-terminal')}
               tooltipPos="bottom"
               onClick={() => createTabRef.current()}
             >
@@ -202,7 +203,7 @@ export function TerminalPanel() {
             </IconButton>
           }
         />
-        <PanelMinimizeButton onMinimize={() => setPanelVisibility('terminal', false)} />
+        <PanelMinimizeButton onMinimize={() => setPanelVisibility('terminal', false)} tooltip={tooltipWithShortcut('Hide Terminal', 'toggle-terminal')} />
       </div>
       {tabContextMenu && (
         <div
