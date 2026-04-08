@@ -1654,6 +1654,90 @@ body {
   color: var(--fg);
 }
 
+/* ── Really?! confirm modal ── */
+
+.really-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: really-fade-in 0.15s ease-out;
+}
+
+@keyframes really-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes really-pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.really-confirm-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 36px 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-width: 280px;
+  animation: really-pop-in 0.18s ease-out;
+}
+
+.really-confirm-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+}
+
+.really-confirm-subtitle {
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.really-confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.really-confirm-btn {
+  padding: 6px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.really-confirm-btn:hover {
+  border-color: var(--fg-muted);
+  color: var(--fg);
+}
+
+.really-confirm-yes {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+.really-confirm-yes:hover {
+  filter: brightness(1.15);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
 /* ── Selection ── */
 
 ::selection {

@@ -549,8 +549,8 @@ export function PanelLayout() {
   rowHeightsRef.current = rowHeights;
   colWidthsRef.current = colWidths;
 
-  const layoutAllowsExplorer = layout !== 'editor-focus';
-  const layoutAllowsViewer = layout !== 'terminal-focus';
+  const layoutAllowsExplorer = layout !== 'get-shit-done';
+  const layoutAllowsViewer = layout !== 'get-shit-done';
 
   const showExplorer = layoutAllowsExplorer && panelVisibility.explorer;
   const showViewer = layoutAllowsViewer && panelVisibility.viewer;

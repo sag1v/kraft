@@ -105,11 +105,10 @@ export interface Theme {
 }
 
 export type LayoutPreset =
-  | 'standard'
-  | 'terminal-focus'
-  | 'split'
-  | 'stacked'
-  | 'editor-focus'
+  | 'get-shit-done'
+  | 'watch-shit-done'
+  | 'why'
+  | 'really'
   | 'custom';
 
 export type PanelId = 'explorer' | 'viewer' | 'terminal';

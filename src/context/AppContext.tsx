@@ -3,20 +3,23 @@ import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, Terminal
 import { getThemeById, kraftDark } from '../themes';
 import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
 
-const STANDARD_LAYOUT: PanelId[][] = [['explorer', 'viewer', 'terminal']];
-const SPLIT_LAYOUT: PanelId[][] = [['explorer', 'viewer'], ['terminal', 'terminal']];
-const STACKED_LAYOUT: PanelId[][] = [['explorer'], ['viewer'], ['terminal']];
+const GET_SHIT_DONE_LAYOUT: PanelId[][] = [['terminal']];
+const WATCH_SHIT_DONE_LAYOUT: PanelId[][] = [['explorer', 'terminal'], ['explorer', 'viewer']];
+const WHY_LAYOUT: PanelId[][] = [['explorer', 'viewer', 'terminal']];
+const REALLY_LAYOUT: PanelId[][] = [['explorer'], ['viewer'], ['terminal']];
+const MY_LAYOUT_DEFAULT: PanelId[][] = [['explorer', 'terminal'], ['viewer', 'terminal']];
 
 const ALL_PANELS: PanelId[] = ['explorer', 'viewer', 'terminal'];
 
 const PRESET_LAYOUTS: Partial<Record<LayoutPreset, PanelId[][]>> = {
-  standard: STANDARD_LAYOUT,
-  split: SPLIT_LAYOUT,
-  stacked: STACKED_LAYOUT,
+  'get-shit-done': GET_SHIT_DONE_LAYOUT,
+  'watch-shit-done': WATCH_SHIT_DONE_LAYOUT,
+  'why': WHY_LAYOUT,
+  'really': REALLY_LAYOUT,
 };
 
 function normalizePanelLayout(raw: unknown): PanelId[][] {
-  if (!Array.isArray(raw) || raw.length === 0) return STANDARD_LAYOUT.map(r => [...r]);
+  if (!Array.isArray(raw) || raw.length === 0) return WATCH_SHIT_DONE_LAYOUT.map(r => [...r]);
 
   const validIds = new Set<string>(ALL_PANELS);
   const result: PanelId[][] = [];
@@ -28,7 +31,7 @@ function normalizePanelLayout(raw: unknown): PanelId[][] {
     }
     if (validRow.length > 0) result.push(validRow);
   }
-  if (result.length === 0) return STANDARD_LAYOUT.map(r => [...r]);
+  if (result.length === 0) return WATCH_SHIT_DONE_LAYOUT.map(r => [...r]);
 
   const maxCols = Math.max(...result.map(r => r.length));
   for (const row of result) {
@@ -53,9 +56,10 @@ function panelLayoutsEqual(a: PanelId[][], b: PanelId[][]): boolean {
 }
 
 function layoutToPreset(layout: PanelId[][]): LayoutPreset {
-  if (panelLayoutsEqual(layout, STANDARD_LAYOUT)) return 'standard';
-  if (panelLayoutsEqual(layout, SPLIT_LAYOUT)) return 'split';
-  if (panelLayoutsEqual(layout, STACKED_LAYOUT)) return 'stacked';
+  if (panelLayoutsEqual(layout, GET_SHIT_DONE_LAYOUT)) return 'get-shit-done';
+  if (panelLayoutsEqual(layout, WATCH_SHIT_DONE_LAYOUT)) return 'watch-shit-done';
+  if (panelLayoutsEqual(layout, WHY_LAYOUT)) return 'why';
+  if (panelLayoutsEqual(layout, REALLY_LAYOUT)) return 'really';
   return 'custom';
 }
 
@@ -110,8 +114,8 @@ interface SessionContextValue {
 
 const defaultSettings: AppSettings = {
   shellOverride: null,
-  defaultLayout: 'standard',
-  panelLayout: STANDARD_LAYOUT.map(r => [...r]),
+  defaultLayout: 'watch-shit-done',
+  panelLayout: WATCH_SHIT_DONE_LAYOUT.map(r => [...r]),
   savedCustomLayout: null,
   fontSize: 14,
   theme: 'kraft-dark',
@@ -130,7 +134,7 @@ function normPath(p: string) {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [theme, setTheme] = useState<Theme>(kraftDark);
-  const [layout, setLayoutState] = useState<LayoutPreset>('standard');
+  const [layout, setLayoutState] = useState<LayoutPreset>('watch-shit-done');
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [explorerRoots, setExplorerRoots] = useState<Record<string, string | null>>({});
@@ -192,10 +196,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!merged.panelLayout && (saved as any).panelOrder) {
             merged.panelLayout = [(saved as any).panelOrder as PanelId[]];
           }
-          // Migrate old 'stacked' -> 'split'
-          if ((merged.defaultLayout as string) === 'stacked' && merged.panelLayout &&
-              merged.panelLayout.length === 2 && merged.panelLayout[0].length === 2) {
-            merged.defaultLayout = 'split';
+          // Migrate old preset names to new ones
+          const legacyPreset = merged.defaultLayout as string;
+          if (!['get-shit-done', 'watch-shit-done', 'why', 'really', 'custom'].includes(legacyPreset)) {
+            if (legacyPreset === 'terminal-focus') {
+              merged.defaultLayout = 'get-shit-done';
+              merged.panelLayout = GET_SHIT_DONE_LAYOUT.map(r => [...r]);
+            } else {
+              merged.defaultLayout = 'watch-shit-done';
+              merged.panelLayout = WATCH_SHIT_DONE_LAYOUT.map(r => [...r]);
+            }
           }
           merged.panelLayout = normalizePanelLayout(merged.panelLayout);
           setSettings(merged);
@@ -579,7 +589,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (prev.savedCustomLayout) {
             next = { ...next, panelLayout: prev.savedCustomLayout.map(r => [...r]) };
           } else {
-            next = { ...next, savedCustomLayout: prev.panelLayout.map(r => [...r]) };
+            const initial = MY_LAYOUT_DEFAULT.map(r => [...r]);
+            next = { ...next, panelLayout: initial, savedCustomLayout: initial.map(r => [...r]) };
           }
         }
       }

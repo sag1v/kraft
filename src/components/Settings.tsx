@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useUIContext } from '../context/AppContext';
 import { themes } from '../themes';
 import type { LayoutPreset, PanelId } from '../types';
@@ -11,11 +11,10 @@ const shells = [
 ];
 
 const layouts: { value: LayoutPreset; label: string }[] = [
-  { value: 'standard', label: 'Standard' },
-  { value: 'split', label: 'Split' },
-  { value: 'stacked', label: 'Stacked' },
-  { value: 'terminal-focus', label: 'Terminal Focus' },
-  { value: 'editor-focus', label: 'Editor Focus' },
+  { value: 'get-shit-done', label: 'Get Sh*t Done' },
+  { value: 'watch-shit-done', label: 'Watch Sh*t Done' },
+  { value: 'why', label: 'Why Though?' },
+  { value: 'really', label: 'Really?!' },
 ];
 
 function renderGridPreview(grid: PanelId[][]): React.ReactNode {
@@ -47,45 +46,91 @@ function renderGridPreview(grid: PanelId[][]): React.ReactNode {
 }
 
 const PRESET_GRIDS: Record<string, PanelId[][]> = {
-  standard: [['explorer', 'viewer', 'terminal']],
-  split: [['explorer', 'viewer'], ['terminal', 'terminal']],
-  stacked: [['explorer'], ['viewer'], ['terminal']],
-  'terminal-focus': [['terminal' as PanelId]],
-  'editor-focus': [['viewer', 'terminal']],
+  'get-shit-done': [['terminal' as PanelId]],
+  'watch-shit-done': [['explorer', 'terminal'], ['explorer', 'viewer']],
+  'why': [['explorer', 'viewer', 'terminal']],
+  'really': [['explorer'], ['viewer'], ['terminal']],
 };
+
+const MY_LAYOUT_DEFAULT_GRID: PanelId[][] = [['explorer', 'terminal'], ['viewer', 'terminal']];
 
 function renderLayoutPreview(preset: LayoutPreset, savedCustom?: PanelId[][] | null): React.ReactNode {
   if (preset === 'custom') {
-    if (savedCustom && savedCustom.length > 0) {
-      return renderGridPreview(savedCustom);
-    }
-    return (
-      <div className="settings-layout-preview-custom">
-        <span className="settings-layout-preview-placeholder">?</span>
-      </div>
-    );
+    const grid = (savedCustom && savedCustom.length > 0) ? savedCustom : MY_LAYOUT_DEFAULT_GRID;
+    return renderGridPreview(grid);
   }
   const grid = PRESET_GRIDS[preset];
   if (grid) return renderGridPreview(grid);
   return null;
 }
 
+function ReallyConfirmModal({ step, onConfirm, onCancel }: {
+  step: 1 | 2;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="really-confirm-overlay" onClick={onCancel}>
+      <div className="really-confirm-modal" onClick={(e) => e.stopPropagation()}>
+        <span className="really-confirm-title">
+          {step === 1 ? 'Are you sure?' : 'Really?!'}
+        </span>
+        <span className="really-confirm-subtitle">
+          {step === 1
+            ? 'You want to stack all panels vertically?'
+            : "Don't say we didn't warn you."}
+        </span>
+        <div className="really-confirm-actions">
+          <button className="really-confirm-btn really-confirm-cancel" onClick={onCancel}>
+            Nah
+          </button>
+          <button className="really-confirm-btn really-confirm-yes" onClick={onConfirm}>
+            {step === 1 ? 'Yeah' : 'Just do it'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Settings() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, theme, setThemeId } = useUIContext();
+  const [reallyStep, setReallyStep] = useState<0 | 1 | 2>(0);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && settingsOpen) {
-        setSettingsOpen(false);
+      if (e.key === 'Escape') {
+        if (reallyStep > 0) {
+          setReallyStep(0);
+        } else if (settingsOpen) {
+          setSettingsOpen(false);
+        }
       }
     },
-    [settingsOpen, setSettingsOpen]
+    [settingsOpen, setSettingsOpen, reallyStep]
   );
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  const handleLayoutClick = useCallback((preset: LayoutPreset) => {
+    if (preset === 'really') {
+      setReallyStep(1);
+      return;
+    }
+    updateSettings({ defaultLayout: preset });
+  }, [updateSettings]);
+
+  const handleReallyConfirm = useCallback(() => {
+    if (reallyStep === 1) {
+      setReallyStep(2);
+    } else {
+      setReallyStep(0);
+      updateSettings({ defaultLayout: 'really' });
+    }
+  }, [reallyStep, updateSettings]);
 
   if (!settingsOpen) return null;
 
@@ -168,7 +213,7 @@ export function Settings() {
                 <div
                   key={l.value}
                   className={`settings-layout-card ${settings.defaultLayout === l.value ? 'active' : ''}`}
-                  onClick={() => updateSettings({ defaultLayout: l.value })}
+                  onClick={() => handleLayoutClick(l.value)}
                 >
                   <div className="settings-layout-preview">
                     {renderLayoutPreview(l.value, null)}
@@ -185,7 +230,7 @@ export function Settings() {
                 <div className="settings-layout-preview">
                   {renderLayoutPreview('custom', settings.savedCustomLayout)}
                 </div>
-                <span className="settings-layout-name">My Layout</span>
+                <span className="settings-layout-name">¯\_(ツ)_/¯</span>
               </div>
             </div>
           </div>
@@ -213,6 +258,13 @@ export function Settings() {
           </div>
         </div>
       </div>
+      {reallyStep > 0 && (
+        <ReallyConfirmModal
+          step={reallyStep as 1 | 2}
+          onConfirm={handleReallyConfirm}
+          onCancel={() => setReallyStep(0)}
+        />
+      )}
     </div>
   );
 }
