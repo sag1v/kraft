@@ -165,6 +165,9 @@ export interface ElectronAPI {
   watchGitRepo: (repoRoot: string) => void;
   unwatchGitRepo: (repoRoot: string) => void;
   onGitChanged: (callback: (repoRoot: string) => void) => () => void;
+  watchFile: (filePath: string) => void;
+  unwatchFile: (filePath: string) => void;
+  onFileChanged: (callback: (filePath: string) => void) => () => void;
 }
 
 declare global {

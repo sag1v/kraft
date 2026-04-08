@@ -157,6 +157,17 @@ const api = {
     ipcRenderer.on('directory-changed', handler);
     return () => ipcRenderer.removeListener('directory-changed', handler);
   },
+  watchFile: (filePath: string): void => {
+    ipcRenderer.send('watch-file', filePath);
+  },
+  unwatchFile: (filePath: string): void => {
+    ipcRenderer.send('unwatch-file', filePath);
+  },
+  onFileChanged: (callback: (filePath: string) => void): (() => void) => {
+    const handler = (_event: any, filePath: string) => callback(filePath);
+    ipcRenderer.on('file-changed', handler);
+    return () => ipcRenderer.removeListener('file-changed', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

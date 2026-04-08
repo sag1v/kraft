@@ -30,6 +30,7 @@ const DIR_CACHE_TTL = 5000;
 
 const activeWatchers = new Map<string, fs.FSWatcher>();
 const gitWatchers = new Map<string, fs.FSWatcher[]>();
+const fileWatchers = new Map<string, (curr: fs.Stats, prev: fs.Stats) => void>();
 
 function getDefaultShell(): string {
   if (process.platform === 'win32') {
@@ -755,6 +756,25 @@ function setupIPC() {
     }
   });
 
+  ipcMain.on('watch-file', (_event, filePath: string) => {
+    if (fileWatchers.has(filePath)) return;
+    const listener = (curr: fs.Stats, prev: fs.Stats) => {
+      if (curr.mtimeMs !== prev.mtimeMs && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('file-changed', filePath);
+      }
+    };
+    fs.watchFile(filePath, { interval: 500, persistent: false }, listener);
+    fileWatchers.set(filePath, listener);
+  });
+
+  ipcMain.on('unwatch-file', (_event, filePath: string) => {
+    const listener = fileWatchers.get(filePath);
+    if (listener) {
+      fs.unwatchFile(filePath, listener);
+      fileWatchers.delete(filePath);
+    }
+  });
+
   ipcMain.on('watch-git-repo', (_event, repoRoot: string) => {
     if (gitWatchers.has(repoRoot)) return;
     const gitDir = path.join(repoRoot, '.git');
@@ -854,6 +874,10 @@ app.on('window-all-closed', () => {
     for (const w of watchers) w.close();
   }
   gitWatchers.clear();
+  for (const [filePath, listener] of fileWatchers) {
+    fs.unwatchFile(filePath, listener);
+  }
+  fileWatchers.clear();
   app.quit();
 });
 

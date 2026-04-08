@@ -94,7 +94,7 @@ export function Viewer() {
     diffFilePath,
     setDiffFilePath,
   } = useUIContext();
-  const { gitStatus, gitStagedStatus, explorerRoot } = useSessionContext();
+  const { gitStatus, gitStagedStatus } = useSessionContext();
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
@@ -127,9 +127,11 @@ export function Viewer() {
   }, []);
 
   useEffect(() => {
-    if (!explorerRoot || !window.api?.onDirectoryChanged) return;
+    if (!openFilePath || !window.api?.watchFile || !window.api?.onFileChanged) return;
+    window.api.watchFile(openFilePath);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const unsubscribe = window.api.onDirectoryChanged(() => {
+    const unsubscribe = window.api.onFileChanged((changedPath) => {
+      if (changedPath !== openFilePath) return;
       if (debounceTimer !== null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
@@ -138,9 +140,10 @@ export function Viewer() {
     });
     return () => {
       if (debounceTimer !== null) clearTimeout(debounceTimer);
+      window.api.unwatchFile(openFilePath);
       unsubscribe();
     };
-  }, [explorerRoot]);
+  }, [openFilePath]);
 
   useEffect(() => {
     if (!openFilePath) {
@@ -317,7 +320,7 @@ export function Viewer() {
       )}
       <div className="panel-body viewer-body">
         {isDiffMode && openFilePath ? (
-          <DiffView filePath={openFilePath} />
+          <DiffView filePath={openFilePath} version={fileVersion} />
         ) : loading ? (
           <div className="viewer-placeholder">Loading...</div>
         ) : error ? (

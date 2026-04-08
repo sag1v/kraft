@@ -65,9 +65,10 @@ function buildNewFileHunks(content: string): DiffHunk[] {
 
 interface DiffViewProps {
   filePath: string;
+  version: number;
 }
 
-export function DiffView({ filePath }: DiffViewProps) {
+export function DiffView({ filePath, version }: DiffViewProps) {
   const { getRepoRootForFile } = useSessionContext();
   const [hunks, setHunks] = useState<DiffHunk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +102,7 @@ export function DiffView({ filePath }: DiffViewProps) {
     })();
 
     return () => { cancelled = true; };
-  }, [filePath, getRepoRootForFile]);
+  }, [filePath, version, getRepoRootForFile]);
 
   const maxLineNum = useMemo(() => {
     let max = 0;
