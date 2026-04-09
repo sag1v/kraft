@@ -173,6 +173,8 @@ export function Viewer() {
     setPanelVisibility,
     diffFilePath,
     setDiffFilePath,
+    gitErrorViewContent,
+    setGitErrorViewContent,
   } = useUIContext();
   const { gitStatus, gitStagedStatus } = useSessionContext();
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
@@ -527,6 +529,24 @@ export function Viewer() {
           </div>
         ) : null}
       </div>
+      {gitErrorViewContent && (
+        <div className="viewer-git-error-overlay">
+          <div className="viewer-git-error-header">
+            <span className="viewer-git-error-icon">⚠</span>
+            <span className="viewer-git-error-title">Git Error Output</span>
+            <button
+              className="viewer-git-error-close"
+              onClick={() => setGitErrorViewContent(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className="viewer-git-error-body">
+            <pre className="viewer-git-error-pre">{gitErrorViewContent}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

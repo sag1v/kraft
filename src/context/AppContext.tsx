@@ -88,6 +88,10 @@ interface UIContextValue {
   setPanelVisibility: (panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => void;
   diffFilePath: string | null;
   setDiffFilePath: (path: string | null) => void;
+  gitError: string | null;
+  clearGitError: () => void;
+  gitErrorViewContent: string | null;
+  setGitErrorViewContent: (content: string | null) => void;
 }
 
 interface SessionContextValue {
@@ -112,6 +116,12 @@ interface SessionContextValue {
   refreshGitStatus: () => void;
   stageFiles: (filePaths: string[]) => Promise<void>;
   unstageFiles: (filePaths: string[]) => Promise<void>;
+  discardFiles: (filePaths: string[]) => Promise<void>;
+  stashChanges: (repoRoot: string, message?: string, includeUntracked?: boolean) => Promise<void>;
+  stashPop: (repoRoot: string) => Promise<void>;
+  commitStaged: (repoRoot: string, message: string) => Promise<void>;
+  commitAll: (repoRoot: string, message: string) => Promise<void>;
+  undoLastCommit: (repoRoot: string) => Promise<void>;
   agentContextDirs: AgentContextDir[];
 }
 
@@ -159,6 +169,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [gitRepoRoot, setGitRepoRoot] = useState<string | null>(null);
   const [gitRepoRootsMap, setGitRepoRootsMap] = useState<Record<string, string>>({});
   const [diffFilePath, setDiffFilePathState] = useState<string | null>(null);
+  const [gitError, setGitError] = useState<string | null>(null);
+  const [gitErrorViewContent, setGitErrorViewContent] = useState<string | null>(null);
   const [agentContextDirsMap, setAgentContextDirsMap] = useState<Record<string, AgentContextDir[]>>({});
 
   const activeSessionIdRef = useRef(activeSessionId);
@@ -601,6 +613,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   gitRepoRootsMapRef.current = gitRepoRootsMap;
   const gitRepoRootRef = useRef(gitRepoRoot);
   gitRepoRootRef.current = gitRepoRoot;
+  const gitStatusRef = useRef(gitStatus);
+  gitStatusRef.current = gitStatus;
 
   const getRepoRootForFile = useCallback((filePath: string): string | null => {
     const map = gitRepoRootsMapRef.current;
@@ -614,21 +628,66 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return gitRepoRootRef.current;
   }, []);
 
+  const reportGitError = useCallback((result: { success: boolean; error: string | null }) => {
+    if (!result.success && result.error) setGitError(result.error);
+  }, []);
+
   const stageFiles = useCallback(async (filePaths: string[]) => {
     if (!window.api?.gitStage || filePaths.length === 0) return;
     const repoRoot = getRepoRootForFile(filePaths[0]);
     if (!repoRoot) return;
-    await window.api.gitStage(filePaths, repoRoot);
+    reportGitError(await window.api.gitStage(filePaths, repoRoot));
     refreshGitStatus();
-  }, [getRepoRootForFile, refreshGitStatus]);
+  }, [getRepoRootForFile, refreshGitStatus, reportGitError]);
 
   const unstageFiles = useCallback(async (filePaths: string[]) => {
     if (!window.api?.gitUnstage || filePaths.length === 0) return;
     const repoRoot = getRepoRootForFile(filePaths[0]);
     if (!repoRoot) return;
-    await window.api.gitUnstage(filePaths, repoRoot);
+    reportGitError(await window.api.gitUnstage(filePaths, repoRoot));
     refreshGitStatus();
-  }, [getRepoRootForFile, refreshGitStatus]);
+  }, [getRepoRootForFile, refreshGitStatus, reportGitError]);
+
+  const discardFiles = useCallback(async (filePaths: string[]) => {
+    if (!window.api?.gitDiscardChanges || filePaths.length === 0) return;
+    const repoRoot = getRepoRootForFile(filePaths[0]);
+    if (!repoRoot) return;
+    const status = gitStatusRef.current;
+    const tracked = filePaths.filter(fp => status[fp] !== 'untracked');
+    const untracked = filePaths.filter(fp => status[fp] === 'untracked');
+    reportGitError(await window.api.gitDiscardChanges(tracked, untracked, repoRoot));
+    refreshGitStatus();
+  }, [getRepoRootForFile, refreshGitStatus, reportGitError]);
+
+  const stashChanges = useCallback(async (repoRoot: string, message?: string, includeUntracked?: boolean) => {
+    if (!window.api?.gitStash) return;
+    reportGitError(await window.api.gitStash(repoRoot, message, includeUntracked));
+    refreshGitStatus();
+  }, [refreshGitStatus, reportGitError]);
+
+  const stashPop = useCallback(async (repoRoot: string) => {
+    if (!window.api?.gitStashPop) return;
+    reportGitError(await window.api.gitStashPop(repoRoot));
+    refreshGitStatus();
+  }, [refreshGitStatus, reportGitError]);
+
+  const commitStaged = useCallback(async (repoRoot: string, message: string) => {
+    if (!window.api?.gitCommit) return;
+    reportGitError(await window.api.gitCommit(repoRoot, message));
+    refreshGitStatus();
+  }, [refreshGitStatus, reportGitError]);
+
+  const commitAll = useCallback(async (repoRoot: string, message: string) => {
+    if (!window.api?.gitCommitAll) return;
+    reportGitError(await window.api.gitCommitAll(repoRoot, message));
+    refreshGitStatus();
+  }, [refreshGitStatus, reportGitError]);
+
+  const undoLastCommit = useCallback(async (repoRoot: string) => {
+    if (!window.api?.gitUndoCommit) return;
+    reportGitError(await window.api.gitUndoCommit(repoRoot));
+    refreshGitStatus();
+  }, [refreshGitStatus, reportGitError]);
 
   const setDiffFilePath = useCallback((path: string | null) => {
     setDiffFilePathState(path);
@@ -760,7 +819,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPanelVisibility,
     diffFilePath,
     setDiffFilePath,
-  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath,
+    gitError,
+    clearGitError: () => setGitError(null),
+    gitErrorViewContent,
+    setGitErrorViewContent,
+  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath, gitError, gitErrorViewContent,
        setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, closeOtherFileTabs, closeAllFileTabs, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
 
   const sessionValue = useMemo<SessionContextValue>(() => ({
@@ -785,9 +848,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshGitStatus,
     stageFiles,
     unstageFiles,
+    discardFiles,
+    stashChanges,
+    stashPop,
+    commitStaged,
+    commitAll,
+    undoLastCommit,
     agentContextDirs,
   }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitRepoRoot, agentContextDirs,
-       addSession, removeSession, setActiveSession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, getRepoRootForFile]);
+       addSession, removeSession, setActiveSession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
 
   return (
     <UIContext.Provider value={uiValue}>

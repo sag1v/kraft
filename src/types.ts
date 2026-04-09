@@ -1,3 +1,8 @@
+export interface GitResult {
+  success: boolean;
+  error: string | null;
+}
+
 export interface DirEntry {
   name: string;
   path: string;
@@ -142,8 +147,14 @@ export interface ElectronAPI {
   getGitInfo: (dirPath: string) => Promise<GitInfo>;
   getGitStatus: (dirPath: string) => Promise<GitStatusResult>;
   getGitDiff: (filePath: string, repoRoot: string) => Promise<GitDiffResult>;
-  gitStage: (filePaths: string[], repoRoot: string) => Promise<boolean>;
-  gitUnstage: (filePaths: string[], repoRoot: string) => Promise<boolean>;
+  gitStage: (filePaths: string[], repoRoot: string) => Promise<GitResult>;
+  gitUnstage: (filePaths: string[], repoRoot: string) => Promise<GitResult>;
+  gitDiscardChanges: (trackedPaths: string[], untrackedPaths: string[], repoRoot: string) => Promise<GitResult>;
+  gitStash: (repoRoot: string, message?: string, includeUntracked?: boolean) => Promise<GitResult>;
+  gitStashPop: (repoRoot: string) => Promise<GitResult>;
+  gitCommit: (repoRoot: string, message: string) => Promise<GitResult>;
+  gitCommitAll: (repoRoot: string, message: string) => Promise<GitResult>;
+  gitUndoCommit: (repoRoot: string) => Promise<GitResult>;
   createTerminal: (options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => Promise<TerminalInfo>;
   writeTerminal: (id: string, data: string) => void;
   resizeTerminal: (id: string, cols: number, rows: number) => void;

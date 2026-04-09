@@ -188,6 +188,143 @@ interface SourceControlViewProps {
   onUnstageFile: (path: string) => void;
   onStageAll: (repoRoot?: string) => void;
   onUnstageAll: (repoRoot?: string) => void;
+  onDiscardFile: (path: string) => void;
+  onDiscardAll: (repoRoot?: string) => void;
+  onStash: (repoRoot: string, message?: string, includeUntracked?: boolean) => Promise<void>;
+  onStashPop: (repoRoot: string) => Promise<void>;
+  onCommitStaged: (repoRoot: string, message: string) => Promise<void>;
+  onCommitAll: (repoRoot: string, message: string) => Promise<void>;
+  onUndoLastCommit: (repoRoot: string) => Promise<void>;
+}
+
+type GitActionMode = 'commit-staged' | 'commit-all' | 'stash' | 'stash-untracked';
+
+const GIT_ACTION_LABELS: Record<GitActionMode, string> = {
+  'commit-staged': 'Commit Staged',
+  'commit-all': 'Commit All',
+  'stash': 'Stash',
+  'stash-untracked': 'Stash (Include Untracked)',
+};
+
+function GitActionPanel({ repoRoot, mode, onCommitStaged, onCommitAll, onStash, onClose }: {
+  repoRoot: string;
+  mode: GitActionMode;
+  onCommitStaged: (repoRoot: string, message: string) => Promise<void>;
+  onCommitAll: (repoRoot: string, message: string) => Promise<void>;
+  onStash: (repoRoot: string, message?: string, includeUntracked?: boolean) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const run = useCallback(async (fn: () => Promise<void>) => {
+    setLoading(true);
+    try { await fn(); } finally { setLoading(false); onClose(); }
+  }, [onClose]);
+
+  const isCommit = mode === 'commit-staged' || mode === 'commit-all';
+  const canConfirm = isCommit ? message.trim().length > 0 : true;
+  const confirmLabel = isCommit ? 'Commit' : 'Stash';
+
+  const handleConfirm = useCallback(() => {
+    if (!canConfirm || loading) return;
+    if (mode === 'commit-staged') run(() => onCommitStaged(repoRoot, message.trim()));
+    else if (mode === 'commit-all') run(() => onCommitAll(repoRoot, message.trim()));
+    else run(() => onStash(repoRoot, message.trim() || undefined, mode === 'stash-untracked'));
+  }, [canConfirm, loading, mode, message, repoRoot, run, onCommitStaged, onCommitAll, onStash]);
+
+  return (
+    <div className="sc-commit-input">
+      <div className="sc-commit-header">
+        <span className="sc-commit-label">{GIT_ACTION_LABELS[mode]}</span>
+        <button className="sc-commit-close" onClick={onClose} disabled={loading} title="Cancel">×</button>
+      </div>
+      <textarea
+        className="sc-commit-textarea"
+        placeholder={isCommit ? 'Commit message (Ctrl+Enter to confirm)' : 'Stash message (optional, Enter to confirm)'}
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        disabled={loading}
+        rows={isCommit ? 3 : 2}
+        autoFocus
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (isCommit && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            if (canConfirm && !loading) handleConfirm();
+          }
+          if (!isCommit && e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (!loading) handleConfirm();
+          }
+          if (e.key === 'Escape' && !loading) onClose();
+        }}
+      />
+      <div className="sc-commit-actions">
+        <button className="sc-commit-btn" onClick={handleConfirm} disabled={!canConfirm || loading}>
+          {loading ? '···' : confirmLabel}
+        </button>
+        <button className="sc-commit-btn-secondary" onClick={onClose} disabled={loading}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RepoActionsMenu({ repoRoot, onStashPop, onUndoLastCommit, onAction }: {
+  repoRoot: string;
+  onStashPop: (repoRoot: string) => Promise<void>;
+  onUndoLastCommit: (repoRoot: string) => Promise<void>;
+  onAction: (mode: GitActionMode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        if (loading) return;
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open, loading]);
+
+  const run = useCallback(async (fn: () => Promise<void>) => {
+    setLoading(true);
+    try { await fn(); } finally { setLoading(false); setOpen(false); }
+  }, []);
+
+  const trigger = (mode: GitActionMode) => { setOpen(false); onAction(mode); };
+
+  return (
+    <div className="stash-menu-wrap" ref={containerRef} onClick={(e) => e.stopPropagation()}>
+      <button
+        className="sc-stash-btn"
+        data-tooltip="More Actions..."
+        data-tooltip-pos="left"
+        onClick={() => setOpen(prev => !prev)}
+      >
+        ···
+      </button>
+      {open && (
+        <div className="stash-menu">
+          <button className="stash-menu-item" disabled={loading} onClick={() => trigger('commit-staged')}>Commit Staged...</button>
+          <button className="stash-menu-item" disabled={loading} onClick={() => trigger('commit-all')}>Commit All...</button>
+          <button className="stash-menu-item" disabled={loading} onClick={() => run(() => onUndoLastCommit(repoRoot))}>Undo Last Commit</button>
+          <div className="stash-menu-divider" />
+          <button className="stash-menu-item" disabled={loading} onClick={() => trigger('stash')}>Stash...</button>
+          <button className="stash-menu-item" disabled={loading} onClick={() => trigger('stash-untracked')}>Stash (Include Untracked)...</button>
+          <button className="stash-menu-item" disabled={loading} onClick={() => run(() => onStashPop(repoRoot))}>Pop Latest Stash</button>
+          {loading && <div className="stash-menu-loading">Working···</div>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface RepoChanges {
@@ -243,15 +380,19 @@ function buildRepoGroups(
   return Array.from(repoMap.values());
 }
 
-function ChangeFileRow({ filePath, status, rootPrefix, onFileClick, onFileDoubleClick, onAction, actionIcon, actionTooltip }: {
+interface ChangeAction {
+  icon: string;
+  tooltip: string;
+  handler: (path: string) => void;
+}
+
+function ChangeFileRow({ filePath, status, rootPrefix, onFileClick, onFileDoubleClick, actions }: {
   filePath: string;
   status: GitFileStatus;
   rootPrefix: string;
   onFileClick: (path: string) => void;
   onFileDoubleClick: () => void;
-  onAction?: (path: string) => void;
-  actionIcon?: string;
-  actionTooltip?: string;
+  actions?: ChangeAction[];
 }) {
   const name = filePath.split('/').pop() || filePath;
   const relativePath = filePath.startsWith(rootPrefix) ? filePath.slice(rootPrefix.length) : filePath;
@@ -275,22 +416,23 @@ function ChangeFileRow({ filePath, status, rootPrefix, onFileClick, onFileDouble
       <FileIcon name={name} isDirectory={false} />
       <span className="explorer-change-name" style={{ color }}>{name}</span>
       {dir && <span className="explorer-change-dir">{dir}</span>}
-      {onAction && (
+      {actions && actions.map((action, i) => (
         <button
+          key={i}
           className="explorer-change-action"
-          data-tooltip={actionTooltip}
+          data-tooltip={action.tooltip}
           data-tooltip-pos="left"
-          onClick={(e) => { e.stopPropagation(); onAction(filePath); }}
+          onClick={(e) => { e.stopPropagation(); action.handler(filePath); }}
         >
-          {actionIcon}
+          {action.icon}
         </button>
-      )}
+      ))}
       <span className="explorer-change-badge" style={{ color }}>{STATUS_LABEL[status]}</span>
     </div>
   );
 }
 
-function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll, defaultOpen }: {
+function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll, onDiscardFile, onDiscardAll, onStash, onStashPop, onCommitStaged, onCommitAll, onUndoLastCommit, defaultOpen }: {
   repo: RepoChanges;
   onFileClick: (path: string) => void;
   onFileDoubleClick: () => void;
@@ -298,11 +440,19 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
   onUnstageFile: (path: string) => void;
   onStageAll: (repoRoot?: string) => void;
   onUnstageAll: (repoRoot?: string) => void;
+  onDiscardFile: (path: string) => void;
+  onDiscardAll: (repoRoot?: string) => void;
+  onStash: (repoRoot: string, message?: string, includeUntracked?: boolean) => Promise<void>;
+  onStashPop: (repoRoot: string) => Promise<void>;
+  onCommitStaged: (repoRoot: string, message: string) => Promise<void>;
+  onCommitAll: (repoRoot: string, message: string) => Promise<void>;
+  onUndoLastCommit: (repoRoot: string) => Promise<void>;
   defaultOpen?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen ?? true);
   const [stagedOpen, setStagedOpen] = useState(true);
   const [unstagedOpen, setUnstagedOpen] = useState(true);
+  const [actionMode, setActionMode] = useState<GitActionMode | null>(null);
   const totalCount = repo.staged.length + repo.unstaged.length;
   const prefix = repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : '';
 
@@ -312,7 +462,11 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
         <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
         <span className="sc-repo-name">{repo.rootName}</span>
         <span className="explorer-changes-count">{totalCount}</span>
+        <RepoActionsMenu repoRoot={repo.rootPath} onStashPop={onStashPop} onUndoLastCommit={onUndoLastCommit} onAction={setActionMode} />
       </div>
+      {actionMode && (
+        <GitActionPanel repoRoot={repo.rootPath} mode={actionMode} onCommitStaged={onCommitStaged} onCommitAll={onCommitAll} onStash={onStash} onClose={() => setActionMode(null)} />
+      )}
       {isOpen && (
         <div className="sc-repo-body">
           <div className="sc-category">
@@ -339,9 +493,7 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
                 rootPrefix={prefix}
                 onFileClick={onFileClick}
                 onFileDoubleClick={onFileDoubleClick}
-                onAction={onUnstageFile}
-                actionIcon="−"
-                actionTooltip="Unstage"
+                actions={[{ icon: '−', tooltip: 'Unstage', handler: onUnstageFile }]}
               />
             ))}
           </div>
@@ -351,14 +503,24 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
               <span className="sc-category-title">Changes</span>
               <span className="explorer-changes-count">{repo.unstaged.length}</span>
               {repo.unstaged.length > 0 && (
-                <button
-                  className="explorer-changes-section-action"
-                  data-tooltip="Stage All"
-                  data-tooltip-pos="left"
-                  onClick={(e) => { e.stopPropagation(); onStageAll(repo.rootPath || undefined); }}
-                >
-                  +
-                </button>
+                <>
+                  <button
+                    className="explorer-changes-section-action"
+                    data-tooltip="Discard All Changes"
+                    data-tooltip-pos="left"
+                    onClick={(e) => { e.stopPropagation(); onDiscardAll(repo.rootPath || undefined); }}
+                  >
+                    ↺
+                  </button>
+                  <button
+                    className="explorer-changes-section-action"
+                    data-tooltip="Stage All"
+                    data-tooltip-pos="left"
+                    onClick={(e) => { e.stopPropagation(); onStageAll(repo.rootPath || undefined); }}
+                  >
+                    +
+                  </button>
+                </>
               )}
             </div>
             {unstagedOpen && repo.unstaged.map(([fp, st]) => (
@@ -369,9 +531,10 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
                 rootPrefix={prefix}
                 onFileClick={onFileClick}
                 onFileDoubleClick={onFileDoubleClick}
-                onAction={onStageFile}
-                actionIcon="+"
-                actionTooltip="Stage"
+                actions={[
+                  { icon: '↩', tooltip: 'Discard Changes', handler: onDiscardFile },
+                  { icon: '+', tooltip: 'Stage', handler: onStageFile },
+                ]}
               />
             ))}
           </div>
@@ -381,7 +544,7 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
   );
 }
 
-function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll }: SourceControlViewProps) {
+function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll, onDiscardFile, onDiscardAll, onStash, onStashPop, onCommitStaged, onCommitAll, onUndoLastCommit }: SourceControlViewProps) {
   const repos = useMemo(
     () => buildRepoGroups(gitStatus, gitStagedStatus, allRoots),
     [gitStatus, gitStagedStatus, allRoots],
@@ -391,6 +554,8 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
     () => Object.keys(gitStatus).length + Object.keys(gitStagedStatus).length,
     [gitStatus, gitStagedStatus],
   );
+
+  const [singleActionMode, setSingleActionMode] = useState<GitActionMode | null>(null);
 
   if (totalCount === 0) {
     return (
@@ -407,6 +572,13 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
       {repos.map((repo) => (
         singleRepo ? (
           <div key={repo.rootPath || '__other'} className="sc-single-repo">
+            <div className="sc-single-repo-header">
+              <span className="sc-single-repo-name">{repo.rootName}</span>
+              <RepoActionsMenu repoRoot={repo.rootPath} onStashPop={onStashPop} onUndoLastCommit={onUndoLastCommit} onAction={setSingleActionMode} />
+            </div>
+            {singleActionMode && (
+              <GitActionPanel repoRoot={repo.rootPath} mode={singleActionMode} onCommitStaged={onCommitStaged} onCommitAll={onCommitAll} onStash={onStash} onClose={() => setSingleActionMode(null)} />
+            )}
             <StagedSection
               files={repo.staged}
               rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
@@ -422,6 +594,8 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
               onFileDoubleClick={onFileDoubleClick}
               onStageFile={onStageFile}
               onStageAll={() => onStageAll(repo.rootPath || undefined)}
+              onDiscardFile={onDiscardFile}
+              onDiscardAll={() => onDiscardAll(repo.rootPath || undefined)}
             />
           </div>
         ) : (
@@ -434,6 +608,13 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
             onUnstageFile={onUnstageFile}
             onStageAll={onStageAll}
             onUnstageAll={onUnstageAll}
+            onDiscardFile={onDiscardFile}
+            onDiscardAll={onDiscardAll}
+            onStash={onStash}
+            onStashPop={onStashPop}
+            onCommitStaged={onCommitStaged}
+            onCommitAll={onCommitAll}
+            onUndoLastCommit={onUndoLastCommit}
           />
         )
       ))}
@@ -470,19 +651,21 @@ function StagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, onUn
       {isOpen && files.map(([fp, st]) => (
         <ChangeFileRow key={fp} filePath={fp} status={st} rootPrefix={rootPrefix}
           onFileClick={onFileClick} onFileDoubleClick={onFileDoubleClick}
-          onAction={onUnstageFile} actionIcon="−" actionTooltip="Unstage" />
+          actions={[{ icon: '−', tooltip: 'Unstage', handler: onUnstageFile }]} />
       ))}
     </div>
   );
 }
 
-function UnstagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, onStageFile, onStageAll }: {
+function UnstagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, onStageFile, onStageAll, onDiscardFile, onDiscardAll }: {
   files: [string, GitFileStatus][];
   rootPrefix: string;
   onFileClick: (path: string) => void;
   onFileDoubleClick: () => void;
   onStageFile: (path: string) => void;
   onStageAll: () => void;
+  onDiscardFile: (path: string) => void;
+  onDiscardAll: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(true);
   return (
@@ -492,20 +675,33 @@ function UnstagedSection({ files, rootPrefix, onFileClick, onFileDoubleClick, on
         <span className="sc-category-title">Changes</span>
         <span className="explorer-changes-count">{files.length}</span>
         {files.length > 0 && (
-          <button
-            className="explorer-changes-section-action"
-            data-tooltip="Stage All"
-            data-tooltip-pos="left"
-            onClick={(e) => { e.stopPropagation(); onStageAll(); }}
-          >
-            +
-          </button>
+          <>
+            <button
+              className="explorer-changes-section-action"
+              data-tooltip="Discard All Changes"
+              data-tooltip-pos="left"
+              onClick={(e) => { e.stopPropagation(); onDiscardAll(); }}
+            >
+              ↺
+            </button>
+            <button
+              className="explorer-changes-section-action"
+              data-tooltip="Stage All"
+              data-tooltip-pos="left"
+              onClick={(e) => { e.stopPropagation(); onStageAll(); }}
+            >
+              +
+            </button>
+          </>
         )}
       </div>
       {isOpen && files.map(([fp, st]) => (
         <ChangeFileRow key={fp} filePath={fp} status={st} rootPrefix={rootPrefix}
           onFileClick={onFileClick} onFileDoubleClick={onFileDoubleClick}
-          onAction={onStageFile} actionIcon="+" actionTooltip="Stage" />
+          actions={[
+            { icon: '↩', tooltip: 'Discard Changes', handler: onDiscardFile },
+            { icon: '+', tooltip: 'Stage', handler: onStageFile },
+          ]} />
       ))}
     </div>
   );
@@ -605,6 +801,12 @@ export function Explorer() {
     refreshGitStatus,
     stageFiles,
     unstageFiles,
+    discardFiles,
+    stashChanges,
+    stashPop,
+    commitStaged,
+    commitAll,
+    undoLastCommit,
     agentContextDirs,
   } = useSessionContext();
 
@@ -801,6 +1003,19 @@ export function Explorer() {
   const showViewerPanel = useCallback(() => {
     setPanelVisibility('viewer', true);
   }, [setPanelVisibility]);
+
+  const handleDiscardFile = useCallback((filePath: string) => {
+    discardFiles([filePath]);
+  }, [discardFiles]);
+
+  const handleDiscardAll = useCallback((repoRoot?: string) => {
+    const paths = repoRoot
+      ? Object.keys(gitStatus).filter(fp => fp.startsWith(repoRoot.endsWith('/') ? repoRoot : repoRoot + '/'))
+      : Object.keys(gitStatus);
+    if (paths.length === 0) return;
+    if (!window.confirm(`Discard all ${paths.length} change(s)? This cannot be undone.`)) return;
+    discardFiles(paths);
+  }, [gitStatus, discardFiles]);
 
   const [rootOpen, setRootOpen] = useState(true);
   const [revealGeneration, setRevealGeneration] = useState(0);
@@ -1033,6 +1248,13 @@ export function Explorer() {
             onUnstageFile={(path) => unstageFiles([path])}
             onStageAll={handleStageAll}
             onUnstageAll={handleUnstageAll}
+            onDiscardFile={handleDiscardFile}
+            onDiscardAll={handleDiscardAll}
+            onStash={stashChanges}
+            onStashPop={stashPop}
+            onCommitStaged={commitStaged}
+            onCommitAll={commitAll}
+            onUndoLastCommit={undoLastCommit}
           />
         )}
       </div>

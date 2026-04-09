@@ -362,6 +362,7 @@ body {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  position: relative;
   background: var(--bg);
 }
 
@@ -950,6 +951,228 @@ body {
   color: var(--fg);
   background: var(--bg-tertiary);
 }
+
+/* ── Stash Dropdown Menu ── */
+
+.sc-single-repo-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 2px;
+  gap: 4px;
+}
+
+.sc-single-repo-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Inline commit panel (triggered from ··· menu) ── */
+.sc-commit-input {
+  padding: 8px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.sc-commit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sc-commit-label {
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sc-commit-close {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+
+.sc-commit-close:hover {
+  opacity: 1;
+}
+
+.sc-commit-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 8px;
+  resize: vertical;
+  min-height: 60px;
+  outline: none;
+  transition: border-color 0.15s;
+  line-height: 1.4;
+}
+
+.sc-commit-textarea:focus {
+  border-color: var(--accent, #569cd6);
+}
+
+.sc-commit-textarea:disabled {
+  opacity: 0.5;
+}
+
+.sc-commit-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.sc-commit-btn {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent, #569cd6);
+  border-radius: 3px;
+  color: var(--accent, #569cd6);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 0;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.sc-commit-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent, #569cd6) 15%, var(--bg-tertiary));
+}
+
+.sc-commit-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sc-commit-btn-secondary {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sc-commit-btn-secondary:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-secondary);
+}
+
+.sc-commit-btn-secondary:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.stash-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sc-stash-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: color 0.1s, background 0.1s, opacity 0.1s;
+  flex-shrink: 0;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+
+.sc-repo-header:hover .sc-stash-btn,
+.sc-single-repo-header:hover .sc-stash-btn {
+  opacity: 1;
+}
+
+.sc-stash-btn:hover {
+  color: var(--fg);
+  background: var(--bg-tertiary);
+}
+
+.stash-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 200;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  min-width: 220px;
+  padding: 3px 0;
+}
+
+.stash-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  opacity: 1;
+}
+
+.stash-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover, var(--bg-tertiary));
+}
+
+.stash-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stash-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+.stash-menu-loading {
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-align: center;
+  padding: 5px 12px 6px;
+  font-style: italic;
+}
+
 
 /* ── Explorer multi-root / context dirs ── */
 
@@ -2513,3 +2736,146 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── Git Error Toast ── */
+
+.git-error-toast {
+  position: fixed;
+  bottom: 36px;
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 420px;
+  min-width: 240px;
+  background: var(--bg-secondary);
+  border: 1px solid #c94040;
+  border-left: 3px solid #c94040;
+  border-radius: 4px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: git-toast-in 0.15s ease-out;
+  cursor: pointer;
+}
+
+.git-error-toast:hover {
+  background: var(--bg-tertiary);
+}
+
+@keyframes git-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.git-error-toast-icon {
+  color: #c94040;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.git-error-toast-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.git-error-toast-msg {
+  font-size: 12px;
+  color: var(--fg);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.git-error-toast-more {
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-style: italic;
+}
+
+.git-error-toast-close {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 0 0 4px;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+
+.git-error-toast-close:hover {
+  color: var(--fg);
+}
+
+/* ── Git Error Viewer Overlay ── */
+
+.viewer-git-error-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-git-error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid #c94040;
+  flex-shrink: 0;
+}
+
+.viewer-git-error-icon {
+  color: #c94040;
+  font-size: 13px;
+}
+
+.viewer-git-error-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.viewer-git-error-close {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.1s;
+}
+
+.viewer-git-error-close:hover {
+  color: var(--fg);
+}
+
+.viewer-git-error-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.viewer-git-error-pre {
+  margin: 0;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+

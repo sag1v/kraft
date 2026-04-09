@@ -6,6 +6,7 @@ import { PanelLayout } from './components/PanelLayout';
 import { Settings } from './components/Settings';
 import { CommandPalette } from './components/CommandPalette';
 import { GlobalTooltip } from './components/GlobalTooltip';
+import { GitErrorToast } from './components/GitErrorToast';
 
 function AppInner() {
   const {
@@ -175,6 +176,7 @@ function AppInner() {
       <Settings />
       <CommandPalette />
       <GlobalTooltip />
+      <GitErrorToast />
     </div>
   );
 }

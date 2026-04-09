@@ -559,30 +559,77 @@ function setupIPC() {
     }
   });
 
+  const gitResult = (err?: unknown): { success: false; error: string } => {
+    const e = err as any;
+    const stderr = (e?.stderr as string | undefined)?.trim() ?? '';
+    const stdout = (e?.stdout as string | undefined)?.trim() ?? '';
+    const combined = [stderr, stdout].filter(Boolean).join('\n').trim();
+    return { success: false, error: combined || 'Unknown git error' };
+  };
+
   ipcMain.handle('git-stage', async (_event, filePaths: string[], repoRoot: string) => {
     try {
-      await execFileAsync('git', ['add', '--', ...filePaths], {
-        cwd: repoRoot,
-        encoding: 'utf-8',
-        timeout: 5000,
-      });
-      return true;
-    } catch {
-      return false;
-    }
+      await execFileAsync('git', ['add', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
   });
 
   ipcMain.handle('git-unstage', async (_event, filePaths: string[], repoRoot: string) => {
     try {
-      await execFileAsync('git', ['reset', 'HEAD', '--', ...filePaths], {
-        cwd: repoRoot,
-        encoding: 'utf-8',
-        timeout: 5000,
-      });
-      return true;
-    } catch {
-      return false;
-    }
+      await execFileAsync('git', ['reset', 'HEAD', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
+  });
+
+  ipcMain.handle('git-discard-changes', async (_event, trackedPaths: string[], untrackedPaths: string[], repoRoot: string) => {
+    try {
+      if (trackedPaths.length > 0) {
+        await execFileAsync('git', ['restore', '--', ...trackedPaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+      }
+      if (untrackedPaths.length > 0) {
+        await Promise.all(untrackedPaths.map(fp => fs.promises.unlink(fp).catch(() => {})));
+      }
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
+  });
+
+  ipcMain.handle('git-stash', async (_event, repoRoot: string, message?: string, includeUntracked?: boolean) => {
+    try {
+      const args = ['stash', 'push'];
+      if (includeUntracked) args.push('--include-untracked');
+      if (message) args.push('-m', message);
+      await execFileAsync('git', args, { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
+  });
+
+  ipcMain.handle('git-stash-pop', async (_event, repoRoot: string) => {
+    try {
+      await execFileAsync('git', ['stash', 'pop'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
+  });
+
+  ipcMain.handle('git-commit', async (_event, repoRoot: string, message: string) => {
+    try {
+      await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
+  });
+
+  ipcMain.handle('git-commit-all', async (_event, repoRoot: string, message: string) => {
+    try {
+      await execFileAsync('git', ['add', '-A'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+      await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
+  });
+
+  ipcMain.handle('git-undo-commit', async (_event, repoRoot: string) => {
+    try {
+      await execFileAsync('git', ['reset', 'HEAD~1', '--soft'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+      return { success: true, error: null };
+    } catch (e) { return gitResult(e); }
   });
 
   ipcMain.handle('get-git-diff', async (_event, filePath: string, repoRoot: string) => {

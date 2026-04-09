@@ -46,6 +46,18 @@ const api = {
     ipcRenderer.invoke('git-stage', filePaths, repoRoot),
   gitUnstage: (filePaths: string[], repoRoot: string): Promise<boolean> =>
     ipcRenderer.invoke('git-unstage', filePaths, repoRoot),
+  gitDiscardChanges: (trackedPaths: string[], untrackedPaths: string[], repoRoot: string): Promise<boolean> =>
+    ipcRenderer.invoke('git-discard-changes', trackedPaths, untrackedPaths, repoRoot),
+  gitStash: (repoRoot: string, message?: string, includeUntracked?: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('git-stash', repoRoot, message, includeUntracked),
+  gitStashPop: (repoRoot: string): Promise<boolean> =>
+    ipcRenderer.invoke('git-stash-pop', repoRoot),
+  gitCommit: (repoRoot: string, message: string): Promise<boolean> =>
+    ipcRenderer.invoke('git-commit', repoRoot, message),
+  gitCommitAll: (repoRoot: string, message: string): Promise<boolean> =>
+    ipcRenderer.invoke('git-commit-all', repoRoot, message),
+  gitUndoCommit: (repoRoot: string): Promise<boolean> =>
+    ipcRenderer.invoke('git-undo-commit', repoRoot),
 
   createTerminal: (options: {
     cwd?: string;
