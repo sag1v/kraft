@@ -810,7 +810,19 @@ export function Explorer() {
     agentContextDirs,
   } = useSessionContext();
 
-  const [activeView, setActiveView] = useState<ExplorerView>('files');
+  const [activeViewMap, setActiveViewMap] = useState<Record<string, ExplorerView>>({});
+  const syncLayout = settings.syncLayoutAcrossTabs;
+  const activeView = syncLayout
+    ? (activeViewMap['*'] ?? 'files')
+    : (activeSessionId ? (activeViewMap[activeSessionId] ?? 'files') : 'files');
+  const setActiveView = useCallback((view: ExplorerView) => {
+    if (syncLayout) {
+      setActiveViewMap(prev => ({ ...prev, '*': view }));
+    } else {
+      if (!activeSessionId) return;
+      setActiveViewMap(prev => ({ ...prev, [activeSessionId]: view }));
+    }
+  }, [activeSessionId, syncLayout]);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [truncatedInfo, setTruncatedInfo] = useState<{ truncated: boolean; totalCount: number }>({ truncated: false, totalCount: 0 });
   const [loading, setLoading] = useState(false);

@@ -549,6 +549,17 @@ export function PanelLayout() {
   rowHeightsRef.current = rowHeights;
   colWidthsRef.current = colWidths;
 
+  const panelLayoutRef = useRef(panelLayout);
+  const prevPanelLayoutRef = useRef(panelLayout);
+  panelLayoutRef.current = panelLayout;
+  useEffect(() => {
+    if (prevPanelLayoutRef.current !== panelLayout) {
+      prevPanelLayoutRef.current = panelLayout;
+      setRowHeights(defaultRowHeights(panelLayout.length));
+      setColWidths(defaultColWidths(panelLayout));
+    }
+  }, [panelLayout]);
+
   const layoutAllowsExplorer = layout !== 'get-shit-done';
   const layoutAllowsViewer = layout !== 'get-shit-done';
 
@@ -712,9 +723,6 @@ export function PanelLayout() {
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
   }, []);
-
-  const panelLayoutRef = useRef(panelLayout);
-  panelLayoutRef.current = panelLayout;
 
   const setPanelLayoutRef = useRef(setPanelLayout);
   setPanelLayoutRef.current = setPanelLayout;

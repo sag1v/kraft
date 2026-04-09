@@ -136,6 +136,7 @@ export interface AppSettings {
   customPanelVisibility: PanelVisibility | null;
   theme: string;
   autoLoadExplorer: boolean;
+  syncLayoutAcrossTabs: boolean;
 }
 
 export interface ElectronAPI {

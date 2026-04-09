@@ -101,6 +101,8 @@ interface SessionContextValue {
   addSession: (session: TerminalSession) => void;
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
+  createSession: () => Promise<void>;
+  destroySession: (id: string) => void;
   updateSessionCwd: (id: string, cwd: string) => void;
   renameSession: (id: string, customLabel: string) => void;
   updateSessionAppearance: (id: string, icon?: string, iconColor?: string) => void;
@@ -135,6 +137,7 @@ const defaultSettings: AppSettings = {
   customPanelVisibility: null,
   theme: 'kraft-dark',
   autoLoadExplorer: true,
+  syncLayoutAcrossTabs: false,
 };
 
 const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false };
@@ -142,6 +145,8 @@ const EMPTY_CONTEXT_DIRS: AgentContextDir[] = [];
 
 const UIContext = createContext<UIContextValue>(null!);
 const SessionContext = createContext<SessionContextValue>(null!);
+
+let sessionTabCounter = 0;
 
 function normPath(p: string) {
   return p.replace(/\/+$/, '');
@@ -159,11 +164,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [homeDir, setHomeDir] = useState('');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [gitCacheVersion, setGitCacheVersion] = useState(0);
-  const [panelVisibility, setPanelVisibilityState] = useState({
-    explorer: true,
-    viewer: true,
-    terminal: true,
-  });
+  const [panelVisibilityMap, setPanelVisibilityMap] = useState<Record<string, PanelVisibility>>({});
+  const [panelLayoutMap, setPanelLayoutMap] = useState<Record<string, PanelId[][]>>({});
   const [gitStatus, setGitStatus] = useState<Record<string, GitFileStatus>>({});
   const [gitStagedStatus, setGitStagedStatus] = useState<Record<string, GitFileStatus>>({});
   const [gitRepoRoot, setGitRepoRoot] = useState<string | null>(null);
@@ -185,11 +187,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
+  const initialPanelVisibilityRef = useRef<PanelVisibility>({ ...ALL_VISIBLE });
+  const panelVisibilityMapRef = useRef(panelVisibilityMap);
+  panelVisibilityMapRef.current = panelVisibilityMap;
+  const panelVisibility = useMemo(() => {
+    if (activeSessionId && panelVisibilityMap[activeSessionId]) {
+      return panelVisibilityMap[activeSessionId];
+    }
+    return initialPanelVisibilityRef.current;
+  }, [activeSessionId, panelVisibilityMap]);
   const panelVisibilityRef = useRef(panelVisibility);
   panelVisibilityRef.current = panelVisibility;
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+
+  const panelLayoutMapRef = useRef(panelLayoutMap);
+  panelLayoutMapRef.current = panelLayoutMap;
+  const panelLayout = useMemo(() => {
+    if (activeSessionId && panelLayoutMap[activeSessionId]) {
+      return panelLayoutMap[activeSessionId];
+    }
+    return settings.panelLayout;
+  }, [activeSessionId, panelLayoutMap, settings.panelLayout]);
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
   const cwd = activeSession?.cwd || homeDir || '';
@@ -243,7 +263,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setTheme(getThemeById(merged.theme));
           setLayoutState(merged.defaultLayout);
           if (merged.defaultLayout === 'custom' && merged.customPanelVisibility) {
-            setPanelVisibilityState({ ...merged.customPanelVisibility });
+            initialPanelVisibilityRef.current = { ...merged.customPanelVisibility };
           }
         }
       } catch {
@@ -331,6 +351,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return [...prev, { ...session, iconColor: color }];
     });
 
+    setPanelVisibilityMap(prev => ({
+      ...prev,
+      [session.id]: { ...initialPanelVisibilityRef.current },
+    }));
+
     // If the previous session's explorer was synced with its cwd, auto-load
     // the new session's explorer with its cwd so the user doesn't have to.
     if (prevId && session.cwd) {
@@ -372,7 +397,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       delete next[id];
       return next;
     });
+    setPanelVisibilityMap(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setPanelLayoutMap(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, []);
+
+  const createSession = useCallback(async () => {
+    if (!window.api?.createTerminal) return;
+    const activeSess = sessionsRef.current.find(s => s.id === activeSessionIdRef.current);
+    const startCwd = activeSess?.cwd || homeDir || undefined;
+    const shell = settingsRef.current.shellOverride || undefined;
+    try {
+      const { id } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
+      sessionTabCounter++;
+      addSession({ id, label: `Terminal ${sessionTabCounter}`, cwd: startCwd || '' });
+    } catch (err) {
+      console.error('Failed to create terminal:', err);
+    }
+  }, [homeDir, addSession]);
+
+  const destroySession = useCallback((id: string) => {
+    if (sessionsRef.current.length <= 1) return;
+    try { window.api?.destroyTerminal(id); } catch {}
+    removeSession(id);
+  }, [removeSession]);
 
   const setActiveSession = useCallback((id: string) => {
     setActiveSessionId(id);
@@ -714,12 +769,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setLayout = useCallback((preset: LayoutPreset) => {
     setLayoutState(preset);
-    if (preset === 'custom') {
-      const savedVis = settingsRef.current.customPanelVisibility;
-      setPanelVisibilityState(savedVis ? { ...savedVis } : { ...ALL_VISIBLE });
-    } else {
-      setPanelVisibilityState({ ...ALL_VISIBLE });
-    }
+    const vis = preset === 'custom'
+      ? { ...(settingsRef.current.customPanelVisibility ?? ALL_VISIBLE) }
+      : { ...ALL_VISIBLE };
+    initialPanelVisibilityRef.current = vis;
+    setPanelVisibilityMap(prev => {
+      const next: Record<string, PanelVisibility> = {};
+      for (const sid of Object.keys(prev)) {
+        next[sid] = { ...vis };
+      }
+      return next;
+    });
+    setPanelLayoutMap({});
     const presetLayout = PRESET_LAYOUTS[preset];
     setSettings(prev => {
       const next: AppSettings = {
@@ -733,9 +794,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setPanelLayout = useCallback((newLayout: PanelId[][]) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
     const normalized = normalizePanelLayout(newLayout);
     const matchedPreset = layoutToPreset(normalized);
     setLayoutState(matchedPreset);
+    if (settingsRef.current.syncLayoutAcrossTabs) {
+      setPanelLayoutMap(prev => {
+        const next: Record<string, PanelId[][]> = {};
+        for (const s of Object.keys(prev)) {
+          next[s] = normalized.map(r => [...r]);
+        }
+        return next;
+      });
+    } else {
+      setPanelLayoutMap(prev => ({ ...prev, [sid]: normalized }));
+    }
     setSettings(prev => {
       const next: AppSettings = {
         ...prev,
@@ -752,8 +826,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setPanelVisibility = useCallback((panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => {
-    const next = { ...panelVisibilityRef.current, [panel]: visible };
-    setPanelVisibilityState(next);
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+    const current = panelVisibilityMapRef.current[sid] ?? { ...initialPanelVisibilityRef.current };
+    const next = { ...current, [panel]: visible };
+    if (settingsRef.current.syncLayoutAcrossTabs) {
+      setPanelVisibilityMap(prev => {
+        const updated: Record<string, PanelVisibility> = {};
+        for (const s of Object.keys(prev)) {
+          updated[s] = { ...next };
+        }
+        return updated;
+      });
+    } else {
+      setPanelVisibilityMap(prev => ({ ...prev, [sid]: next }));
+    }
     if (layoutRef.current === 'custom') {
       setSettings(prev => {
         const updated = { ...prev, customPanelVisibility: { ...next } };
@@ -764,13 +851,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateSettings = useCallback((partial: Partial<AppSettings>) => {
+    let newVis: PanelVisibility | null = null;
     setSettings(prev => {
       let next: AppSettings = { ...prev, ...partial };
       if (partial.defaultLayout != null) {
         const presetLayout = PRESET_LAYOUTS[partial.defaultLayout];
         if (presetLayout) {
           next = { ...next, panelLayout: presetLayout.map(r => [...r]) };
-          setPanelVisibilityState({ ...ALL_VISIBLE });
+          newVis = { ...ALL_VISIBLE };
         } else if (partial.defaultLayout === 'custom') {
           if (prev.savedCustomLayout) {
             next = { ...next, panelLayout: prev.savedCustomLayout.map(r => [...r]) };
@@ -779,9 +867,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             next = { ...next, panelLayout: initial, savedCustomLayout: initial.map(r => [...r]) };
           }
           const savedVis = next.customPanelVisibility;
-          setPanelVisibilityState(savedVis ? { ...savedVis } : { ...ALL_VISIBLE });
+          newVis = savedVis ? { ...savedVis } : { ...ALL_VISIBLE };
         } else {
-          setPanelVisibilityState({ ...ALL_VISIBLE });
+          newVis = { ...ALL_VISIBLE };
         }
       }
       if (partial.panelLayout != null) {
@@ -792,6 +880,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       window.api?.saveSettings(next);
       return next;
     });
+    if (newVis) {
+      initialPanelVisibilityRef.current = newVis;
+      const vis: PanelVisibility = newVis;
+      setPanelVisibilityMap(prev => {
+        const next: Record<string, PanelVisibility> = {};
+        for (const sid of Object.keys(prev)) {
+          next[sid] = { ...vis };
+        }
+        return next;
+      });
+      setPanelLayoutMap({});
+    }
   }, []);
 
   const uiValue = useMemo<UIContextValue>(() => ({
@@ -799,7 +899,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setThemeId,
     layout,
     setLayout,
-    panelLayout: settings.panelLayout,
+    panelLayout,
     setPanelLayout,
     settings,
     updateSettings,
@@ -823,7 +923,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     clearGitError: () => setGitError(null),
     gitErrorViewContent,
     setGitErrorViewContent,
-  }), [theme, layout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath, gitError, gitErrorViewContent,
+  }), [theme, layout, panelLayout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath, gitError, gitErrorViewContent,
        setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, closeOtherFileTabs, closeAllFileTabs, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
 
   const sessionValue = useMemo<SessionContextValue>(() => ({
@@ -833,6 +933,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addSession,
     removeSession,
     setActiveSession,
+    createSession,
+    destroySession,
     updateSessionCwd,
     renameSession,
     updateSessionAppearance,
@@ -856,7 +958,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     undoLastCommit,
     agentContextDirs,
   }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitRepoRoot, agentContextDirs,
-       addSession, removeSession, setActiveSession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
+       addSession, removeSession, setActiveSession, createSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
 
   return (
     <UIContext.Provider value={uiValue}>

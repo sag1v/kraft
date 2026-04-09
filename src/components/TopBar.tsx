@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useUIContext } from '../context/AppContext';
 import { IconButton } from './IconButton';
 import { tooltipWithShortcut } from '../shortcuts';
+import { SessionBar } from './SessionBar';
 
 const WORD = 'Kraft';
 const TYPE_DELAY = 200;
@@ -54,6 +55,7 @@ export function TopBar() {
           {text}<span className={`topbar-cursor${idle ? '' : ' typing'}`}>_</span>
         </span>
       </div>
+      <SessionBar className="topbar-sessions" />
       <div className="topbar-right" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <IconButton
           className="topbar-settings-btn"

@@ -108,25 +108,191 @@ body {
   display: flex;
 }
 
+/* ── Session tabs (inline in TopBar) - flat iTerm2 style ── */
+
+.topbar-sessions {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+  height: 100%;
+}
+
+.session-bar-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+.session-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 14px;
+  height: 100%;
+  min-width: 80px;
+  max-width: 180px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  flex-shrink: 0;
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 0;
+  position: relative;
+  transition: color 0.12s, background 0.12s;
+}
+
+.session-tab:first-child {
+  border-left: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.session-tab:hover {
+  color: var(--fg-muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.session-tab[draggable="true"]:active {
+  opacity: 0.5;
+}
+
+.session-tab.active {
+  color: var(--fg);
+  background: var(--bg-tertiary);
+  border-right-color: transparent;
+  border-left-color: transparent;
+  margin-bottom: -1px;
+  padding-bottom: 1px;
+}
+
+.session-tab:has(+ .session-tab.active) {
+  border-right-color: transparent;
+}
+
+.session-tab.active + .session-tab {
+  border-left-color: transparent;
+}
+
+.session-tab.drop-left::before,
+.session-tab.drop-right::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.session-tab.drop-left::before {
+  left: -1px;
+}
+
+.session-tab.drop-right::after {
+  right: -1px;
+}
+
+.session-tab-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tab-rename {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  padding: 1px 2px;
+  min-width: 0;
+}
+
+.session-tab-close {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+  flex-shrink: 0;
+}
+
+.session-tab:hover .session-tab-close,
+.session-tab.active .session-tab-close {
+  opacity: 0.55;
+}
+
+.session-tab-close:hover {
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg);
+}
+
+.session-bar-add {
+  flex-shrink: 0;
+  width: 32px;
+  height: 100%;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-bar-add:hover {
+  color: var(--fg-muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 /* ── Top bar ── */
 
 .topbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   height: var(--topbar-height);
   min-height: var(--topbar-height);
   padding: 0 12px;
-  background: var(--bg-secondary);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   cursor: default;
-  gap: 12px;
+  gap: 0;
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
   padding-left: 72px;
+  min-width: 160px;
+  flex-shrink: 0;
+  padding-right: 12px;
 }
 
 .topbar-logo {
@@ -154,6 +320,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-left: 12px;
 }
 
 .topbar-settings-btn {

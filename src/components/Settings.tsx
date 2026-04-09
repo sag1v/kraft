@@ -296,7 +296,8 @@ export function Settings() {
     ? layouts.filter(l => matches(l.label) || matches(l.value) || matches('layout panel arrange'))
     : layouts;
   const showCustomLayout = !isSearching || matches('custom layout my');
-  const showLayoutSection = !isSearching || filteredLayouts.length > 0 || showCustomLayout;
+  const showSyncLayout = !isSearching || matches('sync layout tabs independent per tab session');
+  const showLayoutSection = !isSearching || filteredLayouts.length > 0 || showCustomLayout || showSyncLayout;
 
   const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder');
 
@@ -468,6 +469,20 @@ export function Settings() {
                     </div>
                   )}
                 </div>
+
+                {showSyncLayout && (
+                  <div className="settings-row">
+                    <div className="settings-row-info">
+                      <span className="settings-row-title">Sync Layout Across Tabs</span>
+                      <span className="settings-row-desc">When enabled, panel visibility and explorer view are shared across all tabs. When disabled, each tab has its own independent layout.</span>
+                    </div>
+                    <button
+                      className="settings-toggle"
+                      data-checked={settings.syncLayoutAcrossTabs}
+                      onClick={() => updateSettings({ syncLayoutAcrossTabs: !settings.syncLayoutAcrossTabs })}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
