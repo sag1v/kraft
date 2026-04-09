@@ -32,7 +32,7 @@ function RenameInput({ value, onCommit, onCancel }: {
 
 // ── Single tab ─────────────────────────────────────────────────────────────
 
-function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClose, onRename, onContextMenu, onDragStart, onDragOver, onDrop }: {
+function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClose, onRename, onRenameChange, onContextMenu, onDragStart, onDragOver, onDrop }: {
   session: { id: string; label: string; customLabel?: string; icon?: string; iconColor?: string; cwd: string };
   isActive: boolean;
   isClosable: boolean;
@@ -40,12 +40,14 @@ function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClo
   onActivate: () => void;
   onClose: () => void;
   onRename: (label: string) => void;
+  onRenameChange: (renaming: boolean) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const setRenamingWithNotify = (v: boolean) => { setRenaming(v); onRenameChange(v); };
   const dirName = session.cwd ? session.cwd.split('/').pop() || session.label : session.label;
   const displayName = session.customLabel || dirName;
 
@@ -57,7 +59,7 @@ function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClo
       onClick={onActivate}
       onMouseDown={e => { if (e.button === 1 && isClosable) { e.preventDefault(); onClose(); } }}
       onContextMenu={onContextMenu}
-      onDoubleClick={e => { e.stopPropagation(); setRenaming(true); }}
+      onDoubleClick={e => { e.stopPropagation(); setRenamingWithNotify(true); }}
       title={session.cwd || displayName}
       draggable
       onDragStart={onDragStart}
@@ -68,8 +70,8 @@ function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClo
       {renaming ? (
         <RenameInput
           value={displayName}
-          onCommit={v => { onRename(v); setRenaming(false); }}
-          onCancel={() => setRenaming(false)}
+          onCommit={v => { onRename(v); setRenamingWithNotify(false); }}
+          onCancel={() => setRenamingWithNotify(false)}
         />
       ) : (
         <span className="session-tab-label">{displayName}</span>
@@ -100,6 +102,8 @@ export function SessionBar({ className }: { className?: string }) {
     updateSessionAppearance,
     reorderSessions,
   } = useSessionContext();
+
+  const [isAnyRenaming, setIsAnyRenaming] = useState(false);
 
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -227,6 +231,7 @@ export function SessionBar({ className }: { className?: string }) {
             onActivate={() => setActiveSession(session.id)}
             onClose={() => destroySession(session.id)}
             onRename={label => renameSession(session.id, label)}
+            onRenameChange={setIsAnyRenaming}
             onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, sessionId: session.id }); }}
             onDragStart={handleDragStart(i)}
             onDragOver={handleDragOver(i)}
@@ -235,6 +240,7 @@ export function SessionBar({ className }: { className?: string }) {
         ))}
         <button className="session-bar-add" onClick={createSession} title="New session (Ctrl+Shift+T)">+</button>
       </div>
+      {!isAnyRenaming && <div className="session-bar-drag-spacer" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />}
 
       {ctxMenu && (
         <div ref={ctxRef} className="tab-context-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} role="menu">

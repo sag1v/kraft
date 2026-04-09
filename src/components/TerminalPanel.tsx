@@ -45,7 +45,7 @@ export function TerminalPanel() {
   return (
     <div className="panel terminal-panel">
       <div className="panel-header">
-        <span className="panel-title panel-icon terminal-icon">&gt;_</span>
+        <span className="panel-title panel-icon terminal-icon" data-tooltip="Terminal - drag to reorder" data-tooltip-pos="bottom">&gt;_</span>
         <PanelMinimizeButton onMinimize={() => setPanelVisibility('terminal', false)} tooltip={tooltipWithShortcut('Hide Terminal', 'toggle-terminal')} />
       </div>
       <div className="terminal-instances">

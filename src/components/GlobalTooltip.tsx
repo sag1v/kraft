@@ -46,9 +46,8 @@ export function GlobalTooltip() {
     };
 
     const onLeave = (e: MouseEvent) => {
-      const el = (e.target as HTMLElement).closest?.('[data-tooltip]') as HTMLElement | null;
-      if (!el) return;
-      if (currentTarget.current === el) hide();
+      if (!currentTarget.current) return;
+      if (!currentTarget.current.contains(e.relatedTarget as Node | null)) hide();
     };
 
     document.addEventListener('mouseenter', onEnter, true);
