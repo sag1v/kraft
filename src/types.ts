@@ -150,12 +150,13 @@ export interface AppSettings {
   theme: string;
   autoLoadExplorer: boolean;
   syncLayoutAcrossTabs: boolean;
+  showHiddenFiles: boolean;
 }
 
 export interface ElectronAPI {
   getDefaultShell: () => Promise<string>;
   getHomeDir: () => Promise<string>;
-  readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number) => Promise<DirReadResult>;
+  readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number, showHiddenFiles?: boolean) => Promise<DirReadResult>;
   readFile: (filePath: string) => Promise<FileResult>;
   searchFiles: (rootDir: string, query: string) => Promise<SearchFileResult[]>;
   getGitInfo: (dirPath: string) => Promise<GitInfo>;
@@ -190,6 +191,8 @@ export interface ElectronAPI {
   toggleDevTools: () => void;
   reloadWindow: () => void;
   getAppVersion: () => Promise<string>;
+  getPlatform: () => Promise<string>;
+  showItemInFolder: (filePath: string) => Promise<void>;
   checkForUpdates: () => Promise<boolean>;
   downloadUpdate: () => Promise<void>;
   installUpdate: () => Promise<void>;

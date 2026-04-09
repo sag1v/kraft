@@ -299,7 +299,7 @@ export function Settings() {
   const showSyncLayout = !isSearching || matches('sync layout tabs independent per tab session');
   const showLayoutSection = !isSearching || filteredLayouts.length > 0 || showCustomLayout || showSyncLayout;
 
-  const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder');
+  const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder hidden files dotfiles dot');
 
   const filteredShortcuts = SHORTCUT_CATEGORIES.map(category => {
     const items = SHORTCUTS.filter(s => s.category === category);
@@ -523,6 +523,18 @@ export function Settings() {
                     className="settings-toggle"
                     data-checked={settings.autoLoadExplorer}
                     onClick={() => updateSettings({ autoLoadExplorer: !settings.autoLoadExplorer })}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div className="settings-row-info">
+                    <span className="settings-row-title">Show Hidden Files</span>
+                    <span className="settings-row-desc">Show files and folders that start with a dot (e.g. .gitignore, .env). When off, hidden files are not displayed in the explorer.</span>
+                  </div>
+                  <button
+                    className="settings-toggle"
+                    data-checked={settings.showHiddenFiles}
+                    onClick={() => updateSettings({ showHiddenFiles: !settings.showHiddenFiles })}
                   />
                 </div>
               </div>

@@ -346,49 +346,56 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('read-directory', async (_event, dirPath: string, skipCache?: boolean, maxEntries?: number) => {
+  ipcMain.handle('read-directory', async (_event, dirPath: string, skipCache?: boolean, maxEntries?: number, showHiddenFiles?: boolean) => {
     const limit = maxEntries ?? 0;
+
+    let allEntries: { name: string; path: string; isDirectory: boolean; isFile: boolean; isSymlink: boolean }[];
 
     if (!skipCache) {
       const cached = dirCache.get(dirPath);
       if (cached && Date.now() - cached.timestamp < DIR_CACHE_TTL) {
-        const sliced = limit > 0 ? cached.entries.slice(0, limit) : cached.entries;
-        return { entries: sliced, truncated: limit > 0 && cached.totalCount > limit, totalCount: cached.totalCount };
+        allEntries = cached.entries;
+      } else {
+        allEntries = null!;
+      }
+    } else {
+      allEntries = null!;
+    }
+
+    if (!allEntries) {
+      try {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        allEntries = entries
+          .map((entry) => ({
+            name: entry.name,
+            path: path.join(dirPath, entry.name),
+            isDirectory: entry.isDirectory(),
+            isFile: entry.isFile(),
+            isSymlink: entry.isSymbolicLink(),
+          }))
+          .sort((a, b) => {
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            return a.name.localeCompare(b.name);
+          });
+
+        dirCache.set(dirPath, { entries: allEntries, totalCount: allEntries.length, timestamp: Date.now() });
+
+        if (dirCache.size > 200) {
+          const oldest = [...dirCache.entries()]
+            .sort((a, b) => a[1].timestamp - b[1].timestamp)
+            .slice(0, 50);
+          for (const [key] of oldest) dirCache.delete(key);
+        }
+      } catch {
+        return { entries: [], truncated: false, totalCount: 0 };
       }
     }
 
-    try {
-      const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-      const result = entries
-        .filter((e) => !e.name.startsWith('.'))
-        .map((entry) => ({
-          name: entry.name,
-          path: path.join(dirPath, entry.name),
-          isDirectory: entry.isDirectory(),
-          isFile: entry.isFile(),
-          isSymlink: entry.isSymbolicLink(),
-        }))
-        .sort((a, b) => {
-          if (a.isDirectory && !b.isDirectory) return -1;
-          if (!a.isDirectory && b.isDirectory) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      const totalCount = result.length;
-      dirCache.set(dirPath, { entries: result, totalCount, timestamp: Date.now() });
-
-      if (dirCache.size > 200) {
-        const oldest = [...dirCache.entries()]
-          .sort((a, b) => a[1].timestamp - b[1].timestamp)
-          .slice(0, 50);
-        for (const [key] of oldest) dirCache.delete(key);
-      }
-
-      const sliced = limit > 0 ? result.slice(0, limit) : result;
-      return { entries: sliced, truncated: limit > 0 && totalCount > limit, totalCount };
-    } catch {
-      return { entries: [], truncated: false, totalCount: 0 };
-    }
+    const result = showHiddenFiles ? allEntries : allEntries.filter((e) => !e.name.startsWith('.'));
+    const totalCount = result.length;
+    const sliced = limit > 0 ? result.slice(0, limit) : result;
+    return { entries: sliced, truncated: limit > 0 && totalCount > limit, totalCount };
   });
 
   ipcMain.handle('read-file', async (_event, filePath: string) => {
@@ -569,9 +576,22 @@ function setupIPC() {
         }
       }
 
-      return { files, staged, repoRoot };
+      let ignored: string[] = [];
+      try {
+        const { stdout: ignoredStdout } = await execFileAsync(
+          'git',
+          ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory'],
+          { cwd: repoRoot, encoding: 'utf-8', timeout: 5000, maxBuffer: 1024 * 1024 },
+        );
+        ignored = ignoredStdout
+          .split('\n')
+          .filter(Boolean)
+          .map((p) => path.join(repoRoot, p.endsWith('/') ? p.slice(0, -1) : p));
+      } catch { /* ignore errors — ignored list is best-effort */ }
+
+      return { files, staged, repoRoot, ignored };
     } catch {
-      return { files: {}, staged: {}, repoRoot: null };
+      return { files: {}, staged: {}, repoRoot: null, ignored: [] };
     }
   });
 
@@ -903,6 +923,8 @@ function setupIPC() {
   });
 
   ipcMain.handle('get-app-version', () => app.getVersion());
+  ipcMain.handle('get-platform', () => process.platform);
+  ipcMain.handle('show-item-in-folder', (_event, filePath: string) => shell.showItemInFolder(filePath));
 
   ipcMain.handle('check-for-updates', async () => {
     return updateChecker.check();

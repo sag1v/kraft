@@ -34,11 +34,11 @@ const api = {
   getDefaultShell: (): Promise<string> => ipcRenderer.invoke('get-default-shell'),
   getHomeDir: (): Promise<string> => ipcRenderer.invoke('get-home-dir'),
 
-  readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number): Promise<DirReadResult> => ipcRenderer.invoke('read-directory', dirPath, skipCache, maxEntries),
+  readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number, showHiddenFiles?: boolean): Promise<DirReadResult> => ipcRenderer.invoke('read-directory', dirPath, skipCache, maxEntries, showHiddenFiles),
   readFile: (filePath: string): Promise<FileResult> => ipcRenderer.invoke('read-file', filePath),
   searchFiles: (rootDir: string, query: string): Promise<Array<{ path: string; isDirectory: boolean }>> => ipcRenderer.invoke('search-files', rootDir, query),
   getGitInfo: (dirPath: string): Promise<GitInfo> => ipcRenderer.invoke('get-git-info', dirPath),
-  getGitStatus: (dirPath: string): Promise<{ files: Record<string, string>; staged: Record<string, string>; repoRoot: string | null }> =>
+  getGitStatus: (dirPath: string): Promise<{ files: Record<string, string>; staged: Record<string, string>; repoRoot: string | null; ignored: string[] }> =>
     ipcRenderer.invoke('get-git-status', dirPath),
   getGitDiff: (filePath: string, repoRoot: string): Promise<{ diff: string | null; isNew: boolean; content: string | null }> =>
     ipcRenderer.invoke('get-git-diff', filePath, repoRoot),
@@ -151,6 +151,8 @@ const api = {
   },
 
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+  getPlatform: (): Promise<string> => ipcRenderer.invoke('get-platform'),
+  showItemInFolder: (filePath: string): Promise<void> => ipcRenderer.invoke('show-item-in-folder', filePath),
   checkForUpdates: (): Promise<boolean> => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke('download-update'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('install-update'),

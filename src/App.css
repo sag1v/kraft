@@ -871,6 +871,10 @@ body {
   background: var(--bg-tertiary);
 }
 
+.tree-row.tree-row-ignored {
+  opacity: 0.5;
+}
+
 .file-icon {
   display: flex;
   align-items: center;

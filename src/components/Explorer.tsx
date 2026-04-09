@@ -54,13 +54,17 @@ interface TreeNodeProps {
   depth: number;
   onFileClick: (path: string) => void;
   onFileDoubleClick: () => void;
+  onContextMenu: (path: string, isDirectory: boolean, e: React.MouseEvent) => void;
   collapseKey: number;
   gitStatus: Record<string, GitFileStatus>;
+  gitIgnoredSet: Set<string>;
+  showHiddenFiles: boolean;
+  parentDimmed?: boolean;
   syncedRevealFile: string | null;
   revealGeneration: number;
 }
 
-function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, gitStatus, syncedRevealFile, revealGeneration }: TreeNodeProps) {
+function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, onContextMenu, collapseKey, gitStatus, gitIgnoredSet, showHiddenFiles, parentDimmed, syncedRevealFile, revealGeneration }: TreeNodeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -79,7 +83,7 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
     if (children !== null) return;
     let cancelled = false;
     setLoading(true);
-    window.api.readDirectory(entry.path)
+    window.api.readDirectory(entry.path, undefined, undefined, showHiddenFiles)
       .then((res) => {
         if (!cancelled) setChildren(res.entries);
       })
@@ -92,7 +96,7 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
     return () => {
       cancelled = true;
     };
-  }, [entry.isDirectory, entry.path, syncedRevealFile, revealGeneration, children]);
+  }, [entry.isDirectory, entry.path, syncedRevealFile, revealGeneration, children, showHiddenFiles]);
 
   useEffect(() => {
     if (entry.isDirectory || !syncedRevealFile) return;
@@ -112,7 +116,7 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
     if (!isOpen && children === null) {
       setLoading(true);
       try {
-        const res = await window.api.readDirectory(entry.path);
+        const res = await window.api.readDirectory(entry.path, undefined, undefined, showHiddenFiles);
         setChildren(res.entries);
       } catch {
         setChildren([]);
@@ -126,6 +130,9 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
     ? getFolderStatus(entry.path, gitStatus)
     : (gitStatus[entry.path] as GitFileStatus | undefined) ?? null;
 
+  const isIgnored = gitIgnoredSet.has(entry.path);
+  const isHidden = entry.name.startsWith('.');
+  const isDimmed = parentDimmed || isIgnored || isHidden;
   const nameColor = fileStatus ? STATUS_COLOR_VAR[fileStatus] : undefined;
   const isExplorerActive = !entry.isDirectory && syncedRevealFile && normPath(syncedRevealFile) === normPath(entry.path);
 
@@ -133,10 +140,11 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
     <div className="tree-node">
       <div
         ref={entry.isDirectory ? undefined : fileRowRef}
-        className={`tree-row ${!entry.isDirectory ? 'tree-row-file' : ''} ${isExplorerActive ? 'tree-row-explorer-active' : ''}`}
+        className={`tree-row ${!entry.isDirectory ? 'tree-row-file' : ''} ${isExplorerActive ? 'tree-row-explorer-active' : ''} ${isDimmed ? 'tree-row-ignored' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={toggleOpen}
         onDoubleClick={!entry.isDirectory ? (e) => { e.stopPropagation(); onFileDoubleClick(); } : undefined}
+        onContextMenu={(e) => onContextMenu(entry.path, entry.isDirectory, e)}
         draggable
         onDragStart={(e) => {
           e.stopPropagation();
@@ -164,8 +172,12 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, collapseKey, g
               depth={depth + 1}
               onFileClick={onFileClick}
               onFileDoubleClick={onFileDoubleClick}
+              onContextMenu={onContextMenu}
               collapseKey={collapseKey}
               gitStatus={gitStatus}
+              gitIgnoredSet={gitIgnoredSet}
+              showHiddenFiles={showHiddenFiles}
+              parentDimmed={isDimmed}
               syncedRevealFile={syncedRevealFile}
               revealGeneration={revealGeneration}
             />
@@ -724,13 +736,16 @@ interface ContextDirSectionProps {
   dir: AgentContextDir;
   onFileClick: (path: string) => void;
   onFileDoubleClick: () => void;
+  onContextMenu: (path: string, isDirectory: boolean, e: React.MouseEvent) => void;
   collapseKey: number;
   gitStatus: Record<string, GitFileStatus>;
+  gitIgnoredSet: Set<string>;
+  showHiddenFiles: boolean;
   syncedRevealFile: string | null;
   revealGeneration: number;
 }
 
-function ContextDirSection({ dir, onFileClick, onFileDoubleClick, collapseKey, gitStatus, syncedRevealFile, revealGeneration }: ContextDirSectionProps) {
+function ContextDirSection({ dir, onFileClick, onFileDoubleClick, onContextMenu, collapseKey, gitStatus, gitIgnoredSet, showHiddenFiles, syncedRevealFile, revealGeneration }: ContextDirSectionProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -738,11 +753,11 @@ function ContextDirSection({ dir, onFileClick, onFileDoubleClick, collapseKey, g
   useEffect(() => {
     if (!isOpen || entries !== null) return;
     setLoading(true);
-    window.api.readDirectory(dir.path)
+    window.api.readDirectory(dir.path, undefined, undefined, showHiddenFiles)
       .then((res) => setEntries(res.entries))
       .catch(() => setEntries([]))
       .finally(() => setLoading(false));
-  }, [isOpen, entries, dir.path]);
+  }, [isOpen, entries, dir.path, showHiddenFiles]);
 
   useEffect(() => {
     setIsOpen(false);
@@ -762,6 +777,7 @@ function ContextDirSection({ dir, onFileClick, onFileDoubleClick, collapseKey, g
       <div
         className="explorer-context-dir-header"
         onClick={() => setIsOpen(prev => !prev)}
+        onContextMenu={(e) => onContextMenu(dir.path, true, e)}
         data-tooltip={dir.path}
         data-tooltip-pos="bottom"
       >
@@ -781,8 +797,11 @@ function ContextDirSection({ dir, onFileClick, onFileDoubleClick, collapseKey, g
               depth={1}
               onFileClick={onFileClick}
               onFileDoubleClick={onFileDoubleClick}
+              onContextMenu={onContextMenu}
               collapseKey={collapseKey}
               gitStatus={gitStatus}
+              gitIgnoredSet={gitIgnoredSet}
+              showHiddenFiles={showHiddenFiles}
               syncedRevealFile={syncedRevealFile}
               revealGeneration={revealGeneration}
             />
@@ -811,6 +830,7 @@ export function Explorer() {
     updateSessionCwd,
     gitStatus,
     gitStagedStatus,
+    gitIgnored,
     refreshGitStatus,
     stageFiles,
     unstageFiles,
@@ -840,6 +860,9 @@ export function Explorer() {
   const [truncatedInfo, setTruncatedInfo] = useState<{ truncated: boolean; totalCount: number }>({ truncated: false, totalCount: 0 });
   const [loading, setLoading] = useState(false);
   const [collapseKey, setCollapseKey] = useState(0);
+  const [platform, setPlatform] = useState('darwin');
+  const [fileContextMenu, setFileContextMenu] = useState<{ x: number; y: number; path: string; isDirectory: boolean } | null>(null);
+  const fileContextMenuRef = useRef<HTMLDivElement>(null);
   const loadedRootRef = useRef<string | null>(null);
   const treeCacheRef = useRef<Map<string, TreeCache>>(new Map());
   const prevSessionIdRef = useRef<string | null>(null);
@@ -847,6 +870,20 @@ export function Explorer() {
   entriesRef.current = entries;
   const truncatedInfoRef = useRef(truncatedInfo);
   truncatedInfoRef.current = truncatedInfo;
+
+  useEffect(() => {
+    window.api.getPlatform?.().then(setPlatform).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!fileContextMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (fileContextMenuRef.current?.contains(e.target as Node)) return;
+      setFileContextMenu(null);
+    };
+    window.addEventListener('mousedown', handler, true);
+    return () => window.removeEventListener('mousedown', handler, true);
+  }, [fileContextMenu]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -884,7 +921,7 @@ export function Explorer() {
       setLoading(true);
     }
     try {
-      const result = await window.api.readDirectory(dirPath, forceRefresh, MAX_DIR_ENTRIES);
+      const result = await window.api.readDirectory(dirPath, forceRefresh, MAX_DIR_ENTRIES, settings.showHiddenFiles);
       if (loadedRootRef.current === dirPath) {
         setEntries(result.entries);
         setTruncatedInfo({ truncated: result.truncated, totalCount: result.totalCount });
@@ -983,12 +1020,26 @@ export function Explorer() {
     if (dir) loadFolder(dir);
   }, [cwd, activeSessionId, updateSessionCwd, loadFolder]);
 
+  const showHiddenFilesRef = useRef(settings.showHiddenFiles);
+  useEffect(() => {
+    if (showHiddenFilesRef.current === settings.showHiddenFiles) return;
+    showHiddenFilesRef.current = settings.showHiddenFiles;
+    if (explorerRoot) loadFolder(explorerRoot, true);
+  }, [settings.showHiddenFiles, explorerRoot, loadFolder]);
+
   const handleRefresh = useCallback(() => {
     if (explorerRoot) {
       loadFolder(explorerRoot, true);
       refreshGitStatus();
     }
   }, [explorerRoot, loadFolder, refreshGitStatus]);
+
+  const handleFileContextMenu = useCallback((path: string, isDirectory: boolean, e: React.MouseEvent) => {
+    e.preventDefault();
+    setFileContextMenu({ x: e.clientX, y: e.clientY, path, isDirectory });
+  }, []);
+
+  const revealLabel = platform === 'darwin' ? 'Reveal in Finder' : platform === 'win32' ? 'Reveal in Explorer' : 'Open in File Manager';
 
   const handleFileClick = useCallback(
     (path: string) => {
@@ -1087,6 +1138,8 @@ export function Explorer() {
     return { ...gitStagedStatus, ...gitStatus };
   }, [gitStatus, gitStagedStatus]);
 
+  const gitIgnoredSet = useMemo(() => new Set(gitIgnored), [gitIgnored]);
+
   const changesCount = Object.keys(gitStatus).length + Object.keys(gitStagedStatus).length;
 
   if (!explorerRoot) {
@@ -1132,6 +1185,7 @@ export function Explorer() {
   const rootNameColor = rootFolderStatus ? STATUS_COLOR_VAR[rootFolderStatus] : undefined;
 
   return (
+    <>
     <div className="panel explorer-panel">
       <div className="panel-header">
         <span className="panel-title panel-icon explorer-icon" data-tooltip={`${displayRoot} - drag to reorder`} data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
@@ -1235,8 +1289,11 @@ export function Explorer() {
                       depth={1}
                       onFileClick={handleFileClick}
                       onFileDoubleClick={showViewerPanel}
+                      onContextMenu={handleFileContextMenu}
                       collapseKey={collapseKey}
                       gitStatus={combinedGitStatus}
+                      gitIgnoredSet={gitIgnoredSet}
+                      showHiddenFiles={settings.showHiddenFiles}
                       syncedRevealFile={syncedRevealFile}
                       revealGeneration={revealGeneration}
                     />
@@ -1255,8 +1312,11 @@ export function Explorer() {
                 dir={dir}
                 onFileClick={handleFileClick}
                 onFileDoubleClick={showViewerPanel}
+                onContextMenu={handleFileContextMenu}
                 collapseKey={collapseKey}
                 gitStatus={combinedGitStatus}
+                gitIgnoredSet={gitIgnoredSet}
+                showHiddenFiles={settings.showHiddenFiles}
                 syncedRevealFile={syncedRevealFile}
                 revealGeneration={revealGeneration}
               />
@@ -1284,5 +1344,45 @@ export function Explorer() {
         )}
       </div>
     </div>
+
+    {fileContextMenu && (() => {
+      const menuWidth = 200;
+      const menuHeight = 116;
+      const x = Math.min(fileContextMenu.x, window.innerWidth - menuWidth - 8);
+      const y = Math.min(fileContextMenu.y, window.innerHeight - menuHeight - 8);
+      const relativePath = explorerRoot && fileContextMenu.path.startsWith(explorerRoot + '/')
+        ? fileContextMenu.path.slice(explorerRoot.length + 1)
+        : null;
+      return (
+        <div
+          ref={fileContextMenuRef}
+          className="tab-context-menu"
+          style={{ left: x, top: y }}
+        >
+          <button
+            className="tab-context-item"
+            onClick={() => { window.api.showItemInFolder(fileContextMenu.path); setFileContextMenu(null); }}
+          >
+            {revealLabel}
+          </button>
+          <div className="tab-context-separator" />
+          <button
+            className="tab-context-item"
+            onClick={() => { navigator.clipboard.writeText(fileContextMenu.path); setFileContextMenu(null); }}
+          >
+            Copy Full Path
+          </button>
+          {relativePath !== null && (
+            <button
+              className="tab-context-item"
+              onClick={() => { navigator.clipboard.writeText(relativePath); setFileContextMenu(null); }}
+            >
+              Copy Relative Path
+            </button>
+          )}
+        </div>
+      );
+    })()}
+    </>
   );
 }

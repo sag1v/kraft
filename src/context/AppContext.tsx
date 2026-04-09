@@ -113,6 +113,7 @@ interface SessionContextValue {
   gitInfo: GitInfo;
   gitStatus: Record<string, GitFileStatus>;
   gitStagedStatus: Record<string, GitFileStatus>;
+  gitIgnored: string[];
   gitRepoRoot: string | null;
   getRepoRootForFile: (filePath: string) => string | null;
   refreshGitStatus: () => void;
@@ -138,6 +139,7 @@ const defaultSettings: AppSettings = {
   theme: 'kraft-dark',
   autoLoadExplorer: true,
   syncLayoutAcrossTabs: false,
+  showHiddenFiles: true,
 };
 
 const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false };
@@ -168,6 +170,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [panelLayoutMap, setPanelLayoutMap] = useState<Record<string, PanelId[][]>>({});
   const [gitStatus, setGitStatus] = useState<Record<string, GitFileStatus>>({});
   const [gitStagedStatus, setGitStagedStatus] = useState<Record<string, GitFileStatus>>({});
+  const [gitIgnored, setGitIgnored] = useState<string[]>([]);
   const [gitRepoRoot, setGitRepoRoot] = useState<string | null>(null);
   const [gitRepoRootsMap, setGitRepoRootsMap] = useState<Record<string, string>>({});
   const [diffFilePath, setDiffFilePathState] = useState<string | null>(null);
@@ -594,6 +597,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const results = await Promise.all(dirs.map(d => window.api.getGitStatus(d)));
       const mergedFiles: Record<string, GitFileStatus> = {};
       const mergedStaged: Record<string, GitFileStatus> = {};
+      const mergedIgnored: string[] = [];
       let primaryRepoRoot: string | null = null;
       const rootsMap: Record<string, string> = {};
       for (let i = 0; i < results.length; i++) {
@@ -604,14 +608,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (result.staged) {
           Object.assign(mergedStaged, result.staged as Record<string, GitFileStatus>);
         }
+        if (result.ignored) {
+          mergedIgnored.push(...result.ignored as string[]);
+        }
       }
       setGitStatus(mergedFiles);
       setGitStagedStatus(mergedStaged);
+      setGitIgnored(mergedIgnored);
       setGitRepoRoot(primaryRepoRoot);
       setGitRepoRootsMap(rootsMap);
     } catch {
       setGitStatus({});
       setGitStagedStatus({});
+      setGitIgnored([]);
       setGitRepoRoot(null);
       setGitRepoRootsMap({});
     }
@@ -622,6 +631,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (allRoots.length === 0) {
       setGitStatus({});
       setGitStagedStatus({});
+      setGitIgnored([]);
       setGitRepoRoot(null);
       return;
     }
@@ -945,6 +955,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     gitInfo,
     gitStatus,
     gitStagedStatus,
+    gitIgnored,
     gitRepoRoot,
     getRepoRootForFile,
     refreshGitStatus,
@@ -957,7 +968,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     commitAll,
     undoLastCommit,
     agentContextDirs,
-  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitRepoRoot, agentContextDirs,
+  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs,
        addSession, removeSession, setActiveSession, createSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
 
   return (
