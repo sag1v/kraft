@@ -199,7 +199,7 @@ export interface ElectronAPI {
   installUpdate: () => Promise<void>;
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
   onUpdateDownloadProgress: (callback: (progress: DownloadProgress) => void) => () => void;
-  onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => () => void;
+  onUpdateDownloaded: (callback: (info: UpdateInfo, filePath: string) => void) => () => void;
   onUpdateError: (callback: (error: string) => void) => () => void;
   watchDirectory: (dirPath: string) => void;
   unwatchDirectory: (dirPath: string) => void;

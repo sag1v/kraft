@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { autoUpdater, type UpdateInfo as ElectronUpdateInfo } from 'electron-updater';
+import { autoUpdater, type UpdateInfo as ElectronUpdateInfo, type UpdateDownloadedEvent } from 'electron-updater';
 
 export interface UpdateInfo {
   version: string;
@@ -16,7 +16,7 @@ export interface DownloadProgress {
 
 type UpdateAvailableCallback = (info: UpdateInfo) => void;
 type ProgressCallback = (progress: DownloadProgress) => void;
-type DownloadedCallback = (info: UpdateInfo) => void;
+type DownloadedCallback = (info: UpdateInfo, filePath: string) => void;
 type ErrorCallback = (error: string) => void;
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
@@ -36,7 +36,7 @@ export class UpdateChecker {
 
   private configure() {
     autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = false;
 
     autoUpdater.on('checking-for-update', () => {
       console.log('[UpdateChecker] Checking for update...');
@@ -64,13 +64,13 @@ export class UpdateChecker {
       });
     });
 
-    autoUpdater.on('update-downloaded', (info: ElectronUpdateInfo) => {
-      console.log(`[UpdateChecker] Update downloaded: ${info.version}`);
+    autoUpdater.on('update-downloaded', (info: UpdateDownloadedEvent) => {
+      console.log(`[UpdateChecker] Update downloaded: ${info.version} at ${info.downloadedFile}`);
       this.onDownloadedCb?.({
         version: info.version,
         releaseDate: info.releaseDate || new Date().toISOString(),
         releaseName: `v${info.version}`,
-      });
+      }, info.downloadedFile);
     });
 
     autoUpdater.on('error', (err) => {

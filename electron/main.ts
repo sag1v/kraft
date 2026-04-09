@@ -985,9 +985,9 @@ app.whenReady().then(() => {
     }
   });
 
-  updateChecker.onDownloaded((info) => {
+  updateChecker.onDownloaded((info, filePath) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update-downloaded', info);
+      mainWindow.webContents.send('update-downloaded', info, filePath);
     }
   });
 

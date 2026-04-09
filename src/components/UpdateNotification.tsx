@@ -11,6 +11,7 @@ export function UpdateNotification() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
+  const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -30,7 +31,8 @@ export function UpdateNotification() {
     );
 
     unsubs.push(
-      window.api?.onUpdateDownloaded?.(() => {
+      window.api?.onUpdateDownloaded?.((_info, filePath) => {
+        setDownloadedFilePath(filePath);
         setState('ready');
       })
     );
@@ -51,9 +53,11 @@ export function UpdateNotification() {
     window.api?.downloadUpdate?.();
   }, []);
 
-  const handleInstall = useCallback(() => {
-    window.api?.installUpdate?.();
-  }, []);
+  const handleShowInFinder = useCallback(() => {
+    if (downloadedFilePath) {
+      window.api?.showItemInFolder?.(downloadedFilePath);
+    }
+  }, [downloadedFilePath]);
 
   const handleDismiss = useCallback(() => {
     setVisible(false);
@@ -77,7 +81,7 @@ export function UpdateNotification() {
         <div className="update-notification-text">
           <span className="update-notification-title">
             {state === 'ready'
-              ? 'Update ready - restart to apply'
+              ? 'Update downloaded - open to install'
               : state === 'error'
                 ? 'Update failed'
                 : `Kraft ${updateInfo.releaseName} is available`}
@@ -127,12 +131,20 @@ export function UpdateNotification() {
             </button>
           )}
           {state === 'ready' && (
-            <button
-              className="update-notification-btn update-notification-btn-primary"
-              onClick={handleInstall}
-            >
-              Restart
-            </button>
+            <>
+              <button
+                className="update-notification-btn update-notification-btn-primary"
+                onClick={handleShowInFinder}
+              >
+                Show in Finder
+              </button>
+              <button
+                className="update-notification-btn update-notification-btn-dismiss"
+                onClick={handleDismiss}
+              >
+                Later
+              </button>
+            </>
           )}
           {state === 'error' && (
             <>

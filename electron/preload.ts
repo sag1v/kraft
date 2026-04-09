@@ -167,8 +167,8 @@ const api = {
     ipcRenderer.on('update-download-progress', handler);
     return () => ipcRenderer.removeListener('update-download-progress', handler);
   },
-  onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string; releaseName: string }) => void): (() => void) => {
-    const handler = (_event: any, info: any) => callback(info);
+  onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string; releaseName: string }, filePath: string) => void): (() => void) => {
+    const handler = (_event: any, info: any, filePath: string) => callback(info, filePath);
     ipcRenderer.on('update-downloaded', handler);
     return () => ipcRenderer.removeListener('update-downloaded', handler);
   },
