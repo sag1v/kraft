@@ -6,159 +6,7 @@ import { FileIcon } from './FileIcon';
 import { TabBar, type TabItem } from './TabBar';
 import { DiffView } from './DiffView';
 import { shortenPath } from '../utils';
-import hljs from 'highlight.js';
-
-const extToLang: Record<string, string> = {
-  js: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  jsx: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  py: 'python',
-  rs: 'rust',
-  go: 'go',
-  rb: 'ruby',
-  java: 'java',
-  c: 'c',
-  cpp: 'cpp',
-  h: 'c',
-  hpp: 'cpp',
-  css: 'css',
-  scss: 'scss',
-  html: 'xml',
-  htm: 'xml',
-  xml: 'xml',
-  json: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  md: 'markdown',
-  mdx: 'markdown',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
-  fish: 'bash',
-  sql: 'sql',
-  toml: 'ini',
-  ini: 'ini',
-  dockerfile: 'dockerfile',
-  makefile: 'makefile',
-  graphql: 'graphql',
-  gql: 'graphql',
-  swift: 'swift',
-  kt: 'kotlin',
-};
-
-function getLanguage(filePath: string): string | undefined {
-  const name = filePath.split('/').pop()?.toLowerCase() || '';
-  if (name === 'dockerfile') return 'dockerfile';
-  if (name === 'makefile') return 'makefile';
-  const ext = name.split('.').pop() || '';
-  return extToLang[ext];
-}
-
-function highlightCode(code: string, filePath: string): string {
-  const lang = getLanguage(filePath);
-  if (lang) {
-    try {
-      return hljs.highlight(code, { language: lang }).value;
-    } catch {
-      // fall through
-    }
-  }
-  try {
-    return hljs.highlightAuto(code).value;
-  } catch {
-    return escapeHtml(code);
-  }
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function findTextMatches(
-  text: string,
-  query: string,
-  caseSensitive: boolean,
-  wholeWord: boolean,
-): Array<{ start: number; end: number }> {
-  if (!query) return [];
-  try {
-    let pattern = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (wholeWord) pattern = `\\b${pattern}\\b`;
-    const flags = caseSensitive ? 'g' : 'gi';
-    const regex = new RegExp(pattern, flags);
-    const matches: Array<{ start: number; end: number }> = [];
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(text)) !== null) {
-      matches.push({ start: m.index, end: m.index + m[0].length });
-      if (m[0].length === 0) regex.lastIndex++;
-    }
-    return matches;
-  } catch {
-    return [];
-  }
-}
-
-function injectMarksIntoHtml(
-  html: string,
-  matches: Array<{ start: number; end: number }>,
-  activeMatchIndex: number,
-): string {
-  if (matches.length === 0) return html;
-
-  // Map each text-content character index to its byte range in the HTML string.
-  const charMap: Array<{ htmlStart: number; htmlEnd: number }> = [];
-  let j = 0;
-  while (j < html.length) {
-    if (html[j] === '<') {
-      while (j < html.length && html[j] !== '>') j++;
-      j++;
-    } else if (html[j] === '&') {
-      const start = j;
-      while (j < html.length && html[j] !== ';') j++;
-      j++;
-      charMap.push({ htmlStart: start, htmlEnd: j });
-    } else {
-      charMap.push({ htmlStart: j, htmlEnd: j + 1 });
-      j++;
-    }
-  }
-
-  const insertions: Array<{ htmlOffset: number; text: string }> = [];
-  for (let mi = 0; mi < matches.length; mi++) {
-    const { start, end } = matches[mi];
-    const cls = mi === activeMatchIndex ? 'search-mark search-mark-active' : 'search-mark';
-    if (start < charMap.length) {
-      insertions.push({ htmlOffset: charMap[start].htmlStart, text: `<mark class="${cls}">` });
-    }
-    const last = end - 1;
-    if (last >= 0 && last < charMap.length) {
-      insertions.push({ htmlOffset: charMap[last].htmlEnd, text: '</mark>' });
-    }
-  }
-
-  // Opening tags before closing tags at the same offset to keep nesting valid.
-  insertions.sort((a, b) =>
-    a.htmlOffset !== b.htmlOffset ? a.htmlOffset - b.htmlOffset : (a.text.startsWith('</') ? 1 : -1),
-  );
-
-  let result = '';
-  let prev = 0;
-  for (const { htmlOffset, text } of insertions) {
-    if (htmlOffset >= prev) {
-      result += html.slice(prev, htmlOffset);
-      result += text;
-      prev = htmlOffset;
-    }
-  }
-  result += html.slice(prev);
-  return result;
-}
+import { CodeEditor } from './CodeEditor';
 
 export function Viewer() {
   const {
@@ -181,6 +29,8 @@ export function Viewer() {
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
   const fetchedVersionRef = useRef<Record<string, number>>({});
+
+  // Search state — used by DiffView only; CodeEditor handles its own search natively
   const [searchQuery, setSearchQuery] = useState('');
   const [searchVisible, setSearchVisible] = useState(false);
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -188,6 +38,8 @@ export function Viewer() {
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [diffMatchCount, setDiffMatchCount] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
 
   const [tabContextMenu, setTabContextMenu] = useState<{
     x: number;
@@ -215,6 +67,16 @@ export function Viewer() {
     setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: id });
   }, []);
 
+  const saveFile = useCallback(async (filePath: string) => {
+    const draft = editDrafts[filePath];
+    if (draft === undefined) return;
+    const result = await window.api.writeFile(filePath, draft);
+    if (!result.error) {
+      setContentCache(prev => ({ ...prev, [filePath]: { content: draft, error: null } }));
+      fetchedVersionRef.current[filePath] = fileVersion;
+    }
+  }, [editDrafts, fileVersion]);
+
   useEffect(() => {
     if (!openFilePath || !window.api?.watchFile || !window.api?.onFileChanged) return;
     window.api.watchFile(openFilePath);
@@ -234,26 +96,29 @@ export function Viewer() {
     };
   }, [openFilePath]);
 
+  const isDiffMode = !!(openFilePath && diffFilePath === openFilePath);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && openFilePath) {
+      // Cmd+F: open search bar only in diff mode; CodeEditor handles it natively otherwise
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && openFilePath && isDiffMode) {
         e.preventDefault();
         setSearchVisible(true);
         setTimeout(() => searchInputRef.current?.focus(), 0);
       }
+      // Cmd+S: save current file if there's an unsaved draft
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && openFilePath) {
+        e.preventDefault();
+        saveFile(openFilePath);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [openFilePath]);
+  }, [openFilePath, isDiffMode, saveFile]);
 
   useEffect(() => {
     setActiveMatchIndex(0);
   }, [searchQuery, caseSensitive, wholeWord, openFilePath]);
-
-  useEffect(() => {
-    if (!searchVisible) return;
-    document.querySelector('.search-mark-active')?.scrollIntoView({ block: 'nearest' });
-  }, [activeMatchIndex, searchVisible]);
 
   useEffect(() => {
     if (!openFilePath) {
@@ -294,15 +159,18 @@ export function Viewer() {
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [openFilePath, fileVersion]);
 
   useEffect(() => {
     const staleKeys = Object.keys(contentCache).filter(k => !openFiles.includes(k));
     if (staleKeys.length > 0) {
       setContentCache(prev => {
+        const next = { ...prev };
+        for (const k of staleKeys) delete next[k];
+        return next;
+      });
+      setEditDrafts(prev => {
         const next = { ...prev };
         for (const k of staleKeys) delete next[k];
         return next;
@@ -314,34 +182,15 @@ export function Viewer() {
   const content = cached?.content ?? null;
   const error = cached?.error ?? null;
 
-  const highlightedHtml = useMemo(() => {
-    if (!content || !openFilePath) return '';
-    return highlightCode(content, openFilePath);
-  }, [content, openFilePath]);
-
-  const lineCount = content ? content.split('\n').length : 0;
-  const isDiffMode = !!(openFilePath && diffFilePath === openFilePath);
   const fileHasChanges = !!(openFilePath && (gitStatus[openFilePath] || gitStagedStatus[openFilePath]));
 
-  const contentMatches = useMemo(
-    () => findTextMatches(content ?? '', searchQuery, caseSensitive, wholeWord),
-    [content, searchQuery, caseSensitive, wholeWord],
-  );
-
-  const totalMatches = isDiffMode ? diffMatchCount : contentMatches.length;
-
-  const highlightedHtmlWithMarks = useMemo(() => {
-    if (isDiffMode || !searchQuery) return highlightedHtml;
-    return injectMarksIntoHtml(highlightedHtml, contentMatches, activeMatchIndex);
-  }, [isDiffMode, highlightedHtml, contentMatches, activeMatchIndex, searchQuery]);
-
   const goNext = useCallback(() => {
-    setActiveMatchIndex(i => totalMatches > 0 ? (i + 1) % totalMatches : 0);
-  }, [totalMatches]);
+    setActiveMatchIndex(i => diffMatchCount > 0 ? (i + 1) % diffMatchCount : 0);
+  }, [diffMatchCount]);
 
   const goPrev = useCallback(() => {
-    setActiveMatchIndex(i => totalMatches > 0 ? (i - 1 + totalMatches) % totalMatches : 0);
-  }, [totalMatches]);
+    setActiveMatchIndex(i => diffMatchCount > 0 ? (i - 1 + diffMatchCount) % diffMatchCount : 0);
+  }, [diffMatchCount]);
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -376,6 +225,9 @@ export function Viewer() {
       const subpath = duplicateNames.has(name) && parts.length >= 2
         ? parts[parts.length - 2]
         : null;
+      const savedContent = contentCache[filePath]?.content;
+      const draft = editDrafts[filePath];
+      const isUnsaved = draft !== undefined && draft !== savedContent;
       return {
         id: filePath,
         tooltip: shortenPath(filePath, homeDir),
@@ -384,11 +236,12 @@ export function Viewer() {
             <FileIcon name={name} isDirectory={false} />
             <span className="tab-item-label">{name}</span>
             {subpath && <span className="viewer-tab-subpath">{subpath}</span>}
+            {isUnsaved && <span className="viewer-tab-unsaved" title="Unsaved changes">●</span>}
           </>
         ),
       };
     }),
-    [openFiles, duplicateNames, homeDir],
+    [openFiles, duplicateNames, homeDir, contentCache, editDrafts],
   );
 
   return (
@@ -463,7 +316,7 @@ export function Viewer() {
           </button>
         </div>
       )}
-      {searchVisible && openFilePath && (
+      {searchVisible && isDiffMode && openFilePath && (
         <div className="viewer-search-bar">
           <input
             ref={searchInputRef}
@@ -476,7 +329,7 @@ export function Viewer() {
           />
           <span className="viewer-search-count">
             {searchQuery
-              ? totalMatches === 0 ? 'No results' : `${activeMatchIndex + 1} / ${totalMatches}`
+              ? diffMatchCount === 0 ? 'No results' : `${activeMatchIndex + 1} / ${diffMatchCount}`
               : ''}
           </span>
           <button className="viewer-search-btn" onClick={goPrev} title="Previous (Shift+Enter)">↑</button>
@@ -515,18 +368,11 @@ export function Viewer() {
             <div>Select a file from the Explorer</div>
           </div>
         ) : content !== null ? (
-          <div className="viewer-code-wrapper">
-            <div className="viewer-line-numbers">
-              {Array.from({ length: lineCount }, (_, i) => (
-                <span key={i} className="viewer-line-number">
-                  {i + 1}
-                </span>
-              ))}
-            </div>
-            <pre className="viewer-code">
-              <code dangerouslySetInnerHTML={{ __html: highlightedHtmlWithMarks }} />
-            </pre>
-          </div>
+          <CodeEditor
+            filePath={openFilePath}
+            value={editDrafts[openFilePath] ?? content}
+            onChange={draft => setEditDrafts(prev => ({ ...prev, [openFilePath]: draft }))}
+          />
         ) : null}
       </div>
       {gitErrorViewContent && (

@@ -36,6 +36,7 @@ const api = {
 
   readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number, showHiddenFiles?: boolean): Promise<DirReadResult> => ipcRenderer.invoke('read-directory', dirPath, skipCache, maxEntries, showHiddenFiles),
   readFile: (filePath: string): Promise<FileResult> => ipcRenderer.invoke('read-file', filePath),
+  writeFile: (filePath: string, content: string): Promise<{ error: string | null }> => ipcRenderer.invoke('write-file', filePath, content),
   searchFiles: (rootDir: string, query: string): Promise<Array<{ path: string; isDirectory: boolean }>> => ipcRenderer.invoke('search-files', rootDir, query),
   getGitInfo: (dirPath: string): Promise<GitInfo> => ipcRenderer.invoke('get-git-info', dirPath),
   getGitStatus: (dirPath: string): Promise<{ files: Record<string, string>; staged: Record<string, string>; repoRoot: string | null; ignored: string[] }> =>

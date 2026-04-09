@@ -158,6 +158,7 @@ export interface ElectronAPI {
   getHomeDir: () => Promise<string>;
   readDirectory: (dirPath: string, skipCache?: boolean, maxEntries?: number, showHiddenFiles?: boolean) => Promise<DirReadResult>;
   readFile: (filePath: string) => Promise<FileResult>;
+  writeFile: (filePath: string, content: string) => Promise<{ error: string | null }>;
   searchFiles: (rootDir: string, query: string) => Promise<SearchFileResult[]>;
   getGitInfo: (dirPath: string) => Promise<GitInfo>;
   getGitStatus: (dirPath: string) => Promise<GitStatusResult>;

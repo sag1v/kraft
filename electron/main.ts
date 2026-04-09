@@ -411,6 +411,15 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle('write-file', async (_event, filePath: string, content: string) => {
+    try {
+      await fs.promises.writeFile(filePath, content, 'utf-8');
+      return { error: null };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('search-files', async (_event, rootDir: string, query: string) => {
     const maxResults = 50;
     const lowerQuery = query.toLowerCase();
