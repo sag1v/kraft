@@ -5,12 +5,14 @@ import * as os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { AgentManager } from './agent-providers';
+import { UpdateChecker } from './update-checker';
 
 const execFileAsync = promisify(execFile);
 const pty = require('node-pty');
 
 let mainWindow: BrowserWindow | null = null;
 const agentManager = new AgentManager();
+const updateChecker = new UpdateChecker();
 
 interface PtyInstance {
   process: any;
@@ -233,6 +235,20 @@ function createWindow() {
             });
             if (result === 1) {
               clipboard.writeText(info);
+            }
+          },
+        },
+        {
+          label: 'Check for Updates...',
+          click: async () => {
+            const hasUpdate = await updateChecker.check();
+            if (!hasUpdate) {
+              dialog.showMessageBox(mainWindow!, {
+                type: 'info',
+                title: 'No Updates',
+                message: 'You are running the latest version of Kraft.',
+                buttons: ['OK'],
+              });
             }
           },
         },
@@ -885,6 +901,20 @@ function setupIPC() {
   ipcMain.on('reload-window', () => {
     mainWindow?.webContents.reloadIgnoringCache();
   });
+
+  ipcMain.handle('get-app-version', () => app.getVersion());
+
+  ipcMain.handle('check-for-updates', async () => {
+    return updateChecker.check();
+  });
+
+  ipcMain.handle('download-update', async () => {
+    return updateChecker.downloadUpdate();
+  });
+
+  ipcMain.handle('install-update', () => {
+    updateChecker.installUpdate();
+  });
 }
 
 agentManager.setOnContextDirsChanged((terminalId, dirs) => {
@@ -911,6 +941,32 @@ app.whenReady().then(() => {
   getShellEnv();
   setupIPC();
   createWindow();
+
+  updateChecker.onUpdateAvailable((info) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-available', info);
+    }
+  });
+
+  updateChecker.onProgress((progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-download-progress', progress);
+    }
+  });
+
+  updateChecker.onDownloaded((info) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-downloaded', info);
+    }
+  });
+
+  updateChecker.onError((error) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-error', error);
+    }
+  });
+
+  updateChecker.start();
 });
 
 app.on('window-all-closed', () => {

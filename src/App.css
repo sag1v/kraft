@@ -3046,3 +3046,116 @@ body {
   word-break: break-word;
 }
 
+/* ── Update Notification ── */
+
+.update-notification {
+  position: fixed;
+  bottom: 36px;
+  right: 16px;
+  z-index: 10001;
+  animation: update-slide-in 0.3s ease-out;
+}
+
+@keyframes update-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.update-notification-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  max-width: 420px;
+}
+
+.update-notification-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.update-notification-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.update-notification-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update-notification-version {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.update-notification-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.update-notification-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+
+.update-notification-btn:hover {
+  opacity: 0.85;
+}
+
+.update-notification-btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.update-notification-btn-dismiss {
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+}
+
+.update-notification-progress {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.update-notification-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}

@@ -7,6 +7,7 @@ import { Settings } from './components/Settings';
 import { CommandPalette } from './components/CommandPalette';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { GitErrorToast } from './components/GitErrorToast';
+import { UpdateNotification } from './components/UpdateNotification';
 
 function AppInner() {
   const {
@@ -177,6 +178,7 @@ function AppInner() {
       <CommandPalette />
       <GlobalTooltip />
       <GitErrorToast />
+      <UpdateNotification />
     </div>
   );
 }

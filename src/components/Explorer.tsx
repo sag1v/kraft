@@ -558,9 +558,22 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
   const [singleActionMode, setSingleActionMode] = useState<GitActionMode | null>(null);
 
   if (totalCount === 0) {
+    const emptyRoot = allRoots[0] ?? '';
+    const emptyRootName = emptyRoot.split('/').pop() || emptyRoot;
     return (
-      <div className="sc-empty">
-        <span className="sc-empty-text">No changes detected</span>
+      <div className="sc-view">
+        <div className="sc-single-repo">
+          <div className="sc-single-repo-header">
+            <span className="sc-single-repo-name">{emptyRootName}</span>
+            <RepoActionsMenu repoRoot={emptyRoot} onStashPop={onStashPop} onUndoLastCommit={onUndoLastCommit} onAction={setSingleActionMode} />
+          </div>
+          {singleActionMode && (
+            <GitActionPanel repoRoot={emptyRoot} mode={singleActionMode} onCommitStaged={onCommitStaged} onCommitAll={onCommitAll} onStash={onStash} onClose={() => setSingleActionMode(null)} />
+          )}
+          <div className="sc-empty">
+            <span className="sc-empty-text">No changes detected</span>
+          </div>
+        </div>
       </div>
     );
   }

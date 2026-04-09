@@ -150,6 +150,31 @@ const api = {
     ipcRenderer.send('reload-window');
   },
 
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+  checkForUpdates: (): Promise<boolean> => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('download-update'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('install-update'),
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseName: string }) => void): (() => void) => {
+    const handler = (_event: any, info: any) => callback(info);
+    ipcRenderer.on('update-available', handler);
+    return () => ipcRenderer.removeListener('update-available', handler);
+  },
+  onUpdateDownloadProgress: (callback: (progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void): (() => void) => {
+    const handler = (_event: any, progress: any) => callback(progress);
+    ipcRenderer.on('update-download-progress', handler);
+    return () => ipcRenderer.removeListener('update-download-progress', handler);
+  },
+  onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string; releaseName: string }) => void): (() => void) => {
+    const handler = (_event: any, info: any) => callback(info);
+    ipcRenderer.on('update-downloaded', handler);
+    return () => ipcRenderer.removeListener('update-downloaded', handler);
+  },
+  onUpdateError: (callback: (error: string) => void): (() => void) => {
+    const handler = (_event: any, error: string) => callback(error);
+    ipcRenderer.on('update-error', handler);
+    return () => ipcRenderer.removeListener('update-error', handler);
+  },
+
   watchDirectory: (dirPath: string): void => {
     ipcRenderer.send('watch-directory', dirPath);
   },

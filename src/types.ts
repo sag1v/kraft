@@ -56,6 +56,19 @@ export interface TerminalSession {
   cwd: string;
 }
 
+export interface UpdateInfo {
+  version: string;
+  releaseDate: string;
+  releaseName: string;
+}
+
+export interface DownloadProgress {
+  percent: number;
+  bytesPerSecond: number;
+  transferred: number;
+  total: number;
+}
+
 export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed' | 'conflict';
 
 export interface GitStatusResult {
@@ -176,6 +189,14 @@ export interface ElectronAPI {
   onOpenSettings: (callback: () => void) => () => void;
   toggleDevTools: () => void;
   reloadWindow: () => void;
+  getAppVersion: () => Promise<string>;
+  checkForUpdates: () => Promise<boolean>;
+  downloadUpdate: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+  onUpdateDownloadProgress: (callback: (progress: DownloadProgress) => void) => () => void;
+  onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => () => void;
+  onUpdateError: (callback: (error: string) => void) => () => void;
   watchDirectory: (dirPath: string) => void;
   unwatchDirectory: (dirPath: string) => void;
   onDirectoryChanged: (
