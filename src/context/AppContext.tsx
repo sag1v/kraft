@@ -231,7 +231,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (
       prevGitInfoRef.current.branch !== cachedGit.branch ||
       prevGitInfoRef.current.repoName !== cachedGit.repoName ||
-      prevGitInfoRef.current.isGitRepo !== cachedGit.isGitRepo
+      prevGitInfoRef.current.isGitRepo !== cachedGit.isGitRepo ||
+      prevGitInfoRef.current.aheadCount !== cachedGit.aheadCount
     ) {
       prevGitInfoRef.current = cachedGit;
     }
