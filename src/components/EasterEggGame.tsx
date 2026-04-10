@@ -134,12 +134,13 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     particles: [], impactLines: [],
   });
 
-  const [phase, setPhase] = useState<'idle' | 'playing' | 'dead'>('idle');
+  const [phase, setPhase]           = useState<'idle' | 'countdown' | 'playing' | 'dead'>('idle');
+  const [countdownNum, setCountdownNum] = useState(3);
   const [deathScore, setDeathScore] = useState(0);
   const [deathTime,  setDeathTime]  = useState('00:00');
   const [best, setBest]             = useState(0);
   const bestRef          = useRef(0);
-  const phaseRef         = useRef<'idle' | 'playing' | 'dead'>('idle');
+  const phaseRef         = useRef<'idle' | 'countdown' | 'playing' | 'dead'>('idle');
   const deathTimestampRef = useRef<number>(0);
   const themeRef         = useRef(theme);
 
@@ -310,55 +311,57 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     }
     ctx.globalAlpha = 1;
 
-    // Player (square, rotated so "feet" always face the current wall)
-    const half = PLAYER_SIZE / 2;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rot);
-    // Body
-    ctx.fillStyle = c.accent;
-    ctx.fillRect(-half, -half, PLAYER_SIZE, PLAYER_SIZE);
+    // Player + sparks — visible during countdown and active game, hidden only on idle
+    if (phaseRef.current !== 'idle') {
+      const half = PLAYER_SIZE / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rot);
+      // Body
+      ctx.fillStyle = c.accent;
+      ctx.fillRect(-half, -half, PLAYER_SIZE, PLAYER_SIZE);
 
-    // Feet — contrasting strip with 3 grip notches cut in
-    ctx.fillStyle = c.accentSecondary;
-    ctx.fillRect(-half, half - 5, PLAYER_SIZE, 5);
-    if (phaseRef.current === 'dead') {
-      // X crossed eyes — cartoon death
-      ctx.strokeStyle = c.bg;
-      ctx.lineWidth   = 1.5;
-      ctx.lineCap     = 'round';
-      ctx.beginPath();
-      ctx.moveTo(-6, half - 5); ctx.lineTo(-3, half - 2);
-      ctx.moveTo(-3, half - 5); ctx.lineTo(-6, half - 2);
-      ctx.moveTo( 3, half - 5); ctx.lineTo( 6, half - 2);
-      ctx.moveTo( 6, half - 5); ctx.lineTo( 3, half - 2);
-      ctx.stroke();
-      ctx.lineCap = 'butt';
-    } else {
-      // Normal blinking eyes — shrink height every ~4s
-      const tInCycle = Date.now() % 4200;
-      const eyeH = tInCycle < 180
-        ? Math.max(0, Math.round(3 * Math.abs(Math.cos((tInCycle / 180) * Math.PI))))
-        : 3;
-      if (eyeH > 0) {
-        ctx.fillStyle = c.bg;
-        ctx.fillRect(-5, half - 4, 2, eyeH);
-        ctx.fillRect( 3, half - 4, 2, eyeH);
+      // Feet — contrasting strip
+      ctx.fillStyle = c.accentSecondary;
+      ctx.fillRect(-half, half - 5, PLAYER_SIZE, 5);
+      if (phaseRef.current === 'dead') {
+        // X crossed eyes — cartoon death
+        ctx.strokeStyle = c.bg;
+        ctx.lineWidth   = 1.5;
+        ctx.lineCap     = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-6, half - 5); ctx.lineTo(-3, half - 2);
+        ctx.moveTo(-3, half - 5); ctx.lineTo(-6, half - 2);
+        ctx.moveTo( 3, half - 5); ctx.lineTo( 6, half - 2);
+        ctx.moveTo( 6, half - 5); ctx.lineTo( 3, half - 2);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+      } else {
+        // Normal blinking eyes — shrink height every ~4s
+        const tInCycle = Date.now() % 4200;
+        const eyeH = tInCycle < 180
+          ? Math.max(0, Math.round(3 * Math.abs(Math.cos((tInCycle / 180) * Math.PI))))
+          : 3;
+        if (eyeH > 0) {
+          ctx.fillStyle = c.bg;
+          ctx.fillRect(-5, half - 4, 2, eyeH);
+          ctx.fillRect( 3, half - 4, 2, eyeH);
+        }
       }
-    }
 
-    ctx.restore();
+      ctx.restore();
 
-    // ── Friction sparks — drawn on top of Bob so they're not hidden ──
-    for (const p of gs.particles) {
-      const sz = 2 + p.life * 3;
-      ctx.globalAlpha = p.life * 0.85;
-      ctx.fillStyle   = c.fg;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, sz / 2, 0, Math.PI * 2);
-      ctx.fill();
+      // ── Friction sparks — drawn on top of Bob ──
+      for (const p of gs.particles) {
+        const sz = 2 + p.life * 3;
+        ctx.globalAlpha = p.life * 0.85;
+        ctx.fillStyle   = c.fg;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, sz / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
 
     // ── Layer 3 (close): fast vertical streaks in corridor ──
     {
@@ -513,6 +516,28 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     setPhase('playing');
   }, []);
 
+  const startCountdown = useCallback(() => {
+    const H = hRef.current;
+    gsRef.current = {
+      scroll: 0, speed: BASE_SPEED, side: 'left',
+      jumping: false, fromSide: 'left', jumpT: 0,
+      obstacles: [], nextSpawn: H + 200, score: 0,
+      startTime: Date.now(),
+      particles: [], impactLines: [],
+    };
+    setCountdownNum(3);
+    setPhase('countdown');
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 'countdown') return;
+    setCountdownNum(3);
+    const t1 = setTimeout(() => setCountdownNum(2), 1000);
+    const t2 = setTimeout(() => setCountdownNum(1), 2000);
+    const t3 = setTimeout(() => startGame(),        3000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [phase, startGame]);
+
   const jump = useCallback(() => {
     const gs = gsRef.current;
     if (gs.jumping) return;
@@ -526,18 +551,19 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
       if (e.key === 'Escape') { onClose(); return; }
       if (e.key === ' ') {
         e.preventDefault();
-        if (phaseRef.current === 'idle') { startGame(); return; }
+        if (phaseRef.current === 'idle') { startCountdown(); return; }
         if (phaseRef.current === 'dead') {
           if (Date.now() - deathTimestampRef.current < 2000) return;
-          startGame();
+          startCountdown();
           return;
         }
+        if (phaseRef.current === 'countdown') return;
         jump();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, startGame, jump]);
+  }, [onClose, startCountdown, jump]);
 
   const c = theme.colors;
 
@@ -562,19 +588,40 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
 
       {phase !== 'playing' && (
         <div className="easter-egg-msg" style={{ color: c.fg }}>
-          {phase === 'idle' ? (
+          {phase === 'idle' && (
             <>
               <span className="easter-egg-msg-pretitle" style={{ color: c.fgMuted }}>
-                need a break?
+                Need a break?
               </span>
-              <span className="easter-egg-msg-game-title" style={{ color: c.accent }}>
-                bob
+              <span className="easter-egg-msg-pretitle" style={{ color: c.fgMuted }}>
+                play
               </span>
+              <div className="easter-egg-bob-row">
+                <div className="easter-egg-bob-preview" style={{ background: c.accent }}>
+                  <div className="easter-egg-bob-feet" style={{ background: c.accentSecondary }} />
+                  <div className="easter-egg-bob-eye" style={{ background: c.bg }} />
+                  <div className="easter-egg-bob-eye" style={{ background: c.bg }} />
+                </div>
+                <span className="easter-egg-msg-game-title" style={{ color: c.accent }}>
+                  bob
+                </span>
+              </div>
               <span className="easter-egg-msg-hint" style={{ color: c.fgMuted }}>
                 press <kbd style={{ background: c.bgTertiary, borderColor: c.border }}>space</kbd> to start
               </span>
             </>
-          ) : (
+          )}
+          {phase === 'countdown' && (
+            <>
+              <span key={countdownNum} className="easter-egg-countdown-num" style={{ color: c.accent }}>
+                {countdownNum}
+              </span>
+              <span className="easter-egg-countdown-sub" style={{ color: c.fgMuted }}>
+                get ready
+              </span>
+            </>
+          )}
+          {phase === 'dead' && (
             <>
               <span className="easter-egg-msg-game-title" style={{ color: c.diffRemove }}>
                 game over
