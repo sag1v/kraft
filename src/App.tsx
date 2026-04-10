@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { AppProvider, useUIContext } from './context/AppContext';
 import { TopBar } from './components/TopBar';
 import { Footer } from './components/Footer';
@@ -8,6 +8,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { GitErrorToast } from './components/GitErrorToast';
 import { UpdateNotification } from './components/UpdateNotification';
+import { EasterEggGame } from './components/EasterEggGame';
 
 function AppInner() {
   const {
@@ -21,6 +22,13 @@ function AppInner() {
     closeFileTab,
     setActiveFileTab,
   } = useUIContext();
+  const [gameOpen, setGameOpen] = useState(false);
+
+  useEffect(() => {
+    const open = () => setGameOpen(true);
+    window.addEventListener('kraft:easter-egg', open);
+    return () => window.removeEventListener('kraft:easter-egg', open);
+  }, []);
 
   const panelVisRef = useRef(panelVisibility);
   panelVisRef.current = panelVisibility;
@@ -171,7 +179,7 @@ function AppInner() {
     <div className="app">
       <TopBar />
       <div className="app-body">
-        <PanelLayout />
+        {gameOpen ? <EasterEggGame onClose={() => setGameOpen(false)} /> : <PanelLayout />}
       </div>
       <Footer />
       <Settings />
