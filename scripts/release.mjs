@@ -100,22 +100,30 @@ async function linkAssetToRelease(name, url) {
   }
 }
 
-function generateLatestMacYml(dmgPath) {
-  const fileBuffer = readFileSync(dmgPath);
-  const sha512 = createHash('sha512').update(fileBuffer).digest('base64');
-  const size = statSync(dmgPath).size;
-  const fileName = basename(dmgPath);
+function generateLatestMacYml(zipPath, dmgPath) {
+  const zipBuffer = readFileSync(zipPath);
+  const zipSha512 = createHash('sha512').update(zipBuffer).digest('base64');
+  const zipSize = statSync(zipPath).size;
+  const zipFileName = basename(zipPath);
+  const zipUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${VERSION}/${encodeURIComponent(zipFileName)}`;
 
-  const dmgDownloadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${VERSION}/${encodeURIComponent(fileName)}`;
+  const dmgBuffer = readFileSync(dmgPath);
+  const dmgSha512 = createHash('sha512').update(dmgBuffer).digest('base64');
+  const dmgSize = statSync(dmgPath).size;
+  const dmgFileName = basename(dmgPath);
+  const dmgUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${VERSION}/${encodeURIComponent(dmgFileName)}`;
 
   return [
     `version: ${VERSION}`,
     `files:`,
-    `  - url: ${dmgDownloadUrl}`,
-    `    sha512: ${sha512}`,
-    `    size: ${size}`,
-    `path: ${dmgDownloadUrl}`,
-    `sha512: ${sha512}`,
+    `  - url: ${zipUrl}`,
+    `    sha512: ${zipSha512}`,
+    `    size: ${zipSize}`,
+    `  - url: ${dmgUrl}`,
+    `    sha512: ${dmgSha512}`,
+    `    size: ${dmgSize}`,
+    `path: ${zipUrl}`,
+    `sha512: ${zipSha512}`,
     `releaseDate: ${new Date().toISOString()}`,
   ].join('\n');
 }
@@ -189,18 +197,18 @@ async function main() {
 
   await createRelease();
 
+  let zipPath = '';
   let dmgPath = '';
   for (const file of files) {
     const filePath = resolve(distDir, file);
     const url = await uploadPackage(filePath, VERSION);
     await linkAssetToRelease(file, url);
-    if (file.endsWith('.dmg')) {
-      dmgPath = filePath;
-    }
+    if (file.endsWith('.zip')) zipPath = filePath;
+    if (file.endsWith('.dmg')) dmgPath = filePath;
   }
 
-  if (dmgPath) {
-    const ymlContent = generateLatestMacYml(dmgPath);
+  if (zipPath && dmgPath) {
+    const ymlContent = generateLatestMacYml(zipPath, dmgPath);
     console.log('\nlatest-mac.yml content:');
     console.log(ymlContent);
     console.log();

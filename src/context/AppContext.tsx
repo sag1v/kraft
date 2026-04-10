@@ -92,6 +92,8 @@ interface UIContextValue {
   clearGitError: () => void;
   gitErrorViewContent: string | null;
   setGitErrorViewContent: (content: string | null) => void;
+  errorViewTitle: string;
+  setErrorViewTitle: (title: string) => void;
 }
 
 interface SessionContextValue {
@@ -176,6 +178,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [diffFilePath, setDiffFilePathState] = useState<string | null>(null);
   const [gitError, setGitError] = useState<string | null>(null);
   const [gitErrorViewContent, setGitErrorViewContent] = useState<string | null>(null);
+  const [errorViewTitle, setErrorViewTitle] = useState<string>('Git Error Output');
   const [agentContextDirsMap, setAgentContextDirsMap] = useState<Record<string, AgentContextDir[]>>({});
 
   const activeSessionIdRef = useRef(activeSessionId);
@@ -933,7 +936,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     clearGitError: () => setGitError(null),
     gitErrorViewContent,
     setGitErrorViewContent,
-  }), [theme, layout, panelLayout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath, gitError, gitErrorViewContent,
+    errorViewTitle,
+    setErrorViewTitle,
+  }), [theme, layout, panelLayout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath, gitError, gitErrorViewContent, errorViewTitle,
        setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, closeOtherFileTabs, closeAllFileTabs, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
 
   const sessionValue = useMemo<SessionContextValue>(() => ({

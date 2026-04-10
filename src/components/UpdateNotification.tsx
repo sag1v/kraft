@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { UpdateInfo, DownloadProgress } from '../types';
+import { useUIContext } from '../context/AppContext';
 
 declare const __APP_VERSION__: string;
 
 type UpdateState = 'available' | 'downloading' | 'ready' | 'error';
 
 export function UpdateNotification() {
+  const { setGitErrorViewContent, setErrorViewTitle, setPanelVisibility } = useUIContext();
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [state, setState] = useState<UpdateState>('available');
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -39,8 +41,8 @@ export function UpdateNotification() {
 
     unsubs.push(
       window.api?.onUpdateError?.((err) => {
-        setState('error');
         setErrorMsg(err);
+        setState('error');
       })
     );
 
@@ -70,6 +72,13 @@ export function UpdateNotification() {
     window.api?.downloadUpdate?.();
   }, []);
 
+  const handleViewError = useCallback(() => {
+    if (!errorMsg) return;
+    setErrorViewTitle('Update Error');
+    setGitErrorViewContent(errorMsg);
+    setPanelVisibility('viewer', true);
+  }, [errorMsg, setErrorViewTitle, setGitErrorViewContent, setPanelVisibility]);
+
   if (!visible || !updateInfo) return null;
 
   const currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -81,7 +90,7 @@ export function UpdateNotification() {
         <div className="update-notification-text">
           <span className="update-notification-title">
             {state === 'ready'
-              ? 'Update ready — quit Kraft, open the DMG and drag to Applications'
+              ? 'Update downloaded'
               : state === 'error'
                 ? 'Update failed'
                 : `Kraft ${updateInfo.releaseName} is available`}
@@ -89,6 +98,19 @@ export function UpdateNotification() {
           <span className="update-notification-version">
             v{currentVersion} {'\u2192'} v{updateInfo.version}
           </span>
+          {state === 'ready' && (
+            <span className="update-notification-hint">
+              Quit Kraft, open the DMG and drag to Applications
+            </span>
+          )}
+          {state === 'error' && (
+            <span
+              className="update-notification-hint update-notification-hint-link"
+              onClick={handleViewError}
+            >
+              View error details →
+            </span>
+          )}
         </div>
 
         {state === 'downloading' && (
@@ -164,9 +186,6 @@ export function UpdateNotification() {
           )}
         </div>
       </div>
-      {state === 'error' && errorMsg && (
-        <div className="update-notification-error">{errorMsg}</div>
-      )}
     </div>
   );
 }

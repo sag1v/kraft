@@ -1,5 +1,9 @@
 import { app } from 'electron';
-import { autoUpdater, type UpdateInfo as ElectronUpdateInfo, type UpdateDownloadedEvent } from 'electron-updater';
+import { createWriteStream } from 'fs';
+import { get as httpsGet } from 'https';
+import { get as httpGet } from 'http';
+import { join } from 'path';
+import { autoUpdater, type UpdateInfo as ElectronUpdateInfo } from 'electron-updater';
 
 export interface UpdateInfo {
   version: string;
@@ -29,6 +33,7 @@ export class UpdateChecker {
   private onErrorCb: ErrorCallback | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private configured = false;
+  private pendingUpdate: { info: UpdateInfo; dmgUrl: string } | null = null;
 
   constructor() {
     this.configure();
@@ -44,33 +49,25 @@ export class UpdateChecker {
 
     autoUpdater.on('update-available', (info: ElectronUpdateInfo) => {
       console.log(`[UpdateChecker] Update available: ${info.version}`);
-      this.onUpdateAvailableCb?.({
+
+      const dmgFile = info.files?.find((f) => f.url.endsWith('.dmg'));
+      if (!dmgFile) {
+        console.warn('[UpdateChecker] No DMG file found in update info');
+        return;
+      }
+
+      const updateInfo: UpdateInfo = {
         version: info.version,
         releaseDate: info.releaseDate || new Date().toISOString(),
         releaseName: `v${info.version}`,
-      });
+      };
+
+      this.pendingUpdate = { info: updateInfo, dmgUrl: dmgFile.url };
+      this.onUpdateAvailableCb?.(updateInfo);
     });
 
     autoUpdater.on('update-not-available', () => {
       console.log('[UpdateChecker] No update available');
-    });
-
-    autoUpdater.on('download-progress', (progress) => {
-      this.onProgressCb?.({
-        percent: progress.percent,
-        bytesPerSecond: progress.bytesPerSecond,
-        transferred: progress.transferred,
-        total: progress.total,
-      });
-    });
-
-    autoUpdater.on('update-downloaded', (info: UpdateDownloadedEvent) => {
-      console.log(`[UpdateChecker] Update downloaded: ${info.version} at ${info.downloadedFile}`);
-      this.onDownloadedCb?.({
-        version: info.version,
-        releaseDate: info.releaseDate || new Date().toISOString(),
-        releaseName: `v${info.version}`,
-      }, info.downloadedFile);
     });
 
     autoUpdater.on('error', (err) => {
@@ -110,12 +107,52 @@ export class UpdateChecker {
     }
   }
 
-  async downloadUpdate() {
-    if (!this.configured) return;
-    await autoUpdater.downloadUpdate();
+  private fetchFile(url: string, destPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const get = url.startsWith('https') ? httpsGet : httpGet;
+      get(url, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          this.fetchFile(response.headers.location!, destPath).then(resolve).catch(reject);
+          return;
+        }
+        if (response.statusCode !== 200) {
+          reject(new Error(`Download failed: HTTP ${response.statusCode}`));
+          return;
+        }
+        const total = parseInt(response.headers['content-length'] as string || '0', 10);
+        let downloaded = 0;
+        const file = createWriteStream(destPath);
+        response.on('data', (chunk: Buffer) => {
+          downloaded += chunk.length;
+          file.write(chunk);
+          this.onProgressCb?.({
+            percent: total > 0 ? (downloaded / total) * 100 : 0,
+            bytesPerSecond: 0,
+            transferred: downloaded,
+            total,
+          });
+        });
+        response.on('end', () => {
+          file.end();
+          file.on('finish', resolve);
+        });
+        response.on('error', (err) => { file.destroy(); reject(err); });
+      }).on('error', reject);
+    });
   }
 
-  installUpdate() {
-    autoUpdater.quitAndInstall();
+  async downloadUpdate() {
+    if (!this.configured || !this.pendingUpdate) return;
+    const { info, dmgUrl } = this.pendingUpdate;
+    const tempPath = join(app.getPath('temp'), `Kraft-${info.version}.dmg`);
+    try {
+      console.log(`[UpdateChecker] Downloading DMG from ${dmgUrl}`);
+      await this.fetchFile(dmgUrl, tempPath);
+      console.log(`[UpdateChecker] DMG downloaded to ${tempPath}`);
+      this.onDownloadedCb?.(info, tempPath);
+    } catch (err: any) {
+      console.error('[UpdateChecker] Download failed:', err);
+      this.onErrorCb?.(err.message);
+    }
   }
 }

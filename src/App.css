@@ -3050,6 +3050,7 @@ body {
   bottom: 36px;
   right: 16px;
   z-index: 10001;
+  max-width: 420px;
   animation: update-slide-in 0.3s ease-out;
 }
 
@@ -3109,6 +3110,23 @@ body {
 .update-notification-version {
   font-size: 11px;
   color: var(--fg-muted);
+}
+
+.update-notification-hint {
+  font-size: 11px;
+  color: var(--fg-muted);
+  opacity: 0.7;
+  white-space: normal;
+}
+
+.update-notification-hint-link {
+  cursor: pointer;
+  opacity: 1;
+  color: var(--accent);
+}
+
+.update-notification-hint-link:hover {
+  text-decoration: underline;
 }
 
 .update-notification-actions {
