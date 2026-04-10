@@ -947,6 +947,7 @@ function setupIPC() {
 
     tryWatch(path.join(gitDir, 'index'));
     tryWatch(path.join(gitDir, 'HEAD'));
+    tryWatch(path.join(gitDir, 'packed-refs'));
 
     try {
       const refsDir = path.join(gitDir, 'refs');
