@@ -574,25 +574,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  useEffect(() => {
-    if (!cwd) return;
-    const timer = setTimeout(() => {
-      (async () => {
-        try {
-          const info = await window.api.getGitInfo(cwd);
-          const current = gitCacheRef.current.get(cwd);
-          if (!current || current.branch !== info.branch || current.repoName !== info.repoName || current.isGitRepo !== info.isGitRepo || current.aheadCount !== info.aheadCount) {
-            gitCacheRef.current.set(cwd, info);
-            setGitCacheVersion(v => v + 1);
-          }
-        } catch {
-          gitCacheRef.current.set(cwd, defaultGitInfo);
+  const cwdRef = useRef(cwd);
+  cwdRef.current = cwd;
+
+  const fetchGitInfo = useCallback((dirPath: string) => {
+    (async () => {
+      try {
+        const info = await window.api.getGitInfo(dirPath);
+        const current = gitCacheRef.current.get(dirPath);
+        if (!current || current.branch !== info.branch || current.repoName !== info.repoName || current.isGitRepo !== info.isGitRepo || current.aheadCount !== info.aheadCount) {
+          gitCacheRef.current.set(dirPath, info);
           setGitCacheVersion(v => v + 1);
         }
-      })();
-    }, 300);
+      } catch {
+        gitCacheRef.current.set(dirPath, defaultGitInfo);
+        setGitCacheVersion(v => v + 1);
+      }
+    })();
+  }, []);
+
+  const refreshGitInfo = useCallback(() => {
+    const dir = cwdRef.current;
+    if (dir) fetchGitInfo(dir);
+  }, [fetchGitInfo]);
+
+  const refreshGitInfoRef = useRef(refreshGitInfo);
+  refreshGitInfoRef.current = refreshGitInfo;
+
+  useEffect(() => {
+    if (!cwd) return;
+    const timer = setTimeout(() => fetchGitInfo(cwd), 300);
     return () => clearTimeout(timer);
-  }, [cwd]);
+  }, [cwd, fetchGitInfo]);
 
   const fetchGitStatus = useCallback(async (dirs: string[]) => {
     if (!window.api?.getGitStatus || dirs.length === 0) return;
@@ -665,6 +678,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
         refreshGitStatusRef.current();
+        refreshGitInfoRef.current();
       }, 200);
     });
 
