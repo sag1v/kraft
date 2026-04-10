@@ -179,7 +179,8 @@ function AppInner() {
     <div className="app">
       <TopBar />
       <div className="app-body">
-        {gameOpen ? <EasterEggGame onClose={() => setGameOpen(false)} /> : <PanelLayout />}
+        <PanelLayout />
+        {gameOpen && <EasterEggGame onClose={() => setGameOpen(false)} />}
       </div>
       <Footer />
       <Settings />
