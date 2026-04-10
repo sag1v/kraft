@@ -23,6 +23,16 @@ interface PtyInstance {
 const ptyInstances = new Map<string, PtyInstance>();
 let terminalIdCounter = 0;
 
+// Serialize git index operations per repo to prevent index.lock conflicts
+const gitQueues = new Map<string, Promise<void>>();
+function enqueueGitOp<T>(repoRoot: string, op: () => Promise<T>): Promise<T> {
+  const prev = gitQueues.get(repoRoot) ?? Promise.resolve();
+  let settle!: () => void;
+  const queued = new Promise<void>(r => { settle = r; });
+  gitQueues.set(repoRoot, queued);
+  return prev.then(op).finally(settle);
+}
+
 interface DirCacheEntry {
   entries: any[];
   totalCount: number;
@@ -541,13 +551,19 @@ function setupIPC() {
   });
 
   ipcMain.handle('get-git-status', async (_event, dirPath: string) => {
+    let repoRoot: string;
     try {
       const { stdout: rootStdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
         cwd: dirPath,
         encoding: 'utf-8',
         timeout: 3000,
       });
-      const repoRoot = rootStdout.trim();
+      repoRoot = rootStdout.trim();
+    } catch {
+      return { files: {}, staged: {}, repoRoot: null, ignored: [] };
+    }
+    return enqueueGitOp(repoRoot, async () => {
+    try {
 
       const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
         cwd: repoRoot,
@@ -615,6 +631,7 @@ function setupIPC() {
     } catch {
       return { files: {}, staged: {}, repoRoot: null, ignored: [] };
     }
+    });
   });
 
   const gitResult = (err?: unknown): { success: false; error: string } => {
@@ -625,70 +642,86 @@ function setupIPC() {
     return { success: false, error: combined || 'Unknown git error' };
   };
 
-  ipcMain.handle('git-stage', async (_event, filePaths: string[], repoRoot: string) => {
-    try {
-      await execFileAsync('git', ['add', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-stage', (_event, filePaths: string[], repoRoot: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await execFileAsync('git', ['add', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
-  ipcMain.handle('git-unstage', async (_event, filePaths: string[], repoRoot: string) => {
-    try {
-      await execFileAsync('git', ['reset', 'HEAD', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-unstage', (_event, filePaths: string[], repoRoot: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await execFileAsync('git', ['reset', 'HEAD', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
-  ipcMain.handle('git-discard-changes', async (_event, trackedPaths: string[], untrackedPaths: string[], repoRoot: string) => {
-    try {
-      if (trackedPaths.length > 0) {
-        await execFileAsync('git', ['restore', '--', ...trackedPaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
-      }
-      if (untrackedPaths.length > 0) {
-        await Promise.all(untrackedPaths.map(fp => fs.promises.unlink(fp).catch(() => {})));
-      }
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-discard-changes', (_event, trackedPaths: string[], untrackedPaths: string[], repoRoot: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        if (trackedPaths.length > 0) {
+          await execFileAsync('git', ['restore', '--', ...trackedPaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        }
+        if (untrackedPaths.length > 0) {
+          await Promise.all(untrackedPaths.map(fp => fs.promises.unlink(fp).catch(() => {})));
+        }
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
-  ipcMain.handle('git-stash', async (_event, repoRoot: string, message?: string, includeUntracked?: boolean) => {
-    try {
-      const args = ['stash', 'push'];
-      if (includeUntracked) args.push('--include-untracked');
-      if (message) args.push('-m', message);
-      await execFileAsync('git', args, { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-stash', (_event, repoRoot: string, message?: string, includeUntracked?: boolean) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        const args = ['stash', 'push'];
+        if (includeUntracked) args.push('--include-untracked');
+        if (message) args.push('-m', message);
+        await execFileAsync('git', args, { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
-  ipcMain.handle('git-stash-pop', async (_event, repoRoot: string) => {
-    try {
-      await execFileAsync('git', ['stash', 'pop'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-stash-pop', (_event, repoRoot: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await execFileAsync('git', ['stash', 'pop'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
-  ipcMain.handle('git-commit', async (_event, repoRoot: string, message: string) => {
-    try {
-      await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-commit', (_event, repoRoot: string, message: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
-  ipcMain.handle('git-commit-all', async (_event, repoRoot: string, message: string) => {
-    try {
-      await execFileAsync('git', ['add', '-A'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
-      await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-commit-all', (_event, repoRoot: string, message: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await execFileAsync('git', ['add', '-A'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
-  ipcMain.handle('git-undo-commit', async (_event, repoRoot: string) => {
-    try {
-      await execFileAsync('git', ['reset', 'HEAD~1', '--soft'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
-      return { success: true, error: null };
-    } catch (e) { return gitResult(e); }
-  });
+  ipcMain.handle('git-undo-commit', (_event, repoRoot: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await execFileAsync('git', ['reset', 'HEAD~1', '--soft'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
 
   ipcMain.handle('get-git-diff', async (_event, filePath: string, repoRoot: string) => {
     try {
