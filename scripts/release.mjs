@@ -100,21 +100,21 @@ async function linkAssetToRelease(name, url) {
   }
 }
 
-function generateLatestMacYml(zipPath) {
-  const fileBuffer = readFileSync(zipPath);
+function generateLatestMacYml(dmgPath) {
+  const fileBuffer = readFileSync(dmgPath);
   const sha512 = createHash('sha512').update(fileBuffer).digest('base64');
-  const size = statSync(zipPath).size;
-  const fileName = basename(zipPath);
+  const size = statSync(dmgPath).size;
+  const fileName = basename(dmgPath);
 
-  const zipDownloadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${VERSION}/${encodeURIComponent(fileName)}`;
+  const dmgDownloadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${VERSION}/${encodeURIComponent(fileName)}`;
 
   return [
     `version: ${VERSION}`,
     `files:`,
-    `  - url: ${zipDownloadUrl}`,
+    `  - url: ${dmgDownloadUrl}`,
     `    sha512: ${sha512}`,
     `    size: ${size}`,
-    `path: ${zipDownloadUrl}`,
+    `path: ${dmgDownloadUrl}`,
     `sha512: ${sha512}`,
     `releaseDate: ${new Date().toISOString()}`,
   ].join('\n');
@@ -189,18 +189,18 @@ async function main() {
 
   await createRelease();
 
-  let zipPath = '';
+  let dmgPath = '';
   for (const file of files) {
     const filePath = resolve(distDir, file);
     const url = await uploadPackage(filePath, VERSION);
     await linkAssetToRelease(file, url);
-    if (file.endsWith('.zip')) {
-      zipPath = filePath;
+    if (file.endsWith('.dmg')) {
+      dmgPath = filePath;
     }
   }
 
-  if (zipPath) {
-    const ymlContent = generateLatestMacYml(zipPath);
+  if (dmgPath) {
+    const ymlContent = generateLatestMacYml(dmgPath);
     console.log('\nlatest-mac.yml content:');
     console.log(ymlContent);
     console.log();

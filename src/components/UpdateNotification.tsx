@@ -81,7 +81,7 @@ export function UpdateNotification() {
         <div className="update-notification-text">
           <span className="update-notification-title">
             {state === 'ready'
-              ? 'Update downloaded - open to install'
+              ? 'Update ready — quit Kraft, open the DMG and drag to Applications'
               : state === 'error'
                 ? 'Update failed'
                 : `Kraft ${updateInfo.releaseName} is available`}
