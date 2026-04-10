@@ -12,6 +12,8 @@ const OBS_MAX_H   = 40;
 const JUMP_FRAMES = 16;
 const BASE_SPEED  = 2.2;
 const MAX_SPEED   = 8;
+const HEAT_DELAY_S = 30;   // seconds before wall heat starts
+const HEAT_RAMP_S  = 90;   // seconds from heat=0 to heat=1 after the delay
 const JUMP_ARC    = 14;
 const ROT_LEFT    = -Math.PI / 2;
 const ROT_RIGHT   =  Math.PI / 2;
@@ -65,6 +67,28 @@ interface GS {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
+
+// Heat factor 0→1: flat zero for first HEAT_DELAY_S, then linear ramp over HEAT_RAMP_S
+function getHeat(elapsedMs: number): number {
+  const delayMs = HEAT_DELAY_S * 1000;
+  const rampMs  = HEAT_RAMP_S  * 1000;
+  if (elapsedMs < delayMs) return 0;
+  return Math.min(1, (elapsedMs - delayMs) / rampMs);
+}
+
+// Returns [r, g, b] along a smooth cream→yellow→orange→deep-red ramp
+function hotRgb(h: number): [number, number, number] {
+  if (h < 0.25) {
+    const t = h / 0.25;
+    return [255, Math.round(255 - 35 * t), Math.round(200 * (1 - t))]; // cream → yellow
+  }
+  if (h < 0.55) {
+    const t = (h - 0.25) / 0.30;
+    return [255, Math.round(220 - 130 * t), Math.round(30 * (1 - t))]; // yellow → orange
+  }
+  const t = (h - 0.55) / 0.45;
+  return [Math.round(255 - 45 * t), Math.round(90 - 75 * t), 0];       // orange → deep red
 }
 
 function getPlayerTransform(gs: GS, lCX: number, rCX: number) {
@@ -164,6 +188,9 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     const corridorL = gx + WALL_W;
     const corridorW = GAME_W - 2 * WALL_W;
 
+    // Heat factor: 0 for first HEAT_DELAY_S, then ramps to 1 over HEAT_RAMP_S
+    const heat = getHeat(Date.now() - gs.startTime);
+
     // Background
     ctx.fillStyle = c.bg;
     ctx.fillRect(0, 0, W, H);
@@ -202,11 +229,31 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     ctx.fillRect(gx, 0, WALL_W, H);
     ctx.fillRect(gx + GAME_W - WALL_W, 0, WALL_W, H);
 
+    // ── Heat tint overlay on walls ──
+    // Use heat² so early opacity barely registers and ramps up naturally
+    const heatA = heat * heat;
+    if (heatA > 0) {
+      const [hr, hg, hb] = hotRgb(heat);
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0,    `rgba(${hr}, ${hg}, ${hb}, ${0.20 * heatA})`);
+      grad.addColorStop(0.45, `rgba(${hr}, ${hg}, ${hb}, ${0.55 * heatA})`);
+      grad.addColorStop(1,    `rgba(${hr}, ${hg}, ${hb}, ${0.30 * heatA})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(gx, 0, WALL_W, H);
+      ctx.fillRect(gx + GAME_W - WALL_W, 0, WALL_W, H);
+    }
+
     // ── Motion: scrolling stripes on wall faces (1x) ──
     const stripeSpacing = 18;
     const stripeOffset  = gs.scroll % stripeSpacing;
-    ctx.fillStyle   = c.fgDim;
-    ctx.globalAlpha = 0.35;
+    if (heatA > 0) {
+      const [sr, sg, sb] = hotRgb(heat);
+      ctx.fillStyle   = `rgb(${sr}, ${sg}, ${sb})`;
+      ctx.globalAlpha = 0.35 + heatA * 0.25;
+    } else {
+      ctx.fillStyle   = c.fgDim;
+      ctx.globalAlpha = 0.35;
+    }
     for (let y = -stripeOffset; y <= H + stripeSpacing; y += stripeSpacing) {
       ctx.fillRect(gx + 3,                    y, WALL_W - 5, 1);
       ctx.fillRect(gx + GAME_W - WALL_W + 2,  y, WALL_W - 5, 1);
@@ -214,7 +261,12 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     ctx.globalAlpha = 1;
 
     // Wall inner edge lines
-    ctx.fillStyle = c.border;
+    if (heatA > 0) {
+      const [er, eg, eb] = hotRgb(heat);
+      ctx.fillStyle = `rgba(${er}, ${eg}, ${eb}, ${0.3 + heatA * 0.7})`;
+    } else {
+      ctx.fillStyle = c.border;
+    }
     ctx.fillRect(corridorL,          0, 1, H);
     ctx.fillRect(corridorL + corridorW, 0, 1, H);
 

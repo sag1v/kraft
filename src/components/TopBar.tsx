@@ -124,6 +124,8 @@ export function TopBar() {
   const [letterData, setLetterData] = useState<(LetterData | null)[]>(
     () => Array(WORD.length).fill(null)
   );
+  // Cursor underscore — only shattered (never cracked), same shard system
+  const [cursorData, setCursorData] = useState<LetterData | null>(null);
 
   const c = theme.colors;
 
@@ -135,6 +137,7 @@ export function TopBar() {
   const restore = () => {
     clickCountRef.current = 0;
     setLetterData(Array(WORD.length).fill(null));
+    setCursorData(null);
   };
 
   const handleLogoClick = () => {
@@ -151,6 +154,7 @@ export function TopBar() {
           state:  'shattered' as const,
         }))
       );
+      setCursorData({ shards: makeShards(), state: 'shattered' });
       shatterTimerRef.current = setTimeout(() => {
         restore();
         window.dispatchEvent(new CustomEvent('kraft:easter-egg'));
@@ -228,7 +232,27 @@ export function TopBar() {
               })
             : text
           }
-          <span className={`topbar-cursor${idle && !isBreaking ? '' : ' typing'}`}>_</span>
+          {cursorData ? (
+            <span style={{ position: 'relative', display: 'inline-block' }}>
+              <span style={{ visibility: 'hidden' }}>_</span>
+              {cursorData.shards.map((s, j) => (
+                <span
+                  key={j}
+                  style={{
+                    position:        'absolute',
+                    inset:           0,
+                    clipPath:        s.clip,
+                    transformOrigin: s.origin,
+                    transform:       `translate(${s.shatteredTx}px, ${s.shatteredTy}px) rotate(${s.shatteredRot}deg)`,
+                    opacity:         0,
+                    transition:      'transform 0.38s ease-out, opacity 0.32s ease-in',
+                  }}
+                >_</span>
+              ))}
+            </span>
+          ) : (
+            <span className={`topbar-cursor${idle && !isBreaking ? '' : ' typing'}`}>_</span>
+          )}
         </span>
       </div>
       <SessionBar className="topbar-sessions" />
