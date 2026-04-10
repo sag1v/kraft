@@ -131,8 +131,7 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, onContextMenu,
     : (gitStatus[entry.path] as GitFileStatus | undefined) ?? null;
 
   const isIgnored = gitIgnoredSet.has(entry.path);
-  const isHidden = entry.name.startsWith('.');
-  const isDimmed = parentDimmed || isIgnored || isHidden;
+  const isDimmed = parentDimmed || isIgnored;
   const nameColor = fileStatus ? STATUS_COLOR_VAR[fileStatus] : undefined;
   const isExplorerActive = !entry.isDirectory && syncedRevealFile && normPath(syncedRevealFile) === normPath(entry.path);
 
