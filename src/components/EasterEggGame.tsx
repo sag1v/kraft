@@ -217,8 +217,10 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     ctx.fillRect(corridorL,          0, 1, H);
     ctx.fillRect(corridorL + corridorW, 0, 1, H);
 
-    // Pre-compute player position for obstacle pupil tracking
-    const { cx: playerCX, cy: playerCY } = getPlayerTransform(gs, lCX, rCX);
+    // Pre-compute player transform once — used by obstacle tracking and draw
+    const { cx, cy, rot } = getPlayerTransform(gs, lCX, rCX);
+    const playerCX = cx;
+    const playerCY = cy;
 
     // Obstacles — drawn as spikes (triangles)
     for (const obs of gs.obstacles) {
@@ -308,17 +310,7 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     }
     ctx.globalAlpha = 1;
 
-    // ── Dust particles ──
-    for (const p of gs.particles) {
-      const sz = 1 + p.life * 2;
-      ctx.globalAlpha = p.life * 0.5;
-      ctx.fillStyle   = c.fgMuted;
-      ctx.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
-    }
-    ctx.globalAlpha = 1;
-
     // Player (square, rotated so "feet" always face the current wall)
-    const { cx, cy, rot } = getPlayerTransform(gs, lCX, rCX);
     const half = PLAYER_SIZE / 2;
     ctx.save();
     ctx.translate(cx, cy);
@@ -356,6 +348,17 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     }
 
     ctx.restore();
+
+    // ── Friction sparks — drawn on top of Bob so they're not hidden ──
+    for (const p of gs.particles) {
+      const sz = 2 + p.life * 3;
+      ctx.globalAlpha = p.life * 0.85;
+      ctx.fillStyle   = c.fg;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, sz / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // ── Layer 3 (close): fast vertical streaks in corridor ──
     {
@@ -426,11 +429,28 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
       for (const l of gs.impactLines) l.life -= l.decay;
       gs.impactLines = gs.impactLines.filter(l => l.life > 0);
 
+      // Friction sparks — trickle from wall contact while grounded
+      if (!gs.jumping && Math.random() < 0.55) {
+        const W2  = wRef.current;
+        const dir   = gs.side === 'left' ? 1 : -1;
+        // Emit from wall contact (Bob's back), drift upward + outward
+        // Moving opposite to travel direction = friction wake trailing behind him
+        const emitX = gs.side === 'left' ? leftCX(W2) : rightCX(W2);
+        gs.particles.push({
+          x:     emitX + dir * Math.random() * 5,
+          y:     PLAYER_Y + Math.random() * PLAYER_SIZE,
+          vx:    dir * (0.4 + Math.random() * 0.8),
+          vy:    -(gs.speed * 0.35 + 0.5 + Math.random() * 1.2),
+          life:  0.5 + Math.random() * 0.3,
+          decay: 0.06 + Math.random() * 0.05,
+        });
+      }
+
       // Update particles
       for (const p of gs.particles) {
         p.x  += p.vx;
         p.y  += p.vy;
-        p.vy += 0.07; // gravity
+        p.vy += 0.04;
         p.life -= p.decay;
       }
       gs.particles = gs.particles.filter(p => p.life > 0);
