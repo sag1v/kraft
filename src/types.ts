@@ -31,6 +31,7 @@ export interface GitInfo {
   branch: string | null;
   repoName: string | null;
   isGitRepo: boolean;
+  aheadCount: number;
 }
 
 export interface TerminalInfo {

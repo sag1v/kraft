@@ -144,7 +144,7 @@ const defaultSettings: AppSettings = {
   showHiddenFiles: true,
 };
 
-const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false };
+const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false, aheadCount: 0 };
 const EMPTY_CONTEXT_DIRS: AgentContextDir[] = [];
 
 const UIContext = createContext<UIContextValue>(null!);
@@ -581,7 +581,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         try {
           const info = await window.api.getGitInfo(cwd);
           const current = gitCacheRef.current.get(cwd);
-          if (!current || current.branch !== info.branch || current.repoName !== info.repoName || current.isGitRepo !== info.isGitRepo) {
+          if (!current || current.branch !== info.branch || current.repoName !== info.repoName || current.isGitRepo !== info.isGitRepo || current.aheadCount !== info.aheadCount) {
             gitCacheRef.current.set(cwd, info);
             setGitCacheVersion(v => v + 1);
           }

@@ -5,9 +5,10 @@ import { shortcutLabel } from '../shortcuts';
 
 export function Footer() {
   const { homeDir, theme } = useUIContext();
-  const { cwd, gitInfo } = useSessionContext();
+  const { cwd, gitInfo, gitStatus, gitStagedStatus } = useSessionContext();
 
   const displayPath = cwd ? shortenPath(cwd, homeDir) : '~';
+  const hasLocalChanges = Object.keys(gitStatus).length > 0 || Object.keys(gitStagedStatus).length > 0;
 
   return (
     <div className="footer">
@@ -27,9 +28,19 @@ export function Footer() {
                 <span className="footer-branch" style={{ color: theme.colors.accent }} data-tooltip="Current branch">
                   ⎇ {gitInfo.branch}
                 </span>
-                <span className="footer-separator">·</span>
               </>
             )}
+            {hasLocalChanges && (
+              <span className="footer-git-dirty" style={{ color: theme.colors.accentSecondary }} data-tooltip="Uncommitted local changes">
+                •
+              </span>
+            )}
+            {gitInfo.aheadCount > 0 && (
+              <span className="footer-git-ahead" style={{ color: theme.colors.accentSecondary }} data-tooltip={`${gitInfo.aheadCount} unpushed commit${gitInfo.aheadCount !== 1 ? 's' : ''}`}>
+                ↑{gitInfo.aheadCount}
+              </span>
+            )}
+            <span className="footer-separator">·</span>
           </>
         )}
         <span className="footer-path" data-tooltip="Current working directory">{displayPath}</span>

@@ -521,9 +521,22 @@ function setupIPC() {
       ]);
       const branch = branchResult.stdout.trim();
       const repoName = path.basename(rootResult.stdout.trim());
-      return { branch, repoName, isGitRepo: true };
+
+      let aheadCount = 0;
+      try {
+        const aheadResult = await execFileAsync('git', ['rev-list', '--count', '@{u}..HEAD'], {
+          cwd: dirPath,
+          encoding: 'utf-8',
+          timeout: 3000,
+        });
+        aheadCount = parseInt(aheadResult.stdout.trim(), 10) || 0;
+      } catch {
+        // No upstream tracking branch or other error — aheadCount stays 0
+      }
+
+      return { branch, repoName, isGitRepo: true, aheadCount };
     } catch {
-      return { branch: null, repoName: null, isGitRepo: false };
+      return { branch: null, repoName: null, isGitRepo: false, aheadCount: 0 };
     }
   });
 

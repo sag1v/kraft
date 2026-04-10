@@ -374,6 +374,19 @@ body {
   font-weight: 500;
 }
 
+.footer-git-dirty {
+  font-size: 16px;
+  line-height: 1;
+  margin-left: 3px;
+  font-weight: 700;
+}
+
+.footer-git-ahead {
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
 .footer-separator {
   color: var(--fg-dim);
 }
