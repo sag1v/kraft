@@ -1,7 +1,7 @@
 {
   "name": "kraft",
   "productName": "Kraft",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Terminal-first AI-powered developer IDE",
   "main": "dist-electron/main.js",
   "scripts": {
