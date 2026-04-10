@@ -48,20 +48,7 @@ function normalizePanelLayout(raw: unknown): PanelId[][] {
   return result;
 }
 
-function panelLayoutsEqual(a: PanelId[][], b: PanelId[][]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((row, i) =>
-    row.length === b[i].length && row.every((id, j) => id === b[i][j])
-  );
-}
 
-function layoutToPreset(layout: PanelId[][]): LayoutPreset {
-  if (panelLayoutsEqual(layout, GET_SHIT_DONE_LAYOUT)) return 'get-shit-done';
-  if (panelLayoutsEqual(layout, WATCH_SHIT_DONE_LAYOUT)) return 'watch-shit-done';
-  if (panelLayoutsEqual(layout, WHY_LAYOUT)) return 'why';
-  if (panelLayoutsEqual(layout, REALLY_LAYOUT)) return 'really';
-  return 'custom';
-}
 
 interface UIContextValue {
   theme: Theme;
@@ -104,6 +91,7 @@ interface SessionContextValue {
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
   createSession: () => Promise<void>;
+  duplicateSession: (id: string) => Promise<void>;
   destroySession: (id: string) => void;
   updateSessionCwd: (id: string, cwd: string) => void;
   renameSession: (id: string, customLabel: string) => void;
@@ -142,6 +130,7 @@ const defaultSettings: AppSettings = {
   autoLoadExplorer: true,
   syncLayoutAcrossTabs: false,
   showHiddenFiles: true,
+  newTabUsePreviousCwd: false,
 };
 
 const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false, aheadCount: 0 };
@@ -419,7 +408,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const createSession = useCallback(async () => {
     if (!window.api?.createTerminal) return;
     const activeSess = sessionsRef.current.find(s => s.id === activeSessionIdRef.current);
-    const startCwd = activeSess?.cwd || homeDir || undefined;
+    const startCwd = settingsRef.current.newTabUsePreviousCwd
+      ? (activeSess?.cwd || homeDir || undefined)
+      : (homeDir || undefined);
     const shell = settingsRef.current.shellOverride || undefined;
     try {
       const { id } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
@@ -427,6 +418,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addSession({ id, label: `Terminal ${sessionTabCounter}`, cwd: startCwd || '' });
     } catch (err) {
       console.error('Failed to create terminal:', err);
+    }
+  }, [homeDir, addSession]);
+
+  const duplicateSession = useCallback(async (sourceId: string) => {
+    if (!window.api?.createTerminal) return;
+    const sourceSess = sessionsRef.current.find(s => s.id === sourceId);
+    const startCwd = sourceSess?.cwd || homeDir || undefined;
+    const shell = settingsRef.current.shellOverride || undefined;
+    try {
+      const { id } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
+      sessionTabCounter++;
+      addSession({ id, label: `Terminal ${sessionTabCounter}`, cwd: startCwd || '' });
+    } catch (err) {
+      console.error('Failed to duplicate terminal:', err);
     }
   }, [homeDir, addSession]);
 
@@ -825,8 +830,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sid = activeSessionIdRef.current;
     if (!sid) return;
     const normalized = normalizePanelLayout(newLayout);
-    const matchedPreset = layoutToPreset(normalized);
-    setLayoutState(matchedPreset);
+    setLayoutState('custom');
     if (settingsRef.current.syncLayoutAcrossTabs) {
       setPanelLayoutMap(prev => {
         const next: Record<string, PanelId[][]> = {};
@@ -842,11 +846,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const next: AppSettings = {
         ...prev,
         panelLayout: normalized,
-        defaultLayout: matchedPreset,
-        ...(matchedPreset === 'custom' ? {
-          savedCustomLayout: normalized.map(r => [...r]),
-          customPanelVisibility: { ...panelVisibilityRef.current },
-        } : {}),
+        savedCustomLayout: normalized.map(r => [...r]),
+        customPanelVisibility: { ...panelVisibilityRef.current },
       };
       window.api?.saveSettings(next);
       return next;
@@ -869,13 +870,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } else {
       setPanelVisibilityMap(prev => ({ ...prev, [sid]: next }));
     }
-    if (layoutRef.current === 'custom') {
-      setSettings(prev => {
-        const updated = { ...prev, customPanelVisibility: { ...next } };
-        window.api?.saveSettings(updated);
-        return updated;
-      });
-    }
+    setLayoutState('custom');
+    setSettings(prev => {
+      const updated = { ...prev, customPanelVisibility: { ...next } };
+      window.api?.saveSettings(updated);
+      return updated;
+    });
   }, []);
 
   const updateSettings = useCallback((partial: Partial<AppSettings>) => {
@@ -892,7 +892,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             next = { ...next, panelLayout: prev.savedCustomLayout.map(r => [...r]) };
           } else {
             const initial = MY_LAYOUT_DEFAULT.map(r => [...r]);
-            next = { ...next, panelLayout: initial, savedCustomLayout: initial.map(r => [...r]) };
+            const defaultVis: PanelVisibility = { explorer: true, viewer: false, terminal: true };
+            next = { ...next, panelLayout: initial, savedCustomLayout: initial.map(r => [...r]), customPanelVisibility: defaultVis };
           }
           const savedVis = next.customPanelVisibility;
           newVis = savedVis ? { ...savedVis } : { ...ALL_VISIBLE };
@@ -964,6 +965,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     removeSession,
     setActiveSession,
     createSession,
+    duplicateSession,
     destroySession,
     updateSessionCwd,
     renameSession,
@@ -989,7 +991,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     undoLastCommit,
     agentContextDirs,
   }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs,
-       addSession, removeSession, setActiveSession, createSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
+       addSession, removeSession, setActiveSession, createSession, duplicateSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
 
   return (
     <UIContext.Provider value={uiValue}>

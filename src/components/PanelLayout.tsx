@@ -35,8 +35,16 @@ interface PanelGhostState {
   panelId: PanelId;
 }
 
-const EDGE_THRESHOLD = 48;
-const DIRECTION_THRESHOLD = 0.25;
+interface DropHandle {
+  id: string;
+  targetId: PanelId | null; // null = container edge
+  position: DropPosition;
+  // viewport coords for hit testing
+  cl: number; ct: number; cr: number; cb: number;
+  // container-relative coords for rendering
+  left: number; top: number; width: number; height: number;
+}
+
 
 /** Minimum pixel size for any panel track while resizing (explorer, fr columns, row %). Also applied in App.css on `.kraft-panel`. */
 const MIN_PANEL_RESIZE_PX = 100;
@@ -410,85 +418,6 @@ function applyPanelDrop(
   }
 }
 
-function detectEdgeFromPoint(clientX: number, clientY: number, containerRect: DOMRect): DropPosition | null {
-  const x = clientX - containerRect.left;
-  const y = clientY - containerRect.top;
-  const w = containerRect.width;
-  const h = containerRect.height;
-
-  const dL = x;
-  const dR = w - x;
-  const dT = y;
-  const dB = h - y;
-  const min = Math.min(dL, dR, dT, dB);
-
-  if (min > EDGE_THRESHOLD) return null;
-
-  if (min === dL) return 'left';
-  if (min === dR) return 'right';
-  if (min === dT) return 'top';
-  return 'bottom';
-}
-
-function resolvePanelDropHint(
-  clientX: number,
-  clientY: number,
-  container: HTMLElement,
-  draggedId: PanelId,
-  dragStart: { x: number; y: number },
-): DropIndicatorState | null {
-  const containerRect = container.getBoundingClientRect();
-  const intent = getDragIntent(dragStart.x, dragStart.y, clientX, clientY);
-
-  if (intent.allowEdgeDrop) {
-    const edge = detectEdgeFromPoint(clientX, clientY, containerRect);
-    if (edge) {
-      return { targetId: null, position: edge, line: computeEdgeDropLine(edge, containerRect) };
-    }
-  }
-
-  const panelEls = container.querySelectorAll<HTMLElement>('[data-panel-id]');
-  let closestPanel: PanelId | null = null;
-  let closestRect: DOMRect | null = null;
-  let closestDist = Infinity;
-
-  for (const el of panelEls) {
-    const id = el.dataset.panelId as PanelId;
-    if (el.style.display === 'none') continue;
-    if (id === draggedId) continue;
-    const rect = el.getBoundingClientRect();
-    if (
-      clientX >= rect.left && clientX <= rect.right &&
-      clientY >= rect.top && clientY <= rect.bottom
-    ) {
-      closestPanel = id;
-      closestRect = rect;
-      closestDist = 0;
-      break;
-    }
-    const cx = Math.max(rect.left, Math.min(clientX, rect.right));
-    const cy = Math.max(rect.top, Math.min(clientY, rect.bottom));
-    const dist = Math.hypot(clientX - cx, clientY - cy);
-    if (dist < closestDist) {
-      closestDist = dist;
-      closestPanel = id;
-      closestRect = rect;
-    }
-  }
-
-  if (!closestPanel || !closestRect) return null;
-
-  const draggedEl = container.querySelector<HTMLElement>(`[data-panel-id="${draggedId}"]`);
-  const excludeSide = draggedEl
-    ? getExcludeSide(draggedEl.getBoundingClientRect(), closestRect)
-    : undefined;
-
-  const position = detectDropPositionFromRect(
-    clientX, clientY, closestRect, intent.allowedPositions, excludeSide,
-  );
-  const line = computePanelDropLine(position, closestRect, containerRect);
-  return { targetId: closestPanel, position, line };
-}
 
 const INDICATOR_SIZE = 4;
 
@@ -743,6 +672,16 @@ export function PanelLayout() {
   const ghostBaseRef = useRef<Omit<PanelGhostState, 'x' | 'y'> | null>(null);
   const docListenersRef = useRef(false);
 
+  const dropHandlesRef = useRef<DropHandle[]>([]);
+  const [activeHandleId, setActiveHandleId] = useState<string | null>(null);
+  const [activeTargetId, setActiveTargetId] = useState<PanelId | null>(null);
+  const [activeDropPosition, setActiveDropPosition] = useState<DropPosition | null>(null);
+  const activeDropHintRef = useRef<{ targetId: PanelId | null; position: DropPosition } | null>(null);
+  // container-relative rects of droppable panels, for the target highlight
+  const [dropPanels, setDropPanels] = useState<Array<{ id: PanelId; left: number; top: number; width: number; height: number }>>([]);
+  // viewport rect of the container captured at drag-start, for edge proximity detection
+  const dragContainerRectRef = useRef<DOMRect | null>(null);
+
   const pointerDragHandlersRef = useRef({
     move: (_e: PointerEvent) => {},
     up: (_e: PointerEvent) => {},
@@ -788,23 +727,18 @@ export function PanelLayout() {
       setDropIndicator(null);
       ghostBaseRef.current = null;
       setPanelGhostRef.current(null);
+      dropHandlesRef.current = [];
+      dragContainerRectRef.current = null;
+      setActiveHandleId(null);
+      setActiveTargetId(null);
+      setActiveDropPosition(null);
+      setDropPanels([]);
+
+      const hint = activeDropHintRef.current;
+      activeDropHintRef.current = null;
 
       if (!drag) return;
       if (cancel) return;
-
-      const container = containerRef.current;
-      if (!container || !e) return;
-
-      const cr = container.getBoundingClientRect();
-      if (!pointInRect(e.clientX, e.clientY, cr)) return;
-
-      const hint = resolvePanelDropHint(
-        e.clientX,
-        e.clientY,
-        container,
-        drag.id,
-        { x: drag.startX, y: drag.startY },
-      );
       if (!hint) return;
 
       const currentLayout = panelLayoutRef.current;
@@ -839,8 +773,8 @@ export function PanelLayout() {
             ghostBaseRef.current = {
               grabDx: pending.startX - r.left,
               grabDy: pending.startY - r.top,
-              w: Math.min(Math.max(r.width * 0.58, 200), 420),
-              h: Math.min(Math.max(Math.round(r.height * 0.3), 48), 168),
+              w: Math.min(Math.max(r.width * 0.75, 240), 600),
+              h: Math.min(Math.max(Math.round(r.height * 0.6), 100), 360),
               panelId: pending.id,
             };
           } else {
@@ -851,6 +785,78 @@ export function PanelLayout() {
               h: 48,
               panelId: pending.id,
             };
+          }
+
+          // Build drop handles for all visible panels except the dragged one
+          if (cont) {
+            const containerRect = cont.getBoundingClientRect();
+            const handles: DropHandle[] = [];
+
+            const panelEls = cont.querySelectorAll<HTMLElement>('[data-panel-id]');
+            for (const el of panelEls) {
+              const pid = el.dataset.panelId as PanelId;
+              if (pid === pending.id || el.style.display === 'none') continue;
+              const pr = el.getBoundingClientRect();
+              const hw = Math.min(Math.max(pr.width * 0.25, 56), 130);
+              const hh = Math.min(Math.max(pr.height * 0.25, 44), 100);
+              const sides: Array<[DropPosition, number, number, number, number]> = [
+                ['left',   pr.left,          pr.top,    pr.left + hw,    pr.bottom],
+                ['right',  pr.right - hw,    pr.top,    pr.right,        pr.bottom],
+                ['top',    pr.left,          pr.top,    pr.right,        pr.top + hh],
+                ['bottom', pr.left,          pr.bottom - hh, pr.right,   pr.bottom],
+              ];
+              for (const [pos, cl, ct, cr, cb] of sides) {
+                handles.push({
+                  id: `${pid}-${pos}`,
+                  targetId: pid,
+                  position: pos,
+                  cl, ct, cr, cb,
+                  left: cl - containerRect.left,
+                  top: ct - containerRect.top,
+                  width: cr - cl,
+                  height: cb - ct,
+                });
+              }
+            }
+
+            // Container edge handles (lower priority — added after panel handles)
+            const edgeW = Math.min(Math.max(containerRect.width * 0.07, 44), 72);
+            const edgeH = Math.min(Math.max(containerRect.height * 0.07, 40), 64);
+            const edgeSides: Array<[DropPosition, number, number, number, number]> = [
+              ['left',   containerRect.left,              containerRect.top,    containerRect.left + edgeW,    containerRect.bottom],
+              ['right',  containerRect.right - edgeW,     containerRect.top,    containerRect.right,           containerRect.bottom],
+              ['top',    containerRect.left,              containerRect.top,    containerRect.right,            containerRect.top + edgeH],
+              ['bottom', containerRect.left,              containerRect.bottom - edgeH, containerRect.right,  containerRect.bottom],
+            ];
+            for (const [pos, cl, ct, cr, cb] of edgeSides) {
+              handles.push({
+                id: `edge-${pos}`,
+                targetId: null,
+                position: pos,
+                cl, ct, cr, cb,
+                left: cl - containerRect.left,
+                top: ct - containerRect.top,
+                width: cr - cl,
+                height: cb - ct,
+              });
+            }
+
+            dropHandlesRef.current = handles;
+            dragContainerRectRef.current = containerRect;
+            setDropPanels(
+              Array.from(panelEls)
+                .filter(el => el.dataset.panelId !== pending.id && el.style.display !== 'none')
+                .map(el => {
+                  const pr = el.getBoundingClientRect();
+                  return {
+                    id: el.dataset.panelId as PanelId,
+                    left: pr.left - containerRect.left,
+                    top: pr.top - containerRect.top,
+                    width: pr.width,
+                    height: pr.height,
+                  };
+                }),
+            );
           }
         } else {
           return;
@@ -872,18 +878,76 @@ export function PanelLayout() {
         });
       }
 
-      const hint = resolvePanelDropHint(
-        e.clientX,
-        e.clientY,
-        container,
-        drag.id,
-        { x: drag.startX, y: drag.startY },
-      );
-      if (hint) {
-        setDropIndicator(prev => {
-          if (prev?.targetId === hint.targetId && prev?.position === hint.position) return prev;
-          return hint;
-        });
+      // Use ghost bounding rect overlap to find the best-matching drop handle.
+      // Panel handles always beat container-edge handles — only fall through to edge
+      // handles when no panel handle has any overlap with the ghost.
+      const ghost = ghostBaseRef.current;
+      let hit: DropHandle | null = null;
+      if (ghost) {
+        const gL = e.clientX - ghost.grabDx;
+        const gT = e.clientY - ghost.grabDy;
+        const gR = gL + ghost.w;
+        const gB = gT + ghost.h;
+
+        const calcOverlap = (h: DropHandle) => {
+          const ow = Math.max(0, Math.min(gR, h.cr) - Math.max(gL, h.cl));
+          const oh = Math.max(0, Math.min(gB, h.cb) - Math.max(gT, h.ct));
+          return ow * oh;
+        };
+
+        // First pass: panel handles only
+        let best = 0;
+        for (const h of dropHandlesRef.current) {
+          if (h.targetId === null) continue;
+          const overlap = calcOverlap(h);
+          if (overlap > best) { best = overlap; hit = h; }
+        }
+
+        // Second pass: container-edge handles via cursor proximity (not ghost overlap).
+        // Panel handles cover every pixel of the layout, so ghost-overlap for edge handles
+        // is unreachable. Instead, activate the nearest edge when the cursor is within
+        // EDGE_ZONE pixels of the container boundary.
+        if (!hit) {
+          const cr = dragContainerRectRef.current;
+          if (cr) {
+            const EDGE_ZONE = 80;
+            const distTop = e.clientY - cr.top;
+            const distBottom = cr.bottom - e.clientY;
+            const distLeft = e.clientX - cr.left;
+            const distRight = cr.right - e.clientX;
+            const minDist = Math.min(distTop, distBottom, distLeft, distRight);
+            if (minDist <= EDGE_ZONE) {
+              let pos: DropPosition;
+              if (distBottom <= distTop && distBottom <= distLeft && distBottom <= distRight) pos = 'bottom';
+              else if (distTop <= distBottom && distTop <= distLeft && distTop <= distRight) pos = 'top';
+              else if (distLeft <= distRight) pos = 'left';
+              else pos = 'right';
+              hit = dropHandlesRef.current.find(h => h.targetId === null && h.position === pos) ?? null;
+            }
+          }
+        }
+      }
+      activeDropHintRef.current = hit ? { targetId: hit.targetId, position: hit.position } : null;
+      const newHandleId = hit?.id ?? null;
+      const newTargetId = hit?.targetId ?? null;
+      const newDropPos = hit?.position ?? null;
+      setActiveHandleId(prev => prev !== newHandleId ? newHandleId : prev);
+      setActiveTargetId(prev => prev !== newTargetId ? newTargetId : prev);
+      setActiveDropPosition(prev => prev !== newDropPos ? newDropPos : prev);
+      if (hit) {
+        const cr = container.getBoundingClientRect();
+        let line: DropLine;
+        if (hit.targetId !== null) {
+          const targetEl = container.querySelector<HTMLElement>(`[data-panel-id="${hit.targetId}"]`);
+          const pr = targetEl ? targetEl.getBoundingClientRect() : cr;
+          line = computePanelDropLine(hit.position, pr, cr);
+        } else {
+          line = computeEdgeDropLine(hit.position, cr);
+        }
+        setDropIndicator(prev =>
+          prev?.targetId === hit.targetId && prev?.position === hit.position ? prev
+            : { targetId: hit.targetId, position: hit.position, line },
+        );
       } else {
         setDropIndicator(null);
       }
@@ -1014,6 +1078,15 @@ export function PanelLayout() {
           );
         })}
         {handles}
+        {dropPanels
+          .filter(p => p.id === activeTargetId)
+          .map(p => (
+            <div
+              key={p.id}
+              className={`kraft-drop-target-highlight${activeDropPosition ? ` pos-${activeDropPosition}` : ''}`}
+              style={{ position: 'absolute', left: p.left, top: p.top, width: p.width, height: p.height, pointerEvents: 'none', zIndex: 50001 }}
+            />
+          ))}
         {showIndicator && (
           <div
             className="kraft-drop-indicator"
@@ -1024,7 +1097,7 @@ export function PanelLayout() {
               width: dropIndicator!.line.width,
               height: dropIndicator!.line.height,
               pointerEvents: 'none',
-              zIndex: 20,
+              zIndex: 50001,
               background: 'var(--accent)',
               borderRadius: '2px',
             }}
@@ -1101,48 +1174,3 @@ function PanelDragGhostChrome({ panelId }: { panelId: PanelId }) {
   );
 }
 
-function getDragIntent(
-  startX: number, startY: number, currentX: number, currentY: number,
-): { allowedPositions: DropPosition[] | undefined; allowEdgeDrop: boolean } {
-  const absDx = Math.abs(currentX - startX);
-  const absDy = Math.abs(currentY - startY);
-  const total = absDx + absDy;
-  if (total < 1) return { allowedPositions: undefined, allowEdgeDrop: true };
-
-  const horizontalRatio = absDx / total;
-
-  if (horizontalRatio < DIRECTION_THRESHOLD) {
-    return { allowedPositions: ['top', 'bottom'], allowEdgeDrop: false };
-  }
-  return { allowedPositions: undefined, allowEdgeDrop: true };
-}
-
-function getExcludeSide(draggedRect: DOMRect, targetRect: DOMRect): DropPosition {
-  const dx = (draggedRect.left + draggedRect.width / 2) - (targetRect.left + targetRect.width / 2);
-  const dy = (draggedRect.top + draggedRect.height / 2) - (targetRect.top + targetRect.height / 2);
-  if (Math.abs(dx) > Math.abs(dy)) {
-    return dx < 0 ? 'left' : 'right';
-  }
-  return dy < 0 ? 'top' : 'bottom';
-}
-
-function detectDropPositionFromRect(
-  clientX: number, clientY: number, rect: DOMRect,
-  allowedPositions?: DropPosition[],
-  excludePosition?: DropPosition,
-): DropPosition {
-  const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
-  const distances: [DropPosition, number][] = [
-    ['left', x], ['right', 1 - x], ['top', y], ['bottom', 1 - y],
-  ];
-  let candidates = allowedPositions
-    ? distances.filter(([pos]) => allowedPositions.includes(pos))
-    : distances;
-  if (excludePosition) {
-    const filtered = candidates.filter(([pos]) => pos !== excludePosition);
-    if (filtered.length > 0) candidates = filtered;
-  }
-  candidates.sort((a, b) => a[1] - b[1]);
-  return candidates[0]?.[0] ?? 'top';
-}

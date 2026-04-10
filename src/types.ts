@@ -152,6 +152,7 @@ export interface AppSettings {
   autoLoadExplorer: boolean;
   syncLayoutAcrossTabs: boolean;
   showHiddenFiles: boolean;
+  newTabUsePreviousCwd: boolean;
 }
 
 export interface ElectronAPI {

@@ -24,7 +24,7 @@ type SettingsCategory = 'appearance' | 'layout' | 'terminal' | 'keybindings';
 const CATEGORIES: { id: SettingsCategory; label: string; icon: string }[] = [
   { id: 'appearance', label: 'Appearance', icon: '◑' },
   { id: 'layout', label: 'Layout', icon: '⊞' },
-  { id: 'terminal', label: 'Terminal', icon: '▸' },
+  { id: 'terminal', label: 'Terminal', icon: '>_' },
   { id: 'keybindings', label: 'Keybindings', icon: '⌨' },
 ];
 
@@ -63,7 +63,7 @@ const PRESET_GRIDS: Record<string, PanelId[][]> = {
   'really': [['explorer'], ['viewer'], ['terminal']],
 };
 
-const MY_LAYOUT_DEFAULT_GRID: PanelId[][] = [['explorer', 'terminal'], ['viewer', 'terminal']];
+const MY_LAYOUT_DEFAULT_GRID: PanelId[][] = [['explorer', 'terminal']];
 
 function filterHiddenPanels(grid: PanelId[][], visibility: PanelVisibility): PanelId[][] {
   const hidden = (['explorer', 'viewer', 'terminal'] as PanelId[]).filter(id => !visibility[id]);
@@ -299,7 +299,7 @@ export function Settings() {
   const showSyncLayout = !isSearching || matches('sync layout tabs independent per tab session');
   const showLayoutSection = !isSearching || filteredLayouts.length > 0 || showCustomLayout || showSyncLayout;
 
-  const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder hidden files dotfiles dot');
+  const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder hidden files dotfiles dot new tab working directory previous cwd');
 
   const filteredShortcuts = SHORTCUT_CATEGORIES.map(category => {
     const items = SHORTCUTS.filter(s => s.category === category);
@@ -425,7 +425,7 @@ export function Settings() {
                 <div className="settings-row">
                   <div className="settings-row-info">
                     <span className="settings-row-title">Default Layout</span>
-                    <span className="settings-row-desc">Choose how panels are arranged when the application starts.</span>
+                    <span className="settings-row-desc">Choose the starting layout for new tabs and when the application launches. Manually resizing or rearranging panels switches the current tab to a custom layout without changing this default.</span>
                   </div>
                 </div>
                 <div className="settings-layout-legend">
@@ -535,6 +535,18 @@ export function Settings() {
                     className="settings-toggle"
                     data-checked={settings.showHiddenFiles}
                     onClick={() => updateSettings({ showHiddenFiles: !settings.showHiddenFiles })}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div className="settings-row-info">
+                    <span className="settings-row-title">New Tab Working Directory</span>
+                    <span className="settings-row-desc">When enabled, new tabs open in the current tab's working directory. When disabled, new tabs always open in the default (home) directory. You can always duplicate a tab via right-click to inherit its directory.</span>
+                  </div>
+                  <button
+                    className="settings-toggle"
+                    data-checked={settings.newTabUsePreviousCwd}
+                    onClick={() => updateSettings({ newTabUsePreviousCwd: !settings.newTabUsePreviousCwd })}
                   />
                 </div>
               </div>

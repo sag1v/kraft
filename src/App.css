@@ -473,6 +473,17 @@ body {
   cursor: row-resize;
 }
 
+.kraft-drop-target-highlight {
+  border: 3px solid transparent;
+  border-radius: 4px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.kraft-drop-target-highlight.pos-top    { border-top-color:    var(--accent); }
+.kraft-drop-target-highlight.pos-bottom { border-bottom-color: var(--accent); }
+.kraft-drop-target-highlight.pos-left   { border-left-color:   var(--accent); }
+.kraft-drop-target-highlight.pos-right  { border-right-color:  var(--accent); }
+
 .kraft-panel.dragging {
   opacity: 0.25;
   filter: grayscale(0.8);

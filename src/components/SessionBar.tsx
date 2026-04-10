@@ -97,6 +97,7 @@ export function SessionBar({ className }: { className?: string }) {
     activeSessionId,
     setActiveSession,
     createSession,
+    duplicateSession,
     destroySession,
     renameSession,
     updateSessionAppearance,
@@ -283,6 +284,12 @@ export function SessionBar({ className }: { className?: string }) {
               ))}
             </div>
           )}
+          <div className="tab-context-separator" />
+          <button type="button" className="tab-context-item" role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { duplicateSession(ctxMenu.sessionId); closeCtx(); }}>
+            Duplicate Tab
+          </button>
           <div className="tab-context-separator" />
           {sessions.length > 1 && (
             <>
