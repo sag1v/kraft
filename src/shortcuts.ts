@@ -34,7 +34,8 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'next-tab', category: 'Editor', label: 'Next File Tab', keys: mod('Shift+]') },
 
   // Terminal
-  { id: 'new-terminal', category: 'Terminal', label: 'New Terminal', keys: mod('Shift+T') },
+  { id: 'new-terminal', category: 'Terminal', label: 'New Terminal', keys: mod('T') },
+  { id: 'restore-terminal-tab', category: 'Terminal', label: 'Restore Terminal Tab', keys: mod('Shift+T') },
   { id: 'close-terminal', category: 'Terminal', label: 'Close Terminal', keys: mod('Shift+W') },
   { id: 'next-terminal', category: 'Terminal', label: 'Next Terminal', keys: 'Ctrl+Tab' },
   { id: 'prev-terminal', category: 'Terminal', label: 'Previous Terminal', keys: 'Ctrl+Shift+Tab' },

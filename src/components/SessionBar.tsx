@@ -122,12 +122,14 @@ export function SessionBar({ className }: { className?: string }) {
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        createSessionRef.current();
+      }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'T') {
         e.preventDefault();
         if (recentlyClosedSessionsRef.current.length > 0) {
           restoreLastClosedSessionRef.current();
-        } else {
-          createSessionRef.current();
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'W') {
@@ -212,18 +214,11 @@ export function SessionBar({ className }: { className?: string }) {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
   const [ctxSub, setCtxSub] = useState<'icon' | 'color' | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
+  const [appBarCtxMenu, setAppBarCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
   const closeCtx = useCallback(() => { setCtxMenu(null); setCtxSub(null); }, []);
-
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const onClick = (e: MouseEvent) => {
-      if (ctxRef.current?.contains(e.target as Node)) return;
-      closeCtx();
-    };
-    window.addEventListener('click', onClick, true);
-    return () => window.removeEventListener('click', onClick, true);
-  }, [ctxMenu, closeCtx]);
+  const closeAppBarCtx = useCallback(() => setAppBarCtxMenu(null), []);
+  const closeAllCtx = useCallback(() => { setCtxMenu(null); setCtxSub(null); setAppBarCtxMenu(null); }, []);
 
   const handleCloseOthers = useCallback((keepId: string) => {
     sessionsRef.current.filter(s => s.id !== keepId).forEach(s => destroySession(s.id));
@@ -251,7 +246,13 @@ export function SessionBar({ className }: { className?: string }) {
         ))}
         <button className="session-bar-add" onClick={createSession} title="New session">+</button>
       </div>
-      {!isAnyRenaming && <div className="session-bar-drag-spacer" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />}
+      {!isAnyRenaming && (
+        <div
+          className="session-bar-drag-spacer"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+          onContextMenu={e => { e.preventDefault(); closeAllCtx(); setAppBarCtxMenu({ x: e.clientX, y: e.clientY }); }}
+        />
+      )}
 
       {ctxMenu && (
         <div ref={ctxRef} className="tab-context-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} role="menu">
@@ -295,11 +296,6 @@ export function SessionBar({ className }: { className?: string }) {
             </div>
           )}
           <div className="tab-context-separator" />
-          <button type="button" className={`tab-context-item${recentlyClosedSessions.length === 0 ? ' disabled' : ''}`} role="menuitem"
-            onMouseDown={e => e.preventDefault()}
-            onClick={() => { if (recentlyClosedSessions.length > 0) { restoreLastClosedSession(); closeCtx(); } }}>
-            Reopen Closed Session
-          </button>
           <button type="button" className="tab-context-item" role="menuitem"
             onMouseDown={e => e.preventDefault()}
             onClick={() => { duplicateSession(ctxMenu.sessionId); closeCtx(); }}>
@@ -320,6 +316,32 @@ export function SessionBar({ className }: { className?: string }) {
               </button>
             </>
           )}
+        </div>
+      )}
+      {(ctxMenu || appBarCtxMenu) && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1099,
+            WebkitAppRegion: 'no-drag',
+          } as React.CSSProperties}
+          onClick={closeAllCtx}
+          onContextMenu={e => { e.preventDefault(); closeAllCtx(); }}
+        />
+      )}
+      {appBarCtxMenu && (
+        <div className="tab-context-menu" style={{ left: appBarCtxMenu.x, top: appBarCtxMenu.y }} role="menu">
+          <button type="button" className="tab-context-item" role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { createSession(); closeAppBarCtx(); }}>
+            New Terminal
+          </button>
+          <button type="button" className={`tab-context-item${recentlyClosedSessions.length === 0 ? ' disabled' : ''}`} role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { if (recentlyClosedSessions.length > 0) { restoreLastClosedSession(); closeAppBarCtx(); } }}>
+            Reopen Closed Session
+          </button>
         </div>
       )}
     </div>
