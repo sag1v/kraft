@@ -773,8 +773,8 @@ export function PanelLayout() {
             ghostBaseRef.current = {
               grabDx: pending.startX - r.left,
               grabDy: pending.startY - r.top,
-              w: Math.min(Math.max(r.width * 0.75, 240), 600),
-              h: Math.min(Math.max(Math.round(r.height * 0.6), 100), 360),
+              w: r.width,
+              h: r.height,
               panelId: pending.id,
             };
           } else {
@@ -878,35 +878,21 @@ export function PanelLayout() {
         });
       }
 
-      // Use ghost bounding rect overlap to find the best-matching drop handle.
-      // Panel handles always beat container-edge handles — only fall through to edge
-      // handles when no panel handle has any overlap with the ghost.
-      const ghost = ghostBaseRef.current;
+      // Use cursor position to find the best-matching panel drop handle (point-in-rect).
+      // When multiple handles contain the cursor (corner overlap between panels),
+      // prefer the one with the smallest area (most specific).
       let hit: DropHandle | null = null;
-      if (ghost) {
-        const gL = e.clientX - ghost.grabDx;
-        const gT = e.clientY - ghost.grabDy;
-        const gR = gL + ghost.w;
-        const gB = gT + ghost.h;
-
-        const calcOverlap = (h: DropHandle) => {
-          const ow = Math.max(0, Math.min(gR, h.cr) - Math.max(gL, h.cl));
-          const oh = Math.max(0, Math.min(gB, h.cb) - Math.max(gT, h.ct));
-          return ow * oh;
-        };
-
-        // First pass: panel handles only
-        let best = 0;
+      {
+        let bestArea = Infinity;
         for (const h of dropHandlesRef.current) {
           if (h.targetId === null) continue;
-          const overlap = calcOverlap(h);
-          if (overlap > best) { best = overlap; hit = h; }
+          if (e.clientX >= h.cl && e.clientX <= h.cr && e.clientY >= h.ct && e.clientY <= h.cb) {
+            const area = (h.cr - h.cl) * (h.cb - h.ct);
+            if (area < bestArea) { bestArea = area; hit = h; }
+          }
         }
 
-        // Second pass: container-edge handles via cursor proximity (not ghost overlap).
-        // Panel handles cover every pixel of the layout, so ghost-overlap for edge handles
-        // is unreachable. Instead, activate the nearest edge when the cursor is within
-        // EDGE_ZONE pixels of the container boundary.
+        // Container-edge handles via cursor proximity when no panel handle matched.
         if (!hit) {
           const cr = dragContainerRectRef.current;
           if (cr) {
@@ -970,8 +956,9 @@ export function PanelLayout() {
   const onPanelPointerDown = useCallback((id: PanelId, e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const panelEl = e.currentTarget as HTMLElement;
-    const title = panelEl.querySelector('.panel-title');
-    if (!title || !title.contains(e.target as Node)) return;
+    const header = panelEl.querySelector('.panel-header');
+    if (!header || !header.contains(e.target as Node)) return;
+    if ((e.target as Element).closest('button, .tab-item, .session-tab, input, [role=tab]')) return;
     e.preventDefault();
     setPanelPointerSession(true);
     pendingDragRef.current = { id, startX: e.clientX, startY: e.clientY };
@@ -1052,7 +1039,7 @@ export function PanelLayout() {
   return (
     <div className="kraft-layout-root">
       <div
-        className={`kraft-layout${panelPointerSession ? ' kraft-layout-resize-suspended' : ''}`}
+        className={`kraft-layout${panelPointerSession ? ' kraft-layout-resize-suspended' : ''}${draggedPanel ? ' kraft-layout-panel-dragging' : ''}`}
         ref={containerRef}
         style={{ ...gridStyles, position: 'relative' }}
       >

@@ -430,6 +430,12 @@ body {
   pointer-events: none;
 }
 
+/* While a panel is actively dragged, suppress all pointer events on panels and handles. */
+.kraft-layout-panel-dragging .kraft-panel,
+.kraft-layout-panel-dragging .kraft-handle {
+  pointer-events: none;
+}
+
 .kraft-panel {
   display: flex;
   flex-direction: column;
@@ -439,12 +445,19 @@ body {
   min-height: 100px;
 }
 
-.kraft-layout .panel-title {
+.kraft-layout .panel-header {
   cursor: grab;
 }
 
-.kraft-layout .panel-title:active {
+.kraft-layout .panel-header:active {
   cursor: grabbing;
+}
+
+.kraft-layout .panel-header button,
+.kraft-layout .panel-header input,
+.kraft-layout .panel-header .tab-item,
+.kraft-layout .panel-header .session-tab {
+  cursor: default;
 }
 
 .kraft-panel.drag-over {
