@@ -97,6 +97,8 @@ interface SessionContextValue {
   renameSession: (id: string, customLabel: string) => void;
   updateSessionAppearance: (id: string, icon?: string, iconColor?: string) => void;
   reorderSessions: (fromIndex: number, toIndex: number) => void;
+  recentlyClosedSessions: TerminalSession[];
+  restoreLastClosedSession: () => Promise<void>;
   explorerRoot: string | null;
   setExplorerRoot: (path: string | null) => void;
   explorerOutOfSync: boolean;
@@ -169,6 +171,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [gitErrorViewContent, setGitErrorViewContent] = useState<string | null>(null);
   const [errorViewTitle, setErrorViewTitle] = useState<string>('Git Error Output');
   const [agentContextDirsMap, setAgentContextDirsMap] = useState<Record<string, AgentContextDir[]>>({});
+  const [recentlyClosedSessions, setRecentlyClosedSessions] = useState<TerminalSession[]>([]);
+  const recentlyClosedSessionsRef = useRef<TerminalSession[]>([]);
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
@@ -260,6 +264,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setLayoutState(merged.defaultLayout);
           if (merged.defaultLayout === 'custom' && merged.customPanelVisibility) {
             initialPanelVisibilityRef.current = { ...merged.customPanelVisibility };
+          }
+          if (Array.isArray((saved as any).recentlyClosedSessions)) {
+            recentlyClosedSessionsRef.current = (saved as any).recentlyClosedSessions;
+            setRecentlyClosedSessions((saved as any).recentlyClosedSessions);
           }
         }
       } catch {
@@ -437,9 +445,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const destroySession = useCallback((id: string) => {
     if (sessionsRef.current.length <= 1) return;
+    const session = sessionsRef.current.find(s => s.id === id);
+    if (session) {
+      const entry: TerminalSession = {
+        id: session.id,
+        label: session.label,
+        customLabel: session.customLabel,
+        icon: session.autoIcon ? undefined : session.icon,
+        iconColor: session.autoIconColor ? undefined : session.iconColor,
+        cwd: session.cwd,
+      };
+      const closed = [entry, ...recentlyClosedSessionsRef.current].slice(0, 10);
+      recentlyClosedSessionsRef.current = closed;
+      setRecentlyClosedSessions(closed);
+      window.api?.saveSettings({ ...settingsRef.current, recentlyClosedSessions: closed });
+    }
     try { window.api?.destroyTerminal(id); } catch {}
     removeSession(id);
   }, [removeSession]);
+
+  const restoreLastClosedSession = useCallback(async () => {
+    const queue = recentlyClosedSessionsRef.current;
+    if (queue.length === 0) return;
+    const [toRestore, ...remaining] = queue;
+    recentlyClosedSessionsRef.current = remaining;
+    setRecentlyClosedSessions(remaining);
+    window.api?.saveSettings({ ...settingsRef.current, recentlyClosedSessions: remaining });
+    if (!window.api?.createTerminal) return;
+    const shell = settingsRef.current.shellOverride || undefined;
+    try {
+      const { id } = await window.api.createTerminal({ cwd: toRestore.cwd || undefined, shell, cols: 80, rows: 24 });
+      sessionTabCounter++;
+      addSession({
+        id,
+        label: `Terminal ${sessionTabCounter}`,
+        customLabel: toRestore.customLabel,
+        icon: toRestore.icon,
+        iconColor: toRestore.iconColor,
+        cwd: toRestore.cwd,
+      });
+    } catch (err) {
+      console.error('Failed to restore terminal:', err);
+    }
+  }, [addSession]);
 
   const setActiveSession = useCallback((id: string) => {
     setActiveSessionId(id);
@@ -971,6 +1019,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     renameSession,
     updateSessionAppearance,
     reorderSessions,
+    recentlyClosedSessions,
+    restoreLastClosedSession,
     explorerRoot,
     setExplorerRoot,
     explorerOutOfSync,
@@ -990,8 +1040,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     commitAll,
     undoLastCommit,
     agentContextDirs,
-  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs,
-       addSession, removeSession, setActiveSession, createSession, duplicateSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
+  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedSessions,
+       addSession, removeSession, setActiveSession, createSession, duplicateSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, restoreLastClosedSession, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
 
   return (
     <UIContext.Provider value={uiValue}>

@@ -1729,6 +1729,15 @@ body {
   background: var(--bg-tertiary);
 }
 
+.tab-context-item.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tab-context-item.disabled:hover {
+  background: none;
+}
+
 .tab-context-has-sub::after {
   content: '>';
   float: right;
