@@ -819,7 +819,7 @@ interface TreeCache {
 }
 
 export function Explorer() {
-  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath, settings } = useUIContext();
+  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath, settings, panelVisibility } = useUIContext();
   const {
     cwd,
     explorerRoot,
@@ -1102,12 +1102,13 @@ export function Explorer() {
 
   const syncedRevealFile = useMemo(() => {
     if (explorerOutOfSync || !openFilePath) return null;
+    if (!panelVisibility.viewer) return null;
     if (explorerRoot && isPathWithinRoot(openFilePath, explorerRoot)) return openFilePath;
     for (const d of agentContextDirs) {
       if (isPathWithinRoot(openFilePath, d.path)) return openFilePath;
     }
     return null;
-  }, [explorerOutOfSync, openFilePath, explorerRoot, agentContextPathsKey]);
+  }, [explorerOutOfSync, openFilePath, explorerRoot, agentContextPathsKey, panelVisibility.viewer]);
 
   useEffect(() => {
     if (!syncedRevealFile) return;
