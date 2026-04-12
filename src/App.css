@@ -919,6 +919,16 @@ body {
   opacity: 0.5;
 }
 
+.tree-row.tree-row-typeahead-focused {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-tertiary));
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.explorer-tree:focus {
+  outline: none;
+}
+
 .file-icon {
   display: flex;
   align-items: center;

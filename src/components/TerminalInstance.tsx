@@ -610,6 +610,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   return (
     <div
       className={`terminal-instance${isDragOver ? ' terminal-drag-over' : ''}`}
+      data-session-id={sessionId}
       style={{ display: isActive ? 'flex' : 'none', flex: 1, height: '100%', position: 'relative' }}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}

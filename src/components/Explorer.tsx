@@ -141,6 +141,8 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, onContextMenu,
         ref={entry.isDirectory ? undefined : fileRowRef}
         className={`tree-row ${!entry.isDirectory ? 'tree-row-file' : ''} ${isExplorerActive ? 'tree-row-explorer-active' : ''} ${isDimmed ? 'tree-row-ignored' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        data-is-directory={entry.isDirectory ? 'true' : undefined}
+        data-path={entry.path}
         onClick={toggleOpen}
         onDoubleClick={!entry.isDirectory ? (e) => { e.stopPropagation(); onFileDoubleClick(); } : undefined}
         onContextMenu={(e) => onContextMenu(entry.path, entry.isDirectory, e)}
@@ -877,6 +879,11 @@ export function Explorer() {
   entriesRef.current = entries;
   const truncatedInfoRef = useRef(truncatedInfo);
   truncatedInfoRef.current = truncatedInfo;
+  const explorerTreeRef = useRef<HTMLDivElement>(null);
+  const typeaheadBufferRef = useRef('');
+  const typeaheadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typeaheadFocusedElRef = useRef<Element | null>(null);
+  const contextMenuKeyboardRef = useRef(false);
 
   useEffect(() => {
     window.api.getPlatform?.().then(setPlatform).catch(() => {});
@@ -1045,6 +1052,136 @@ export function Explorer() {
     e.preventDefault();
     setFileContextMenu({ x: e.clientX, y: e.clientY, path, isDirectory });
   }, []);
+
+  const clearTypeahead = useCallback(() => {
+    typeaheadBufferRef.current = '';
+    if (typeaheadTimerRef.current) clearTimeout(typeaheadTimerRef.current);
+    typeaheadFocusedElRef.current?.classList.remove('tree-row-typeahead-focused');
+    typeaheadFocusedElRef.current = null;
+  }, []);
+
+  useEffect(() => clearTypeahead, []);
+
+  useEffect(() => {
+    clearTypeahead();
+  }, [collapseKey]);
+
+  useEffect(() => {
+    if (!fileContextMenu) {
+      if (contextMenuKeyboardRef.current) {
+        contextMenuKeyboardRef.current = false;
+        requestAnimationFrame(() => explorerTreeRef.current?.focus());
+      }
+      return;
+    }
+    if (!contextMenuKeyboardRef.current) return;
+    const id = requestAnimationFrame(() => {
+      fileContextMenuRef.current?.querySelector<HTMLElement>('button')?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [fileContextMenu]);
+
+  const handleTreeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!explorerTreeRef.current) return;
+
+    // Context menu via keyboard (Shift+F10 or dedicated ContextMenu key)
+    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      e.preventDefault();
+      const focused = typeaheadFocusedElRef.current as HTMLElement | null;
+      if (!focused) return;
+      const path = focused.dataset.path;
+      if (!path) return;
+      const isDirectory = focused.dataset.isDirectory === 'true';
+      const rect = focused.getBoundingClientRect();
+      contextMenuKeyboardRef.current = true;
+      setFileContextMenu({ x: rect.left + 8, y: rect.bottom, path, isDirectory });
+      return;
+    }
+
+    const moveFocus = (el: HTMLElement) => {
+      typeaheadFocusedElRef.current?.classList.remove('tree-row-typeahead-focused');
+      el.classList.add('tree-row-typeahead-focused');
+      typeaheadFocusedElRef.current = el;
+      el.scrollIntoView({ block: 'nearest' });
+    };
+
+    // Arrow / Enter navigation
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Enter') {
+      e.preventDefault();
+      // Clear typeahead buffer on manual navigation
+      typeaheadBufferRef.current = '';
+      if (typeaheadTimerRef.current) clearTimeout(typeaheadTimerRef.current);
+
+      const rows = Array.from(explorerTreeRef.current.querySelectorAll<HTMLElement>('.tree-row'));
+      if (rows.length === 0) return;
+
+      const focused = typeaheadFocusedElRef.current as HTMLElement | null;
+      const idx = focused ? rows.indexOf(focused) : -1;
+
+      if (e.key === 'ArrowDown') {
+        moveFocus(idx < 0 ? rows[0] : (rows[idx + 1] ?? rows[idx]));
+      } else if (e.key === 'ArrowUp') {
+        moveFocus(idx <= 0 ? rows[0] : rows[idx - 1]);
+      } else if (e.key === 'Enter') {
+        focused?.click();
+      } else if (e.key === 'ArrowRight') {
+        if (!focused) { moveFocus(rows[0]); return; }
+        const isDir = focused.dataset.isDirectory === 'true';
+        if (!isDir) return;
+        const isExpanded = !!focused.parentElement?.querySelector(':scope > .tree-children');
+        if (!isExpanded) {
+          focused.click(); // expand
+        } else {
+          // move into first child
+          const next = rows[idx + 1];
+          if (next) moveFocus(next);
+        }
+      } else if (e.key === 'ArrowLeft') {
+        if (!focused) return;
+        const isDir = focused.dataset.isDirectory === 'true';
+        const isExpanded = isDir && !!focused.parentElement?.querySelector(':scope > .tree-children');
+        if (isExpanded) {
+          focused.click(); // collapse
+        } else {
+          // move to parent folder row
+          const treeNode = focused.parentElement; // .tree-node
+          const treeChildren = treeNode?.parentElement; // .tree-children or .explorer-tree
+          if (treeChildren?.classList.contains('tree-children')) {
+            const parentRow = treeChildren.parentElement?.querySelector<HTMLElement>(':scope > .tree-row');
+            if (parentRow) moveFocus(parentRow);
+          }
+        }
+      }
+      return;
+    }
+
+    // Type-ahead: printable characters only
+    if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if (typeaheadTimerRef.current) clearTimeout(typeaheadTimerRef.current);
+    typeaheadBufferRef.current += e.key.toLowerCase();
+
+    typeaheadTimerRef.current = setTimeout(() => {
+      typeaheadBufferRef.current = '';
+    }, 800);
+
+    const rows = explorerTreeRef.current.querySelectorAll<HTMLElement>('.tree-row');
+    let matched: HTMLElement | null = null;
+    for (const row of rows) {
+      const nameEl = row.querySelector('.tree-name');
+      if (nameEl?.textContent?.toLowerCase().startsWith(typeaheadBufferRef.current)) {
+        matched = row;
+        break;
+      }
+    }
+
+    if (matched) {
+      typeaheadFocusedElRef.current?.classList.remove('tree-row-typeahead-focused');
+      matched.classList.add('tree-row-typeahead-focused');
+      typeaheadFocusedElRef.current = matched;
+      matched.scrollIntoView({ block: 'nearest' });
+    }
+  }, [setFileContextMenu]);
 
   const revealLabel = platform === 'darwin' ? 'Reveal in Finder' : platform === 'win32' ? 'Reveal in Explorer' : 'Open in File Manager';
 
@@ -1271,7 +1408,12 @@ export function Explorer() {
       )}
       <div className="panel-body explorer-body">
         {activeView === 'files' ? (
-          <div className="explorer-tree">
+          <div
+            className="explorer-tree"
+            ref={explorerTreeRef}
+            tabIndex={0}
+            onKeyDown={handleTreeKeyDown}
+          >
             <div
               className="explorer-root-label"
               data-tooltip={explorerRoot}
@@ -1360,7 +1502,7 @@ export function Explorer() {
         : null;
       const menuHeight = 116
         + (relativePath !== null ? 28 : 0)
-        + (fileContextMenu.isDirectory ? 36 : 0);
+        + (fileContextMenu.isDirectory ? 64 : 0);
       const x = Math.min(fileContextMenu.x, window.innerWidth - menuWidth - 8);
       const y = Math.min(fileContextMenu.y, window.innerHeight - menuHeight - 8);
       return (
@@ -1368,6 +1510,21 @@ export function Explorer() {
           ref={fileContextMenuRef}
           className="tab-context-menu"
           style={{ left: x, top: y }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setFileContextMenu(null);
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              e.stopPropagation();
+              const buttons = Array.from(fileContextMenuRef.current?.querySelectorAll<HTMLElement>('button') ?? []);
+              const idx = buttons.indexOf(document.activeElement as HTMLElement);
+              const next = e.key === 'ArrowDown'
+                ? buttons[(idx + 1) % buttons.length]
+                : buttons[(idx - 1 + buttons.length) % buttons.length];
+              next?.focus();
+            }
+          }}
         >
           <button
             className="tab-context-item"
@@ -1387,6 +1544,24 @@ export function Explorer() {
                 }}
               >
                 Open Terminal Here
+              </button>
+              <button
+                className="tab-context-item"
+                onClick={() => {
+                  if (activeSessionId) {
+                    const escaped = fileContextMenu.path.replace(/"/g, '\\"');
+                    window.api.writeTerminal(activeSessionId, `cd "${escaped}"\r`);
+                    setPanelVisibility('terminal', true);
+                    requestAnimationFrame(() => {
+                      document.querySelector<HTMLElement>(
+                        `[data-session-id="${activeSessionId}"] .xterm-helper-textarea`
+                      )?.focus();
+                    });
+                  }
+                  setFileContextMenu(null);
+                }}
+              >
+                CD to Here
               </button>
             </>
           )}
