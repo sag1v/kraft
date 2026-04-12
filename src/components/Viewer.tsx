@@ -381,6 +381,7 @@ export function Viewer() {
           <div className="viewer-git-error-header">
             <span className="viewer-git-error-icon">⚠</span>
             <span className="viewer-git-error-title">{errorViewTitle}</span>
+            <CopyButton text={gitErrorViewContent} />
             <button
               className="viewer-git-error-close"
               onClick={() => setGitErrorViewContent(null)}
@@ -395,5 +396,26 @@ export function Viewer() {
         </div>
       )}
     </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <button
+      className="viewer-git-error-copy"
+      onClick={handleCopy}
+      aria-label="Copy error"
+    >
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
   );
 }

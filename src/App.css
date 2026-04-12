@@ -3077,6 +3077,23 @@ body {
   letter-spacing: 0.06em;
 }
 
+.viewer-git-error-copy {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 8px;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.viewer-git-error-copy:hover {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+}
+
 .viewer-git-error-close {
   background: none;
   border: none;
@@ -3106,6 +3123,7 @@ body {
   color: var(--fg);
   white-space: pre-wrap;
   word-break: break-word;
+  user-select: text;
 }
 
 /* ── Viewer Edit Mode ── */
