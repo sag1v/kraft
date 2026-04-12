@@ -91,6 +91,7 @@ interface SessionContextValue {
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
   createSession: () => Promise<void>;
+  createSessionAtPath: (path: string) => Promise<void>;
   duplicateSession: (id: string) => Promise<void>;
   destroySession: (id: string) => void;
   updateSessionCwd: (id: string, cwd: string) => void;
@@ -428,6 +429,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       console.error('Failed to create terminal:', err);
     }
   }, [homeDir, addSession]);
+
+  const createSessionAtPath = useCallback(async (path: string) => {
+    if (!window.api?.createTerminal) return;
+    const shell = settingsRef.current.shellOverride || undefined;
+    try {
+      const { id } = await window.api.createTerminal({ cwd: path, shell, cols: 80, rows: 24 });
+      sessionTabCounter++;
+      addSession({ id, label: `Terminal ${sessionTabCounter}`, cwd: path });
+    } catch (err) {
+      console.error('Failed to create terminal:', err);
+    }
+  }, [addSession]);
 
   const duplicateSession = useCallback(async (sourceId: string) => {
     if (!window.api?.createTerminal) return;
@@ -1017,6 +1030,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     removeSession,
     setActiveSession,
     createSession,
+    createSessionAtPath,
     duplicateSession,
     destroySession,
     updateSessionCwd,
@@ -1045,7 +1059,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     undoLastCommit,
     agentContextDirs,
   }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedSessions,
-       addSession, removeSession, setActiveSession, createSession, duplicateSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, restoreLastClosedSession, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
+       addSession, removeSession, setActiveSession, createSession, createSessionAtPath, duplicateSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, restoreLastClosedSession, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
 
   return (
     <UIContext.Provider value={uiValue}>

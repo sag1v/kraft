@@ -847,6 +847,7 @@ export function Explorer() {
     commitAll,
     undoLastCommit,
     agentContextDirs,
+    createSessionAtPath,
   } = useSessionContext();
 
   const [activeViewMap, setActiveViewMap] = useState<Record<string, ExplorerView>>({});
@@ -1354,12 +1355,14 @@ export function Explorer() {
 
     {fileContextMenu && (() => {
       const menuWidth = 200;
-      const menuHeight = 116;
-      const x = Math.min(fileContextMenu.x, window.innerWidth - menuWidth - 8);
-      const y = Math.min(fileContextMenu.y, window.innerHeight - menuHeight - 8);
       const relativePath = explorerRoot && fileContextMenu.path.startsWith(explorerRoot + '/')
         ? fileContextMenu.path.slice(explorerRoot.length + 1)
         : null;
+      const menuHeight = 116
+        + (relativePath !== null ? 28 : 0)
+        + (fileContextMenu.isDirectory ? 36 : 0);
+      const x = Math.min(fileContextMenu.x, window.innerWidth - menuWidth - 8);
+      const y = Math.min(fileContextMenu.y, window.innerHeight - menuHeight - 8);
       return (
         <div
           ref={fileContextMenuRef}
@@ -1372,6 +1375,21 @@ export function Explorer() {
           >
             {revealLabel}
           </button>
+          {fileContextMenu.isDirectory && (
+            <>
+              <div className="tab-context-separator" />
+              <button
+                className="tab-context-item"
+                onClick={() => {
+                  createSessionAtPath(fileContextMenu.path);
+                  setPanelVisibility('terminal', true);
+                  setFileContextMenu(null);
+                }}
+              >
+                Open Terminal Here
+              </button>
+            </>
+          )}
           <div className="tab-context-separator" />
           <button
             className="tab-context-item"
