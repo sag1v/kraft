@@ -11,6 +11,17 @@ import { UpdateChecker } from './update-checker';
 const execFileAsync = promisify(execFile);
 const pty = require('node-pty');
 
+// Wrapper that injects the user's full shell environment (PATH, nvm, etc.) so
+// that hooks and tools like npx/node are always resolvable in headless execs.
+async function shellExec(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; encoding?: BufferEncoding | 'utf-8'; timeout?: number; maxBuffer?: number }
+) {
+  const env = await getShellEnv();
+  return execFileAsync(cmd, args, { ...opts, env } as any);
+}
+
 let mainWindow: BrowserWindow | null = null;
 const agentManager = new AgentManager();
 const updateChecker = new UpdateChecker();
@@ -593,12 +604,12 @@ function setupIPC() {
   ipcMain.handle('get-git-info', async (_event, dirPath: string) => {
     try {
       const [branchResult, rootResult] = await Promise.all([
-        execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        shellExec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
           cwd: dirPath,
           encoding: 'utf-8',
           timeout: 3000,
         }),
-        execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+        shellExec('git', ['rev-parse', '--show-toplevel'], {
           cwd: dirPath,
           encoding: 'utf-8',
           timeout: 3000,
@@ -609,7 +620,7 @@ function setupIPC() {
 
       let aheadCount = 0;
       try {
-        const aheadResult = await execFileAsync('git', ['rev-list', '--count', '@{u}..HEAD'], {
+        const aheadResult = await shellExec('git', ['rev-list', '--count', '@{u}..HEAD'], {
           cwd: dirPath,
           encoding: 'utf-8',
           timeout: 3000,
@@ -628,7 +639,7 @@ function setupIPC() {
   ipcMain.handle('get-git-status', async (_event, dirPath: string) => {
     let repoRoot: string;
     try {
-      const { stdout: rootStdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+      const { stdout: rootStdout } = await shellExec('git', ['rev-parse', '--show-toplevel'], {
         cwd: dirPath,
         encoding: 'utf-8',
         timeout: 3000,
@@ -640,7 +651,7 @@ function setupIPC() {
     return enqueueGitOp(repoRoot, async () => {
     try {
 
-      const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
+      const { stdout } = await shellExec('git', ['status', '--porcelain'], {
         cwd: repoRoot,
         encoding: 'utf-8',
         timeout: 5000,
@@ -691,7 +702,7 @@ function setupIPC() {
 
       let ignored: string[] = [];
       try {
-        const { stdout: ignoredStdout } = await execFileAsync(
+        const { stdout: ignoredStdout } = await shellExec(
           'git',
           ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory'],
           { cwd: repoRoot, encoding: 'utf-8', timeout: 5000, maxBuffer: 1024 * 1024 },
@@ -720,7 +731,7 @@ function setupIPC() {
   ipcMain.handle('git-stage', (_event, filePaths: string[], repoRoot: string) =>
     enqueueGitOp(repoRoot, async () => {
       try {
-        await execFileAsync('git', ['add', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
+        await shellExec('git', ['add', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
         return { success: true, error: null };
       } catch (e) { return gitResult(e); }
     })
@@ -729,7 +740,7 @@ function setupIPC() {
   ipcMain.handle('git-unstage', (_event, filePaths: string[], repoRoot: string) =>
     enqueueGitOp(repoRoot, async () => {
       try {
-        await execFileAsync('git', ['reset', 'HEAD', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
+        await shellExec('git', ['reset', 'HEAD', '--', ...filePaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 });
         return { success: true, error: null };
       } catch (e) { return gitResult(e); }
     })
@@ -739,7 +750,7 @@ function setupIPC() {
     enqueueGitOp(repoRoot, async () => {
       try {
         if (trackedPaths.length > 0) {
-          await execFileAsync('git', ['restore', '--', ...trackedPaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+          await shellExec('git', ['restore', '--', ...trackedPaths], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
         }
         if (untrackedPaths.length > 0) {
           await Promise.all(untrackedPaths.map(fp => fs.promises.unlink(fp).catch(() => {})));
@@ -755,7 +766,7 @@ function setupIPC() {
         const args = ['stash', 'push'];
         if (includeUntracked) args.push('--include-untracked');
         if (message) args.push('-m', message);
-        await execFileAsync('git', args, { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        await shellExec('git', args, { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
         return { success: true, error: null };
       } catch (e) { return gitResult(e); }
     })
@@ -764,7 +775,7 @@ function setupIPC() {
   ipcMain.handle('git-stash-pop', (_event, repoRoot: string) =>
     enqueueGitOp(repoRoot, async () => {
       try {
-        await execFileAsync('git', ['stash', 'pop'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        await shellExec('git', ['stash', 'pop'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
         return { success: true, error: null };
       } catch (e) { return gitResult(e); }
     })
@@ -774,7 +785,7 @@ function setupIPC() {
     enqueueGitOp(repoRoot, async () => {
       const lockPath = path.join(repoRoot, '.git', 'index.lock');
       const tryCommit = async () => {
-        await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+        await shellExec('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
         return { success: true, error: null };
       };
       try {
@@ -793,8 +804,8 @@ function setupIPC() {
     enqueueGitOp(repoRoot, async () => {
       const lockPath = path.join(repoRoot, '.git', 'index.lock');
       const tryCommitAll = async () => {
-        await execFileAsync('git', ['add', '-A'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
-        await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+        await shellExec('git', ['add', '-A'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        await shellExec('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
         return { success: true, error: null };
       };
       try {
@@ -812,7 +823,7 @@ function setupIPC() {
   ipcMain.handle('git-undo-commit', (_event, repoRoot: string) =>
     enqueueGitOp(repoRoot, async () => {
       try {
-        await execFileAsync('git', ['reset', 'HEAD~1', '--soft'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
+        await shellExec('git', ['reset', 'HEAD~1', '--soft'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
         return { success: true, error: null };
       } catch (e) { return gitResult(e); }
     })
@@ -821,7 +832,7 @@ function setupIPC() {
   ipcMain.handle('get-git-diff', async (_event, filePath: string, repoRoot: string) => {
     try {
       try {
-        await execFileAsync('git', ['ls-files', '--error-unmatch', filePath], {
+        await shellExec('git', ['ls-files', '--error-unmatch', filePath], {
           cwd: repoRoot,
           encoding: 'utf-8',
           timeout: 3000,
@@ -831,7 +842,7 @@ function setupIPC() {
         return { diff: null, isNew: true, content };
       }
 
-      const { stdout } = await execFileAsync('git', ['diff', 'HEAD', '--', filePath], {
+      const { stdout } = await shellExec('git', ['diff', 'HEAD', '--', filePath], {
         cwd: repoRoot,
         encoding: 'utf-8',
         timeout: 5000,
