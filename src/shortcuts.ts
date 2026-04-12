@@ -20,6 +20,9 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'reload-window', category: 'General', label: 'Reload Window', keys: mod('Shift+R') },
 
   // View
+  { id: 'focus-explorer', category: 'View', label: 'Focus Explorer', keys: '' },
+  { id: 'focus-terminal', category: 'View', label: 'Focus Terminal', keys: '' },
+  { id: 'focus-editor',   category: 'View', label: 'Focus Editor',   keys: '' },
   { id: 'toggle-explorer', category: 'View', label: 'Toggle Explorer', keys: mod('B') },
   { id: 'toggle-terminal', category: 'View', label: 'Toggle Terminal', keys: mod('J') },
   { id: 'toggle-viewer', category: 'View', label: 'Toggle Viewer', keys: mod('\\') },

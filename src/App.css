@@ -465,6 +465,30 @@ body {
   outline-offset: -2px;
 }
 
+/* Panel focus indicators */
+.panel-header {
+  position: relative;
+}
+
+.kraft-panel.panel-focus-flash .panel-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--accent);
+  transform-origin: center;
+  animation: panel-focus-sweep 0.55s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes panel-focus-sweep {
+  0%   { transform: scaleX(0); opacity: 1; }
+  55%  { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
 .kraft-handle {
   background: var(--border);
   flex-shrink: 0;
@@ -2532,6 +2556,74 @@ body {
   font-size: 10px;
   color: var(--fg-muted);
   line-height: 1;
+}
+
+/* ── Keybinding preset selector ── */
+
+.settings-kb-preset {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.settings-kb-preset-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.settings-kb-preset-btn:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+
+.settings-kb-preset-btn.active {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+}
+
+.settings-key-editable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 3px;
+  transition: background 0.12s;
+}
+
+.settings-key-editable:hover {
+  background: var(--bg-tertiary);
+}
+
+.settings-key-edit-icon {
+  font-size: 10px;
+  color: var(--fg-dim);
+  margin-left: 3px;
+}
+
+.settings-key-recorder {
+  font-size: 11px;
+  color: var(--fg-muted);
+  padding: 3px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-key-recorder.recording {
+  color: var(--accent);
+  border-color: var(--accent);
+  animation: kb-pulse 1s ease-in-out infinite;
+}
+
+@keyframes kb-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* ── Selection ── */

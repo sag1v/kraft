@@ -153,6 +153,8 @@ export interface AppSettings {
   syncLayoutAcrossTabs: boolean;
   showHiddenFiles: boolean;
   newTabUsePreviousCwd: boolean;
+  keybindingPreset: 'vscode' | 'intellij' | 'custom';
+  customKeybindings: Partial<Record<string, string>>;
 }
 
 export interface ElectronAPI {

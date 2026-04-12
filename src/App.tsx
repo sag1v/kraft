@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback, useRef, useState } from 'react';
-import { AppProvider, useUIContext } from './context/AppContext';
+import { AppProvider, useUIContext, useSessionContext } from './context/AppContext';
+import { matchesKeyCombo, getEffectiveCombo, FOCUS_SHORTCUT_IDS } from './keybindings';
 import { TopBar } from './components/TopBar';
 import { Footer } from './components/Footer';
 import { PanelLayout } from './components/PanelLayout';
@@ -21,7 +22,9 @@ function AppInner() {
     openFiles,
     closeFileTab,
     setActiveFileTab,
+    settings,
   } = useUIContext();
+  const { activeSessionId } = useSessionContext();
   const [gameOpen, setGameOpen] = useState(false);
 
   useEffect(() => {
@@ -36,6 +39,10 @@ function AppInner() {
   openFilePathRef.current = openFilePath;
   const openFilesRef = useRef(openFiles);
   openFilesRef.current = openFiles;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -63,8 +70,55 @@ function AppInner() {
     root.style.setProperty('--git-conflict', c.ansi.red);
   }, [theme]);
 
+  const flashPanel = useCallback((panelId: string) => {
+    const panel = document.querySelector<HTMLElement>(`[data-panel-id="${panelId}"]`);
+    if (!panel) return;
+    panel.classList.remove('panel-focus-flash');
+    void panel.offsetWidth; // force reflow so animation restarts
+    panel.classList.add('panel-focus-flash');
+    setTimeout(() => panel.classList.remove('panel-focus-flash'), 700);
+  }, []);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      const s = settingsRef.current;
+
+      // ── Panel focus shortcuts ────────────────────────────────────────
+      if (matchesKeyCombo(e, getEffectiveCombo('focus-explorer', s))) {
+        e.preventDefault();
+        if (!panelVisRef.current.explorer) setPanelVisibility('explorer', true);
+        flashPanel('explorer');
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>('.explorer-tree')?.focus();
+        });
+        return;
+      }
+
+      if (matchesKeyCombo(e, getEffectiveCombo('focus-terminal', s))) {
+        e.preventDefault();
+        if (!panelVisRef.current.terminal) setPanelVisibility('terminal', true);
+        flashPanel('terminal');
+        requestAnimationFrame(() => {
+          const sid = activeSessionIdRef.current;
+          const el = sid
+            ? document.querySelector<HTMLElement>(`[data-session-id="${sid}"] .xterm-helper-textarea`)
+            : document.querySelector<HTMLElement>('.xterm-helper-textarea');
+          el?.focus();
+        });
+        return;
+      }
+
+      if (matchesKeyCombo(e, getEffectiveCombo('focus-editor', s))) {
+        e.preventDefault();
+        if (!panelVisRef.current.viewer) setPanelVisibility('viewer', true);
+        flashPanel('viewer');
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>('.viewer-code-editor .cm-content')?.focus();
+        });
+        return;
+      }
+      // ────────────────────────────────────────────────────────────────
+
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
 
@@ -130,7 +184,7 @@ function AppInner() {
         return;
       }
     },
-    [setSettingsOpen, setPanelVisibility, closeFileTab, setActiveFileTab]
+    [setSettingsOpen, setPanelVisibility, closeFileTab, setActiveFileTab, flashPanel]
   );
 
   useEffect(() => {

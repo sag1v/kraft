@@ -134,6 +134,8 @@ const defaultSettings: AppSettings = {
   syncLayoutAcrossTabs: false,
   showHiddenFiles: true,
   newTabUsePreviousCwd: false,
+  keybindingPreset: 'vscode',
+  customKeybindings: {},
 };
 
 const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false, aheadCount: 0 };

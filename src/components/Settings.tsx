@@ -4,6 +4,15 @@ import { themes } from '../themes';
 import type { LayoutPreset, PanelId, PanelVisibility } from '../types';
 import { removePanelFromGrid, simplifyGrid } from './PanelLayout';
 import { SHORTCUTS, SHORTCUT_CATEGORIES, MOD_KEY } from '../shortcuts';
+import {
+  FOCUS_SHORTCUT_IDS,
+  getEffectiveCombo,
+  comboToDisplay,
+  eventToCombo,
+  VSCODE_BINDINGS,
+  INTELLIJ_BINDINGS,
+} from '../keybindings';
+import type { FocusShortcutId } from '../keybindings';
 
 const shells = [
   { value: '', label: 'System Default' },
@@ -197,6 +206,43 @@ function ZoomControl() {
   );
 }
 
+const PRESET_LABELS: Record<string, string> = { vscode: 'VS Code', intellij: 'IntelliJ', custom: 'Custom' };
+
+function KeyRecorder({ combo, onSave }: { combo: string; onSave: (c: string) => void }) {
+  const [recording, setRecording] = useState(false);
+
+  useEffect(() => {
+    if (!recording) return;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const c = eventToCombo(e);
+      if (!c) return;
+      setRecording(false);
+      onSave(c);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [recording, onSave]);
+
+  if (recording) {
+    return (
+      <span className="settings-key-recorder recording" onClick={() => setRecording(false)}>
+        Press key combo… (click to cancel)
+      </span>
+    );
+  }
+
+  return (
+    <span className="settings-shortcut-keys settings-key-editable" onClick={() => setRecording(true)}>
+      {combo.split('+').map((k, i) => (
+        <kbd key={i} className="settings-shortcut-kbd">{comboToDisplay(k)}</kbd>
+      ))}
+      <span className="settings-key-edit-icon">✎</span>
+    </span>
+  );
+}
+
 export function Settings() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, theme, setThemeId } = useUIContext();
   const [reallyStep, setReallyStep] = useState<0 | 1 | 2>(0);
@@ -301,14 +347,24 @@ export function Settings() {
 
   const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder hidden files dotfiles dot new tab working directory previous cwd');
 
+  const effectiveKeys = (id: string): string => {
+    if ((FOCUS_SHORTCUT_IDS as string[]).includes(id)) {
+      return comboToDisplay(getEffectiveCombo(id as FocusShortcutId, settings));
+    }
+    return SHORTCUTS.find(s => s.id === id)?.keys ?? '';
+  };
+
   const filteredShortcuts = SHORTCUT_CATEGORIES.map(category => {
     const items = SHORTCUTS.filter(s => s.category === category);
     const filtered = isSearching
-      ? items.filter(s => matches(s.label) || matches(s.keys) || matches(s.category) || matches(s.id))
+      ? items.filter(s => {
+          const k = effectiveKeys(s.id);
+          return matches(s.label) || matches(k) || matches(s.category) || matches(s.id);
+        })
       : items;
     return { category, items: filtered };
   }).filter(g => g.items.length > 0);
-  const showKeybindings = !isSearching || filteredShortcuts.length > 0;
+  const showKeybindings = !isSearching || filteredShortcuts.length > 0 || matches('preset vscode intellij custom keybinding focus panel');
 
   const showAppearance = showTheme || showZoom;
 
@@ -560,22 +616,77 @@ export function Settings() {
               >
                 <h2 className="settings-section-title">Keyboard Shortcuts</h2>
 
-                <div className="settings-shortcuts">
-                  {filteredShortcuts.map(({ category, items }) => (
-                    <div key={category} className="settings-shortcuts-category">
-                      <div className="settings-shortcuts-category-title">{category}</div>
-                      {items.map(s => (
-                        <div key={s.id} className="settings-shortcut-row">
-                          <span className="settings-shortcut-label">{s.label}</span>
+                {/* Preset selector */}
+                <div className="settings-row">
+                  <div className="settings-row-info">
+                    <span className="settings-row-title">Preset</span>
+                    <span className="settings-row-desc">Choose a keybinding preset for panel focus shortcuts. Select Custom to define your own key combos.</span>
+                  </div>
+                  <div className="settings-kb-preset">
+                    {(['vscode', 'intellij', 'custom'] as const).map(p => (
+                      <button
+                        key={p}
+                        className={`settings-kb-preset-btn ${settings.keybindingPreset === p ? 'active' : ''}`}
+                        onClick={() => updateSettings({ keybindingPreset: p })}
+                      >
+                        {PRESET_LABELS[p]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Panel focus shortcuts — show preset defaults or custom editor */}
+                <div className="settings-shortcuts-category" style={{ marginBottom: 16 }}>
+                  <div className="settings-shortcuts-category-title">Panel Focus</div>
+                  {FOCUS_SHORTCUT_IDS.map(id => {
+                    const label = { 'focus-explorer': 'Focus Explorer', 'focus-terminal': 'Focus Terminal', 'focus-editor': 'Focus Editor' }[id];
+                    const presetCombo = settings.keybindingPreset === 'intellij' ? INTELLIJ_BINDINGS[id] : VSCODE_BINDINGS[id];
+                    const effectiveCombo = getEffectiveCombo(id, settings);
+                    return (
+                      <div key={id} className="settings-shortcut-row">
+                        <span className="settings-shortcut-label">{label}</span>
+                        {settings.keybindingPreset === 'custom' ? (
+                          <KeyRecorder
+                            combo={effectiveCombo}
+                            onSave={(c) => updateSettings({ customKeybindings: { ...settings.customKeybindings, [id]: c } })}
+                          />
+                        ) : (
                           <span className="settings-shortcut-keys">
-                            {s.keys.split('+').map((key, i) => (
-                              <kbd key={i} className="settings-shortcut-kbd">{key}</kbd>
+                            {presetCombo.split('+').map((k, i) => (
+                              <kbd key={i} className="settings-shortcut-kbd">{comboToDisplay(k)}</kbd>
                             ))}
                           </span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* All other shortcuts */}
+                <div className="settings-shortcuts">
+                  {filteredShortcuts.map(({ category, items }) => {
+                    const nonFocus = items.filter(s => !(FOCUS_SHORTCUT_IDS as string[]).includes(s.id));
+                    if (nonFocus.length === 0) return null;
+                    return (
+                      <div key={category} className="settings-shortcuts-category">
+                        <div className="settings-shortcuts-category-title">{category}</div>
+                        {nonFocus.map(s => {
+                          const keys = effectiveKeys(s.id);
+                          if (!keys) return null;
+                          return (
+                            <div key={s.id} className="settings-shortcut-row">
+                              <span className="settings-shortcut-label">{s.label}</span>
+                              <span className="settings-shortcut-keys">
+                                {keys.split('+').map((key, i) => (
+                                  <kbd key={i} className="settings-shortcut-kbd">{key}</kbd>
+                                ))}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

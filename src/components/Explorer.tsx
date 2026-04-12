@@ -1066,6 +1066,18 @@ export function Explorer() {
     clearTypeahead();
   }, [collapseKey]);
 
+  const handleTreeFocus = useCallback(() => {
+    if (!explorerTreeRef.current) return;
+    const target =
+      explorerTreeRef.current.querySelector<HTMLElement>('.tree-row-explorer-active') ??
+      explorerTreeRef.current.querySelector<HTMLElement>('.tree-row');
+    if (!target) return;
+    typeaheadFocusedElRef.current?.classList.remove('tree-row-typeahead-focused');
+    target.classList.add('tree-row-typeahead-focused');
+    typeaheadFocusedElRef.current = target;
+    target.scrollIntoView({ block: 'nearest' });
+  }, []);
+
   useEffect(() => {
     if (!fileContextMenu) {
       if (contextMenuKeyboardRef.current) {
@@ -1413,6 +1425,8 @@ export function Explorer() {
             ref={explorerTreeRef}
             tabIndex={0}
             onKeyDown={handleTreeKeyDown}
+            onFocus={handleTreeFocus}
+            onBlur={clearTypeahead}
           >
             <div
               className="explorer-root-label"
