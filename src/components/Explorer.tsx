@@ -228,21 +228,28 @@ function GitActionPanel({ repoRoot, mode, onCommitStaged, onCommitAll, onStash, 
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const run = useCallback(async (fn: () => Promise<void>) => {
+  const run = useCallback(async (fn: () => Promise<boolean | void>): Promise<boolean> => {
     setLoading(true);
-    try { await fn(); } finally { setLoading(false); onClose(); }
-  }, [onClose]);
+    try {
+      const result = await fn();
+      return result !== false;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const isCommit = mode === 'commit-staged' || mode === 'commit-all';
   const canConfirm = isCommit ? message.trim().length > 0 : true;
   const confirmLabel = isCommit ? 'Commit' : 'Stash';
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     if (!canConfirm || loading) return;
-    if (mode === 'commit-staged') run(() => onCommitStaged(repoRoot, message.trim()));
-    else if (mode === 'commit-all') run(() => onCommitAll(repoRoot, message.trim()));
-    else run(() => onStash(repoRoot, message.trim() || undefined, mode === 'stash-untracked'));
-  }, [canConfirm, loading, mode, message, repoRoot, run, onCommitStaged, onCommitAll, onStash]);
+    let success: boolean;
+    if (mode === 'commit-staged') success = await run(() => onCommitStaged(repoRoot, message.trim()));
+    else if (mode === 'commit-all') success = await run(() => onCommitAll(repoRoot, message.trim()));
+    else success = await run(() => onStash(repoRoot, message.trim() || undefined, mode === 'stash-untracked'));
+    if (success) onClose();
+  }, [canConfirm, loading, mode, message, repoRoot, run, onCommitStaged, onCommitAll, onStash, onClose]);
 
   return (
     <div className="sc-commit-input">

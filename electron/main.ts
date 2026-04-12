@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, nativeImage, dialog, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Menu, nativeImage, dialog, clipboard, webContents as electronWebContents } from 'electron';
+import type { WebContents } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -18,6 +19,7 @@ interface PtyInstance {
   process: any;
   pid: number;
   shell: string;
+  webContentsId: number;
 }
 
 const ptyInstances = new Map<string, PtyInstance>();
@@ -41,9 +43,13 @@ interface DirCacheEntry {
 const dirCache = new Map<string, DirCacheEntry>();
 const DIR_CACHE_TTL = 5000;
 
-const activeWatchers = new Map<string, fs.FSWatcher>();
-const gitWatchers = new Map<string, fs.FSWatcher[]>();
-const fileWatchers = new Map<string, (curr: fs.Stats, prev: fs.Stats) => void>();
+interface ActiveWatcherEntry { watcher: fs.FSWatcher; webContentsId: number; }
+interface GitWatcherEntry { watchers: fs.FSWatcher[]; webContentsId: number; }
+interface FileWatcherEntry { listener: (curr: fs.Stats, prev: fs.Stats) => void; webContentsId: number; }
+
+const activeWatchers = new Map<string, ActiveWatcherEntry>();
+const gitWatchers = new Map<string, GitWatcherEntry>();
+const fileWatchers = new Map<string, FileWatcherEntry>();
 
 function getDefaultShell(): string {
   if (process.platform === 'win32') {
@@ -155,63 +161,40 @@ function saveSettings(settings: Record<string, any>): void {
   fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2));
 }
 
-function applyZoomLevel(level: number) {
-  if (!mainWindow) return;
+function sendToWebContents(id: number, channel: string, ...args: any[]) {
+  const wc = electronWebContents.fromId(id);
+  if (wc && !wc.isDestroyed()) {
+    wc.send(channel, ...args);
+  }
+}
+
+function broadcastToAllWindows(channel: string, ...args: any[]) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+    }
+  }
+}
+
+function applyZoomLevel(level: number, wc?: WebContents) {
+  const target = wc ?? BrowserWindow.getFocusedWindow()?.webContents;
+  if (!target || target.isDestroyed()) return;
   const clamped = Math.max(-3, Math.min(5, level));
-  mainWindow.webContents.setZoomLevel(clamped);
-  mainWindow.webContents.send('zoom-level-changed', clamped);
+  target.setZoomLevel(clamped);
+  target.send('zoom-level-changed', clamped);
   const saved = loadSettings();
   saved.zoomLevel = clamped;
   saveSettings(saved);
 }
 
-function applyZoomDelta(delta: number) {
-  if (!mainWindow) return;
-  applyZoomLevel(mainWindow.webContents.getZoomLevel() + delta);
+function applyZoomDelta(delta: number, wc?: WebContents) {
+  const target = wc ?? BrowserWindow.getFocusedWindow()?.webContents;
+  if (!target || target.isDestroyed()) return;
+  applyZoomLevel(target.getZoomLevel() + delta, target);
 }
 
-function createWindow() {
+function setupMenu() {
   const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-  const icon = nativeImage.createFromPath(iconPath);
-
-  if (process.platform === 'darwin') {
-    app.dock.setIcon(icon);
-  }
-
-  mainWindow = new BrowserWindow({
-    title: 'Kraft',
-    icon,
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 500,
-    frame: false,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 12, y: 12 },
-    backgroundColor: '#1e1f22',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
-  });
-
-  mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-    const tag = ['LOG', 'WARN', 'ERROR'][level] || 'INFO';
-    console.log(`[Renderer ${tag}] ${message} (${sourceId}:${line})`);
-  });
-
-  mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    console.error('[RENDERER CRASHED]', details);
-  });
-
-  mainWindow.webContents.on('before-input-event', (_event, input) => {
-    if (input.meta && input.alt && input.key === 'i') {
-      mainWindow?.webContents.toggleDevTools();
-    }
-  });
-
   const menu = Menu.buildFromTemplate([
     {
       label: 'Kraft',
@@ -233,8 +216,8 @@ function createWindow() {
               `OS: ${osInfo}`,
             ].join('\n');
 
-            const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-            const result = dialog.showMessageBoxSync(mainWindow!, {
+            const parentWin = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+            const result = dialog.showMessageBoxSync(parentWin, {
               type: 'info',
               icon: nativeImage.createFromPath(iconPath),
               title: 'About Kraft',
@@ -253,7 +236,8 @@ function createWindow() {
           click: async () => {
             const hasUpdate = await updateChecker.check();
             if (!hasUpdate) {
-              dialog.showMessageBox(mainWindow!, {
+              const parentWin = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+              dialog.showMessageBox(parentWin, {
                 type: 'info',
                 title: 'No Updates',
                 message: 'You are running the latest version of Kraft.',
@@ -267,8 +251,9 @@ function createWindow() {
           label: 'Settings...',
           accelerator: 'CommandOrControl+,',
           click: () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('open-settings');
+            const win = BrowserWindow.getFocusedWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('open-settings');
             }
           },
         },
@@ -315,6 +300,12 @@ function createWindow() {
     {
       label: 'Window',
       submenu: [
+        {
+          label: 'New Window',
+          accelerator: 'CommandOrControl+N',
+          click: () => createWindow(),
+        },
+        { type: 'separator' },
         { role: 'minimize' },
         { role: 'zoom' },
         { role: 'togglefullscreen' },
@@ -322,27 +313,111 @@ function createWindow() {
     },
   ]);
   Menu.setApplicationMenu(menu);
+}
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
-  if (devServerUrl) {
-    mainWindow.loadURL(devServerUrl);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+function createWindow() {
+  const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+  const icon = nativeImage.createFromPath(iconPath);
+
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(icon);
   }
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    const saved = loadSettings();
-    if (saved.zoomLevel != null) {
-      mainWindow?.webContents.setZoomLevel(saved.zoomLevel);
+  const win = new BrowserWindow({
+    title: 'Kraft',
+    icon,
+    width: 1400,
+    height: 900,
+    minWidth: 800,
+    minHeight: 500,
+    frame: false,
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 12, y: 12 },
+    backgroundColor: '#1e1f22',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  mainWindow = win;
+  // Capture webContents ID now, before the window can be destroyed
+  const winWebContentsId = win.webContents.id;
+
+  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    const tag = ['LOG', 'WARN', 'ERROR'][level] || 'INFO';
+    console.log(`[Renderer ${tag}] ${message} (${sourceId}:${line})`);
+  });
+
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[RENDERER CRASHED]', details);
+  });
+
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (input.meta && input.alt && input.key === 'i') {
+      win.webContents.toggleDevTools();
     }
   });
 
-  mainWindow.webContents.on('zoom-changed', (_event, direction) => {
-    applyZoomDelta(direction === 'in' ? 0.5 : -0.5);
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devServerUrl) {
+    win.loadURL(devServerUrl);
+  } else {
+    win.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+
+  win.webContents.on('did-finish-load', () => {
+    const saved = loadSettings();
+    if (saved.zoomLevel != null) {
+      win.webContents.setZoomLevel(saved.zoomLevel);
+    }
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  win.webContents.on('zoom-changed', (_event, direction) => {
+    applyZoomDelta(direction === 'in' ? 0.5 : -0.5, win.webContents);
+  });
+
+  win.on('focus', () => {
+    mainWindow = win;
+  });
+
+  win.on('closed', () => {
+    // Clean up PTY instances owned by this window
+    for (const [id, instance] of ptyInstances) {
+      if (instance.webContentsId === winWebContentsId) {
+        instance.process.kill();
+        ptyInstances.delete(id);
+        agentManager.unregisterTerminal(id);
+      }
+    }
+    // Clean up directory watchers owned by this window
+    for (const [dirPath, entry] of activeWatchers) {
+      if (entry.webContentsId === winWebContentsId) {
+        entry.watcher.close();
+        activeWatchers.delete(dirPath);
+      }
+    }
+    // Clean up file watchers owned by this window
+    for (const [filePath, entry] of fileWatchers) {
+      if (entry.webContentsId === winWebContentsId) {
+        fs.unwatchFile(filePath, entry.listener);
+        fileWatchers.delete(filePath);
+      }
+    }
+    // Clean up git watchers owned by this window
+    for (const [repoRoot, entry] of gitWatchers) {
+      if (entry.webContentsId === winWebContentsId) {
+        for (const w of entry.watchers) w.close();
+        gitWatchers.delete(repoRoot);
+      }
+    }
+    // Update mainWindow reference if this was it
+    if (mainWindow === win) {
+      const remaining = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
+      mainWindow = remaining.length > 0 ? remaining[0] : null;
+    }
   });
 }
 
@@ -697,20 +772,40 @@ function setupIPC() {
 
   ipcMain.handle('git-commit', (_event, repoRoot: string, message: string) =>
     enqueueGitOp(repoRoot, async () => {
-      try {
+      const lockPath = path.join(repoRoot, '.git', 'index.lock');
+      const tryCommit = async () => {
         await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
         return { success: true, error: null };
-      } catch (e) { return gitResult(e); }
+      };
+      try {
+        return await tryCommit();
+      } catch (e: any) {
+        if ((e?.stderr as string | undefined)?.includes('index.lock')) {
+          try { fs.unlinkSync(lockPath); } catch { /* ignore */ }
+          try { return await tryCommit(); } catch (e2) { return gitResult(e2); }
+        }
+        return gitResult(e);
+      }
     })
   );
 
   ipcMain.handle('git-commit-all', (_event, repoRoot: string, message: string) =>
     enqueueGitOp(repoRoot, async () => {
-      try {
+      const lockPath = path.join(repoRoot, '.git', 'index.lock');
+      const tryCommitAll = async () => {
         await execFileAsync('git', ['add', '-A'], { cwd: repoRoot, encoding: 'utf-8', timeout: 10000 });
         await execFileAsync('git', ['commit', '-m', message], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
         return { success: true, error: null };
-      } catch (e) { return gitResult(e); }
+      };
+      try {
+        return await tryCommitAll();
+      } catch (e: any) {
+        if ((e?.stderr as string | undefined)?.includes('index.lock')) {
+          try { fs.unlinkSync(lockPath); } catch { /* ignore */ }
+          try { return await tryCommitAll(); } catch (e2) { return gitResult(e2); }
+        }
+        return gitResult(e);
+      }
     })
   );
 
@@ -749,11 +844,12 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('create-terminal', async (_event, options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => {
+  ipcMain.handle('create-terminal', async (event, options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => {
     const id = `term-${++terminalIdCounter}`;
     const shellPath = options.shell || getDefaultShell();
     const shellArgs = shellPath.includes('zsh') ? ['--login'] : shellPath.includes('bash') ? ['--login'] : [];
     const env = await getShellEnv();
+    const webContentsId = event.sender.id;
 
     const ptyProcess = pty.spawn(shellPath, shellArgs, {
       name: 'xterm-256color',
@@ -767,27 +863,24 @@ function setupIPC() {
       process: ptyProcess,
       pid: ptyProcess.pid,
       shell: shellPath,
+      webContentsId,
     });
 
     agentManager.registerTerminal(id, ptyProcess.pid, options.cwd || os.homedir());
 
     ptyProcess.onData((data: string) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('terminal-data', id, data);
-      }
+      sendToWebContents(webContentsId, 'terminal-data', id, data);
     });
 
     ptyProcess.onExit(({ exitCode }: { exitCode: number }) => {
       ptyInstances.delete(id);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('terminal-exit', id, exitCode);
-      }
+      sendToWebContents(webContentsId, 'terminal-exit', id, exitCode);
     });
 
-    if (shellEnvFailed && mainWindow && !mainWindow.isDestroyed()) {
+    if (shellEnvFailed) {
       const warn = '\x1b[33m[Kraft] Warning: Could not load shell environment. '
         + 'Some tools may not be found. Check your shell config.\x1b[0m\r\n';
-      mainWindow.webContents.send('terminal-data', id, warn);
+      sendToWebContents(webContentsId, 'terminal-data', id, warn);
     }
 
     return { id, pid: ptyProcess.pid };
@@ -869,65 +962,64 @@ function setupIPC() {
     return true;
   });
 
-  ipcMain.handle('get-zoom-level', () => {
-    return mainWindow?.webContents.getZoomLevel() ?? 0;
+  ipcMain.handle('get-zoom-level', (event) => {
+    return event.sender.getZoomLevel();
   });
 
-  ipcMain.handle('set-zoom-level', (_event, level: number) => {
-    applyZoomLevel(level);
-    return mainWindow?.webContents.getZoomLevel() ?? 0;
+  ipcMain.handle('set-zoom-level', (event, level: number) => {
+    applyZoomLevel(level, event.sender);
+    return event.sender.getZoomLevel();
   });
 
-  ipcMain.on('watch-directory', (_event, dirPath: string) => {
+  ipcMain.on('watch-directory', (event, dirPath: string) => {
     if (activeWatchers.has(dirPath)) return;
+    const webContentsId = event.sender.id;
     try {
       const watcher = fs.watch(dirPath, { recursive: true }, (eventType, filename) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('directory-changed', dirPath, eventType, filename);
-        }
+        sendToWebContents(webContentsId, 'directory-changed', dirPath, eventType, filename);
       });
-      activeWatchers.set(dirPath, watcher);
+      activeWatchers.set(dirPath, { watcher, webContentsId });
     } catch {
       // directory not watchable
     }
   });
 
   ipcMain.on('unwatch-directory', (_event, dirPath: string) => {
-    const watcher = activeWatchers.get(dirPath);
-    if (watcher) {
-      watcher.close();
+    const entry = activeWatchers.get(dirPath);
+    if (entry) {
+      entry.watcher.close();
       activeWatchers.delete(dirPath);
     }
   });
 
-  ipcMain.on('watch-file', (_event, filePath: string) => {
+  ipcMain.on('watch-file', (event, filePath: string) => {
     if (fileWatchers.has(filePath)) return;
+    const webContentsId = event.sender.id;
     const listener = (curr: fs.Stats, prev: fs.Stats) => {
-      if (curr.mtimeMs !== prev.mtimeMs && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('file-changed', filePath);
+      if (curr.mtimeMs !== prev.mtimeMs) {
+        sendToWebContents(webContentsId, 'file-changed', filePath);
       }
     };
     fs.watchFile(filePath, { interval: 500, persistent: false }, listener);
-    fileWatchers.set(filePath, listener);
+    fileWatchers.set(filePath, { listener, webContentsId });
   });
 
   ipcMain.on('unwatch-file', (_event, filePath: string) => {
-    const listener = fileWatchers.get(filePath);
-    if (listener) {
-      fs.unwatchFile(filePath, listener);
+    const entry = fileWatchers.get(filePath);
+    if (entry) {
+      fs.unwatchFile(filePath, entry.listener);
       fileWatchers.delete(filePath);
     }
   });
 
-  ipcMain.on('watch-git-repo', (_event, repoRoot: string) => {
+  ipcMain.on('watch-git-repo', (event, repoRoot: string) => {
     if (gitWatchers.has(repoRoot)) return;
+    const webContentsId = event.sender.id;
     const gitDir = path.join(repoRoot, '.git');
     const watchers: fs.FSWatcher[] = [];
 
     const notify = () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('git-changed', repoRoot);
-      }
+      sendToWebContents(webContentsId, 'git-changed', repoRoot);
     };
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -958,24 +1050,24 @@ function setupIPC() {
     }
 
     if (watchers.length > 0) {
-      gitWatchers.set(repoRoot, watchers);
+      gitWatchers.set(repoRoot, { watchers, webContentsId });
     }
   });
 
   ipcMain.on('unwatch-git-repo', (_event, repoRoot: string) => {
-    const watchers = gitWatchers.get(repoRoot);
-    if (watchers) {
-      for (const w of watchers) w.close();
+    const entry = gitWatchers.get(repoRoot);
+    if (entry) {
+      for (const w of entry.watchers) w.close();
       gitWatchers.delete(repoRoot);
     }
   });
 
-  ipcMain.on('toggle-devtools', () => {
-    mainWindow?.webContents.toggleDevTools();
+  ipcMain.on('toggle-devtools', (event) => {
+    event.sender.toggleDevTools();
   });
 
-  ipcMain.on('reload-window', () => {
-    mainWindow?.webContents.reloadIgnoringCache();
+  ipcMain.on('reload-window', (event) => {
+    event.sender.reloadIgnoringCache();
   });
 
   ipcMain.handle('get-app-version', () => app.getVersion());
@@ -996,21 +1088,18 @@ function setupIPC() {
 }
 
 agentManager.setOnContextDirsChanged((terminalId, dirs) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('agent-context-dirs-changed', terminalId, dirs);
-  }
+  const inst = ptyInstances.get(terminalId);
+  if (inst) sendToWebContents(inst.webContentsId, 'agent-context-dirs-changed', terminalId, dirs);
 });
 
 agentManager.setOnAgentDetected((terminalId, agentId) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('agent-detected', terminalId, agentId);
-  }
+  const inst = ptyInstances.get(terminalId);
+  if (inst) sendToWebContents(inst.webContentsId, 'agent-detected', terminalId, agentId);
 });
 
 agentManager.setOnAgentExited((terminalId) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('agent-exited', terminalId);
-  }
+  const inst = ptyInstances.get(terminalId);
+  if (inst) sendToWebContents(inst.webContentsId, 'agent-exited', terminalId);
 });
 
 app.setName('Kraft');
@@ -1018,30 +1107,29 @@ app.setName('Kraft');
 app.whenReady().then(() => {
   getShellEnv();
   setupIPC();
+  setupMenu();
   createWindow();
 
+  if (process.platform === 'darwin') {
+    app.dock.setMenu(Menu.buildFromTemplate([
+      { label: 'New Window', click: () => createWindow() },
+    ]));
+  }
+
   updateChecker.onUpdateAvailable((info) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update-available', info);
-    }
+    broadcastToAllWindows('update-available', info);
   });
 
   updateChecker.onProgress((progress) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update-download-progress', progress);
-    }
+    broadcastToAllWindows('update-download-progress', progress);
   });
 
   updateChecker.onDownloaded((info, filePath) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update-downloaded', info, filePath);
-    }
+    broadcastToAllWindows('update-downloaded', info, filePath);
   });
 
   updateChecker.onError((error) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update-error', error);
-    }
+    broadcastToAllWindows('update-error', error);
   });
 
   updateChecker.start();
@@ -1053,16 +1141,16 @@ app.on('window-all-closed', () => {
     instance.process.kill();
   }
   ptyInstances.clear();
-  for (const [, watcher] of activeWatchers) {
-    watcher.close();
+  for (const [, entry] of activeWatchers) {
+    entry.watcher.close();
   }
   activeWatchers.clear();
-  for (const [, watchers] of gitWatchers) {
-    for (const w of watchers) w.close();
+  for (const [, entry] of gitWatchers) {
+    for (const w of entry.watchers) w.close();
   }
   gitWatchers.clear();
-  for (const [filePath, listener] of fileWatchers) {
-    fs.unwatchFile(filePath, listener);
+  for (const [filePath, entry] of fileWatchers) {
+    fs.unwatchFile(filePath, entry.listener);
   }
   fileWatchers.clear();
   app.quit();

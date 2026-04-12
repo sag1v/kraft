@@ -114,8 +114,8 @@ interface SessionContextValue {
   discardFiles: (filePaths: string[]) => Promise<void>;
   stashChanges: (repoRoot: string, message?: string, includeUntracked?: boolean) => Promise<void>;
   stashPop: (repoRoot: string) => Promise<void>;
-  commitStaged: (repoRoot: string, message: string) => Promise<void>;
-  commitAll: (repoRoot: string, message: string) => Promise<void>;
+  commitStaged: (repoRoot: string, message: string) => Promise<boolean>;
+  commitAll: (repoRoot: string, message: string) => Promise<boolean>;
   undoLastCommit: (repoRoot: string) => Promise<void>;
   agentContextDirs: AgentContextDir[];
 }
@@ -807,16 +807,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshGitStatus();
   }, [refreshGitStatus, reportGitError]);
 
-  const commitStaged = useCallback(async (repoRoot: string, message: string) => {
-    if (!window.api?.gitCommit) return;
-    reportGitError(await window.api.gitCommit(repoRoot, message));
+  const commitStaged = useCallback(async (repoRoot: string, message: string): Promise<boolean> => {
+    if (!window.api?.gitCommit) return false;
+    const result = await window.api.gitCommit(repoRoot, message);
+    reportGitError(result);
     refreshGitStatus();
+    return result.success;
   }, [refreshGitStatus, reportGitError]);
 
-  const commitAll = useCallback(async (repoRoot: string, message: string) => {
-    if (!window.api?.gitCommitAll) return;
-    reportGitError(await window.api.gitCommitAll(repoRoot, message));
+  const commitAll = useCallback(async (repoRoot: string, message: string): Promise<boolean> => {
+    if (!window.api?.gitCommitAll) return false;
+    const result = await window.api.gitCommitAll(repoRoot, message);
+    reportGitError(result);
     refreshGitStatus();
+    return result.success;
   }, [refreshGitStatus, reportGitError]);
 
   const undoLastCommit = useCallback(async (repoRoot: string) => {
