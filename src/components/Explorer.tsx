@@ -489,75 +489,92 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
       )}
       {isOpen && (
         <div className="sc-repo-body">
-          <div className="sc-category">
-            <div className="sc-category-header" onClick={() => setStagedOpen(prev => !prev)}>
-              <span className="explorer-changes-chevron">{stagedOpen ? '▾' : '▸'}</span>
-              <span className="sc-category-title">Staged Changes</span>
-              <span className="explorer-changes-count">{repo.staged.length}</span>
-              {repo.staged.length > 0 && (
-                <button
-                  className="explorer-changes-section-action"
-                  data-tooltip="Unstage All"
-                  data-tooltip-pos="left"
-                  onClick={(e) => { e.stopPropagation(); onUnstageAll(repo.rootPath || undefined); }}
-                >
-                  −
-                </button>
-              )}
-            </div>
-            {stagedOpen && repo.staged.map(([fp, st]) => (
-              <ChangeFileRow
-                key={fp}
-                filePath={fp}
-                status={st}
-                rootPrefix={prefix}
-                onFileClick={onFileClick}
-                onFileDoubleClick={onFileDoubleClick}
-                actions={[{ icon: '−', tooltip: 'Unstage', handler: onUnstageFile }]}
-              />
-            ))}
-          </div>
-          <div className="sc-category">
-            <div className="sc-category-header" onClick={() => setUnstagedOpen(prev => !prev)}>
-              <span className="explorer-changes-chevron">{unstagedOpen ? '▾' : '▸'}</span>
-              <span className="sc-category-title">Changes</span>
-              <span className="explorer-changes-count">{repo.unstaged.length}</span>
-              {repo.unstaged.length > 0 && (
-                <>
-                  <button
-                    className="explorer-changes-section-action"
-                    data-tooltip="Discard All Changes"
-                    data-tooltip-pos="left"
-                    onClick={(e) => { e.stopPropagation(); onDiscardAll(repo.rootPath || undefined); }}
-                  >
-                    ↺
-                  </button>
-                  <button
-                    className="explorer-changes-section-action"
-                    data-tooltip="Stage All"
-                    data-tooltip-pos="left"
-                    onClick={(e) => { e.stopPropagation(); onStageAll(repo.rootPath || undefined); }}
-                  >
-                    +
-                  </button>
-                </>
-              )}
-            </div>
-            {unstagedOpen && repo.unstaged.map(([fp, st]) => (
-              <ChangeFileRow
-                key={fp}
-                filePath={fp}
-                status={st}
-                rootPrefix={prefix}
-                onFileClick={onFileClick}
-                onFileDoubleClick={onFileDoubleClick}
-                actions={[
-                  { icon: '↩', tooltip: 'Discard Changes', handler: onDiscardFile },
-                  { icon: '+', tooltip: 'Stage', handler: onStageFile },
-                ]}
-              />
-            ))}
-          </div>
+          {(() => {
+            const conflicts = repo.unstaged.filter(([, st]) => st === 'conflict');
+            const changes = repo.unstaged.filter(([, st]) => st !== 'conflict');
+            return (
+              <>
+                {conflicts.length > 0 && (
+                  <MergeChangesSection
+                    files={conflicts}
+                    rootPrefix={prefix}
+                    onFileClick={onFileClick}
+                    onFileDoubleClick={onFileDoubleClick}
+                    onMarkResolved={onStageFile}
+                  />
+                )}
+                <div className="sc-category">
+                  <div className="sc-category-header" onClick={() => setStagedOpen(prev => !prev)}>
+                    <span className="explorer-changes-chevron">{stagedOpen ? '▾' : '▸'}</span>
+                    <span className="sc-category-title">Staged Changes</span>
+                    <span className="explorer-changes-count">{repo.staged.length}</span>
+                    {repo.staged.length > 0 && (
+                      <button
+                        className="explorer-changes-section-action"
+                        data-tooltip="Unstage All"
+                        data-tooltip-pos="left"
+                        onClick={(e) => { e.stopPropagation(); onUnstageAll(repo.rootPath || undefined); }}
+                      >
+                        −
+                      </button>
+                    )}
+                  </div>
+                  {stagedOpen && repo.staged.map(([fp, st]) => (
+                    <ChangeFileRow
+                      key={fp}
+                      filePath={fp}
+                      status={st}
+                      rootPrefix={prefix}
+                      onFileClick={onFileClick}
+                      onFileDoubleClick={onFileDoubleClick}
+                      actions={[{ icon: '−', tooltip: 'Unstage', handler: onUnstageFile }]}
+                    />
+                  ))}
+                </div>
+                <div className="sc-category">
+                  <div className="sc-category-header" onClick={() => setUnstagedOpen(prev => !prev)}>
+                    <span className="explorer-changes-chevron">{unstagedOpen ? '▾' : '▸'}</span>
+                    <span className="sc-category-title">Changes</span>
+                    <span className="explorer-changes-count">{changes.length}</span>
+                    {changes.length > 0 && (
+                      <>
+                        <button
+                          className="explorer-changes-section-action"
+                          data-tooltip="Discard All Changes"
+                          data-tooltip-pos="left"
+                          onClick={(e) => { e.stopPropagation(); onDiscardAll(repo.rootPath || undefined); }}
+                        >
+                          ↺
+                        </button>
+                        <button
+                          className="explorer-changes-section-action"
+                          data-tooltip="Stage All"
+                          data-tooltip-pos="left"
+                          onClick={(e) => { e.stopPropagation(); onStageAll(repo.rootPath || undefined); }}
+                        >
+                          +
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {unstagedOpen && changes.map(([fp, st]) => (
+                    <ChangeFileRow
+                      key={fp}
+                      filePath={fp}
+                      status={st}
+                      rootPrefix={prefix}
+                      onFileClick={onFileClick}
+                      onFileDoubleClick={onFileDoubleClick}
+                      actions={[
+                        { icon: '↩', tooltip: 'Discard Changes', handler: onDiscardFile },
+                        { icon: '+', tooltip: 'Stage', handler: onStageFile },
+                      ]}
+                    />
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -612,24 +629,42 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
             {singleActionMode && (
               <GitActionPanel repoRoot={repo.rootPath} mode={singleActionMode} onCommitStaged={onCommitStaged} onCommitAll={onCommitAll} onStash={onStash} onClose={() => setSingleActionMode(null)} />
             )}
-            <StagedSection
-              files={repo.staged}
-              rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
-              onFileClick={onFileClick}
-              onFileDoubleClick={onFileDoubleClick}
-              onUnstageFile={onUnstageFile}
-              onUnstageAll={() => onUnstageAll(repo.rootPath || undefined)}
-            />
-            <UnstagedSection
-              files={repo.unstaged}
-              rootPrefix={repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : ''}
-              onFileClick={onFileClick}
-              onFileDoubleClick={onFileDoubleClick}
-              onStageFile={onStageFile}
-              onStageAll={() => onStageAll(repo.rootPath || undefined)}
-              onDiscardFile={onDiscardFile}
-              onDiscardAll={() => onDiscardAll(repo.rootPath || undefined)}
-            />
+            {(() => {
+              const prefix = repo.rootPath ? (repo.rootPath.endsWith('/') ? repo.rootPath : repo.rootPath + '/') : '';
+              const conflicts = repo.unstaged.filter(([, st]) => st === 'conflict');
+              const changes = repo.unstaged.filter(([, st]) => st !== 'conflict');
+              return (
+                <>
+                  {conflicts.length > 0 && (
+                    <MergeChangesSection
+                      files={conflicts}
+                      rootPrefix={prefix}
+                      onFileClick={onFileClick}
+                      onFileDoubleClick={onFileDoubleClick}
+                      onMarkResolved={onStageFile}
+                    />
+                  )}
+                  <StagedSection
+                    files={repo.staged}
+                    rootPrefix={prefix}
+                    onFileClick={onFileClick}
+                    onFileDoubleClick={onFileDoubleClick}
+                    onUnstageFile={onUnstageFile}
+                    onUnstageAll={() => onUnstageAll(repo.rootPath || undefined)}
+                  />
+                  <UnstagedSection
+                    files={changes}
+                    rootPrefix={prefix}
+                    onFileClick={onFileClick}
+                    onFileDoubleClick={onFileDoubleClick}
+                    onStageFile={onStageFile}
+                    onStageAll={() => onStageAll(repo.rootPath || undefined)}
+                    onDiscardFile={onDiscardFile}
+                    onDiscardAll={() => onDiscardAll(repo.rootPath || undefined)}
+                  />
+                </>
+              );
+            })()}
           </div>
         ) : (
           <RepoSection
@@ -650,6 +685,36 @@ function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, 
             onUndoLastCommit={onUndoLastCommit}
           />
         )
+      ))}
+    </div>
+  );
+}
+
+function MergeChangesSection({ files, rootPrefix, onFileClick, onFileDoubleClick, onMarkResolved }: {
+  files: [string, GitFileStatus][];
+  rootPrefix: string;
+  onFileClick: (path: string) => void;
+  onFileDoubleClick: () => void;
+  onMarkResolved: (path: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <div className="sc-category sc-merge-changes">
+      <div className="sc-category-header sc-merge-header" onClick={() => setIsOpen((p) => !p)}>
+        <span className="explorer-changes-chevron">{isOpen ? '▾' : '▸'}</span>
+        <span className="sc-category-title sc-merge-title">Merge Changes</span>
+        <span className="explorer-changes-count sc-merge-count">{files.length}</span>
+      </div>
+      {isOpen && files.map(([fp, st]) => (
+        <ChangeFileRow
+          key={fp}
+          filePath={fp}
+          status={st}
+          rootPrefix={rootPrefix}
+          onFileClick={onFileClick}
+          onFileDoubleClick={onFileDoubleClick}
+          actions={[{ icon: '✓', tooltip: 'Mark as Resolved', handler: onMarkResolved }]}
+        />
       ))}
     </div>
   );

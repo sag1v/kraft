@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import {
   EditorView,
   keymap,
@@ -42,6 +42,8 @@ import { swift } from '@codemirror/legacy-modes/mode/swift';
 import { clojure } from '@codemirror/legacy-modes/mode/clojure';
 import { scala } from '@codemirror/legacy-modes/mode/clike';
 import { php } from '@codemirror/lang-php';
+
+import { conflictExtension, navigateConflict } from './ConflictExtension';
 
 function getLanguageExtension(filePath: string) {
   const name = filePath.split('/').pop()?.toLowerCase() || '';
@@ -219,82 +221,104 @@ const editorTheme = EditorView.theme({
 // Persists scroll position across tab switches (keyed by filePath)
 const scrollPositions = new Map<string, number>();
 
+export interface CodeEditorHandle {
+  navigateConflict: (direction: 'next' | 'prev') => void;
+}
+
 interface CodeEditorProps {
   filePath: string;
   value: string;
   onChange: (value: string) => void;
 }
 
-export function CodeEditor({ filePath, value, onChange }: CodeEditorProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<EditorView | null>(null);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
+  function CodeEditor({ filePath, value, onChange }, ref) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const editorRef = useRef<EditorView | null>(null);
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
 
-  // Create/recreate editor when the file changes (handles language switching)
-  useEffect(() => {
-    if (!containerRef.current) return;
+    useImperativeHandle(ref, () => ({
+      navigateConflict: (direction) => {
+        if (editorRef.current) navigateConflict(editorRef.current, direction);
+      },
+    }));
 
-    const langExt = getLanguageExtension(filePath);
+    // Create/recreate editor when the file changes (handles language switching)
+    useLayoutEffect(() => {
+      if (!containerRef.current) return;
 
-    const state = EditorState.create({
-      doc: value,
-      extensions: [
-        lineNumbers(),
-        highlightActiveLineGutter(),
-        highlightActiveLine(),
-        history(),
-        drawSelection(),
-        indentOnInput(),
-        bracketMatching(),
-        indentUnit.of('  '),
-        EditorState.tabSize.of(2),
-        search({ top: true }),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-        ...(Array.isArray(langExt) ? langExt : [langExt]),
-        editorTheme,
-        syntaxHighlighting(kraftHighlightStyle),
-        EditorView.updateListener.of(update => {
-          if (update.docChanged) {
-            onChangeRef.current(update.state.doc.toString());
-          }
-        }),
-      ],
-    });
+      const langExt = getLanguageExtension(filePath);
 
-    const view = new EditorView({ state, parent: containerRef.current });
-
-    // Restore saved scroll position for this file
-    const savedScroll = scrollPositions.get(filePath);
-    if (savedScroll !== undefined) {
-      requestAnimationFrame(() => {
-        view.scrollDOM.scrollTop = savedScroll;
+      const state = EditorState.create({
+        doc: value,
+        extensions: [
+          lineNumbers(),
+          highlightActiveLineGutter(),
+          highlightActiveLine(),
+          history(),
+          drawSelection(),
+          indentOnInput(),
+          bracketMatching(),
+          indentUnit.of('  '),
+          EditorState.tabSize.of(2),
+          search({ top: true }),
+          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+          ...(Array.isArray(langExt) ? langExt : [langExt]),
+          editorTheme,
+          syntaxHighlighting(kraftHighlightStyle),
+          ...conflictExtension(),
+          EditorView.updateListener.of(update => {
+            if (update.docChanged) {
+              onChangeRef.current(update.state.doc.toString());
+            }
+          }),
+        ],
       });
-    }
 
-    view.focus();
-    editorRef.current = view;
+      const view = new EditorView({ state, parent: containerRef.current });
 
-    return () => {
-      // Save scroll position before destroying
-      scrollPositions.set(filePath, view.scrollDOM.scrollTop);
-      view.destroy();
-      editorRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath]);
+      // CM6 defers its initial measure phase (which calls toDOM on widgets) to rAF.
+      // Dispatching a no-op in the next frame forces widgets to render immediately.
+      let rafIds: number[] = [];
 
-  // Sync externally-changed content (e.g. file reloaded from disk)
-  useEffect(() => {
-    const view = editorRef.current;
-    if (!view) return;
-    const current = view.state.doc.toString();
-    if (current !== value) {
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: value },
-      });
-    }
-  }, [value]);
+      rafIds.push(requestAnimationFrame(() => {
+        if (!view.isDestroyed) view.dispatch({});
+      }));
 
-  return <div ref={containerRef} className="viewer-code-editor" />;
-}
+      // Restore saved scroll position for this file
+      const savedScroll = scrollPositions.get(filePath);
+      if (savedScroll !== undefined) {
+        rafIds.push(requestAnimationFrame(() => {
+          view.scrollDOM.scrollTop = savedScroll;
+        }));
+      }
+
+      view.focus();
+      editorRef.current = view;
+
+      return () => {
+        rafIds.forEach(cancelAnimationFrame);
+        // Save scroll position before destroying
+        scrollPositions.set(filePath, view.scrollDOM.scrollTop);
+        view.destroy();
+        editorRef.current = null;
+      };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filePath]);
+
+    // Sync externally-changed content (e.g. file reloaded from disk)
+    useEffect(() => {
+      const view = editorRef.current;
+      if (!view) return;
+      const current = view.state.doc.toString();
+      if (current !== value) {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: value },
+        });
+      }
+    }, [value]);
+
+    return <div ref={containerRef} className="viewer-code-editor" />;
+  }
+);

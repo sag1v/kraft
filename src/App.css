@@ -3530,3 +3530,162 @@ body {
   from { transform: scale(1.5); opacity: 0; }
   to   { transform: scale(1);   opacity: 1; }
 }
+
+/* ── Conflict Resolution ── */
+
+/* Editor line backgrounds for conflict regions */
+.cm-conflict-marker-ours-line {
+  background: rgba(108, 156, 237, 0.18) !important;
+  border-left: 3px solid var(--accent-tertiary);
+  box-sizing: border-box;
+}
+.cm-conflict-ours-line {
+  background: rgba(108, 156, 237, 0.08) !important;
+  border-left: 3px solid var(--accent-tertiary);
+  box-sizing: border-box;
+}
+.cm-conflict-sep-line {
+  background: var(--bg-secondary) !important;
+  border-left: 3px solid var(--fg-dim);
+  box-sizing: border-box;
+  opacity: 0.75;
+}
+.cm-conflict-theirs-line {
+  background: rgba(115, 224, 122, 0.08) !important;
+  border-left: 3px solid var(--diff-add);
+  box-sizing: border-box;
+}
+.cm-conflict-marker-theirs-line {
+  background: rgba(115, 224, 122, 0.18) !important;
+  border-left: 3px solid var(--diff-add);
+  box-sizing: border-box;
+}
+
+/* Inline action widget on the <<<<<<< HEAD marker line */
+.cm-conflict-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  user-select: none;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+.cm-conflict-actions-label {
+  color: var(--accent-tertiary);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.cm-conflict-actions-divider {
+  color: var(--fg-dim);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.cm-conflict-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.12s, text-decoration 0.12s;
+  flex-shrink: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: transparent;
+}
+.cm-conflict-btn:hover {
+  color: var(--fg);
+  text-decoration-color: var(--fg-dim);
+}
+
+/* Viewer conflict banner */
+.viewer-conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 30px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+.viewer-conflict-icon {
+  color: var(--git-conflict);
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.viewer-conflict-count {
+  color: var(--fg-muted);
+  flex: 1;
+  font-size: 11px;
+}
+.viewer-conflict-all-resolved {
+  color: var(--diff-add);
+}
+.viewer-conflict-nav {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.viewer-conflict-nav-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.5;
+  transition: background 0.1s, color 0.1s;
+}
+.viewer-conflict-nav-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--fg);
+}
+.viewer-conflict-resolve-btn {
+  background: none;
+  border: 1px solid var(--git-conflict);
+  color: var(--git-conflict);
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.viewer-conflict-resolve-btn:hover:not(:disabled) {
+  background: var(--git-conflict);
+  color: var(--bg);
+}
+.viewer-conflict-resolve-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Source control — Merge Changes section */
+.sc-merge-changes {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.sc-merge-header {
+  color: var(--git-conflict) !important;
+}
+.sc-merge-title {
+  color: var(--git-conflict) !important;
+}
+.sc-merge-count {
+  color: var(--git-conflict) !important;
+}

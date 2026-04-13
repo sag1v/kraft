@@ -6,7 +6,7 @@ import { FileIcon } from './FileIcon';
 import { TabBar, type TabItem } from './TabBar';
 import { DiffView } from './DiffView';
 import { shortenPath } from '../utils';
-import { CodeEditor } from './CodeEditor';
+import { CodeEditor, type CodeEditorHandle } from './CodeEditor';
 
 export function Viewer() {
   const {
@@ -25,7 +25,8 @@ export function Viewer() {
     setGitErrorViewContent,
     errorViewTitle,
   } = useUIContext();
-  const { gitStatus, gitStagedStatus } = useSessionContext();
+  const { gitStatus, gitStagedStatus, stageFiles, getRepoRootForFile } = useSessionContext();
+  const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
@@ -98,11 +99,14 @@ export function Viewer() {
   }, [openFilePath]);
 
   const isDiffMode = !!(openFilePath && diffFilePath === openFilePath);
+  const isConflictFile = !!(openFilePath && gitStatus[openFilePath] === 'conflict');
+  // Conflict files use inline markers as their diff — diff mode is disabled for them
+  const effectiveDiffMode = isDiffMode && !isConflictFile;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+F: open search bar only in diff mode; CodeEditor handles it natively otherwise
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && openFilePath && isDiffMode) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && openFilePath && effectiveDiffMode) {
         e.preventDefault();
         setSearchVisible(true);
         setTimeout(() => searchInputRef.current?.focus(), 0);
@@ -115,7 +119,7 @@ export function Viewer() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [openFilePath, isDiffMode, saveFile]);
+  }, [openFilePath, effectiveDiffMode, saveFile]);
 
   useEffect(() => {
     setActiveMatchIndex(0);
@@ -184,6 +188,23 @@ export function Viewer() {
   const error = cached?.error ?? null;
 
   const fileHasChanges = !!(openFilePath && (gitStatus[openFilePath] || gitStagedStatus[openFilePath]));
+
+  // Count remaining <<<<<<< markers in the current (possibly edited) content
+  const conflictCount = useMemo(() => {
+    if (!isConflictFile || effectiveDiffMode || !openFilePath) return 0;
+    const text = editDrafts[openFilePath] ?? contentCache[openFilePath]?.content ?? '';
+    let count = 0;
+    for (const line of text.split('\n')) {
+      if (line.startsWith('<<<<<<<')) count++;
+    }
+    return count;
+  }, [isConflictFile, effectiveDiffMode, openFilePath, editDrafts, contentCache]);
+
+  const markResolved = useCallback(async () => {
+    if (!openFilePath) return;
+    await saveFile(openFilePath);
+    stageFiles([openFilePath]);
+  }, [openFilePath, saveFile, stageFiles]);
 
   const goNext = useCallback(() => {
     setActiveMatchIndex(i => diffMatchCount > 0 ? (i + 1) % diffMatchCount : 0);
@@ -258,7 +279,7 @@ export function Viewer() {
           onContextMenu={handleTabContextMenu}
           className="tabbed-panel-tabs"
         />
-        {openFilePath && fileHasChanges && (
+        {openFilePath && fileHasChanges && !isConflictFile && (
           <button
             className={`viewer-diff-toggle ${isDiffMode ? 'active' : ''}`}
             onClick={() => setDiffFilePath(isDiffMode ? null : openFilePath)}
@@ -317,7 +338,7 @@ export function Viewer() {
           </button>
         </div>
       )}
-      {searchVisible && isDiffMode && openFilePath && (
+      {searchVisible && effectiveDiffMode && openFilePath && (
         <div className="viewer-search-bar">
           <input
             ref={searchInputRef}
@@ -348,8 +369,44 @@ export function Viewer() {
           <button className="viewer-search-btn" onClick={() => { setSearchVisible(false); setSearchQuery(''); }} title="Close (Esc)">✕</button>
         </div>
       )}
+      {isConflictFile && !effectiveDiffMode && (
+        <div className="viewer-conflict-banner">
+          <span className="viewer-conflict-icon">!</span>
+          {conflictCount > 0 ? (
+            <>
+              <span className="viewer-conflict-count">
+                {conflictCount} merge conflict{conflictCount !== 1 ? 's' : ''}
+              </span>
+              <div className="viewer-conflict-nav">
+                <button
+                  className="viewer-conflict-nav-btn"
+                  onClick={() => codeEditorRef.current?.navigateConflict('prev')}
+                  title="Previous conflict"
+                >↑</button>
+                <button
+                  className="viewer-conflict-nav-btn"
+                  onClick={() => codeEditorRef.current?.navigateConflict('next')}
+                  title="Next conflict"
+                >↓</button>
+              </div>
+            </>
+          ) : (
+            <span className="viewer-conflict-count viewer-conflict-all-resolved">
+              All conflicts resolved
+            </span>
+          )}
+          <button
+            className="viewer-conflict-resolve-btn"
+            disabled={conflictCount > 0}
+            onClick={markResolved}
+            title={conflictCount > 0 ? 'Resolve all conflicts first' : 'Stage file as resolved'}
+          >
+            Mark Resolved
+          </button>
+        </div>
+      )}
       <div className="panel-body viewer-body">
-        {isDiffMode && openFilePath ? (
+        {effectiveDiffMode && openFilePath ? (
           <DiffView
             filePath={openFilePath}
             version={fileVersion}
@@ -370,6 +427,7 @@ export function Viewer() {
           </div>
         ) : content !== null ? (
           <CodeEditor
+            ref={codeEditorRef}
             filePath={openFilePath}
             value={editDrafts[openFilePath] ?? content}
             onChange={draft => setEditDrafts(prev => ({ ...prev, [openFilePath]: draft }))}
