@@ -3791,3 +3791,201 @@ body {
 .sc-merge-count {
   color: var(--git-conflict) !important;
 }
+
+/* ── Crash Restore Banner ─────────────────────────────────────────────────── */
+.crash-restore-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  font-size: 12px;
+  color: var(--fg);
+  flex-shrink: 0;
+}
+.crash-restore-banner__icon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.crash-restore-banner__message {
+  flex: 1;
+  color: var(--fg-muted);
+}
+.crash-restore-banner__btn {
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: opacity 0.1s;
+}
+.crash-restore-banner__btn:hover { opacity: 0.85; }
+.crash-restore-banner__btn--primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.crash-restore-banner__btn--dismiss {
+  background: var(--bg-tertiary);
+  color: var(--fg-muted);
+}
+
+/* ── Workspace Manager ────────────────────────────────────────────────────── */
+.workspace-manager-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.workspace-manager-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 320px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.workspace-manager-dialog--list {
+  min-width: 400px;
+}
+.workspace-manager-dialog__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.workspace-manager-dialog__input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 10px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.workspace-manager-dialog__input:focus {
+  border-color: var(--accent);
+}
+.workspace-manager-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.workspace-manager-btn {
+  padding: 5px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: opacity 0.1s;
+}
+.workspace-manager-btn:hover:not(:disabled) { opacity: 0.85; }
+.workspace-manager-btn:disabled { opacity: 0.4; cursor: default; }
+.workspace-manager-btn--primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.workspace-manager-btn--secondary {
+  background: var(--bg-tertiary);
+  color: var(--fg-muted);
+}
+.workspace-manager-btn--danger {
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+}
+.workspace-manager-btn--danger:hover:not(:disabled) {
+  color: #f14c4c;
+  border-color: #f14c4c;
+  opacity: 1;
+}
+.workspace-manager-btn--default-active {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.workspace-manager-btn--sm {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.workspace-manager-empty {
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-align: center;
+  padding: 16px 0;
+}
+.workspace-manager-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.workspace-manager-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  transition: border-color 0.15s;
+}
+.workspace-manager-list__item--default {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.workspace-manager-list__info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.workspace-manager-list__name {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace-manager-list__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.workspace-manager-list__date {
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.workspace-manager-list__default-badge {
+  font-size: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 14px;
+}
+.workspace-manager-list__actions {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}

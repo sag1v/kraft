@@ -214,6 +214,21 @@ const api = {
     ipcRenderer.on('file-changed', handler);
     return () => ipcRenderer.removeListener('file-changed', handler);
   },
+
+  saveSession: (session: any): Promise<boolean> => ipcRenderer.invoke('save-session', session),
+  getSession: (): Promise<{ session: any | null; wasCrash: boolean; pendingWorkspace?: string | null }> => ipcRenderer.invoke('get-session'),
+  clearCrashFlag: (): Promise<boolean> => ipcRenderer.invoke('clear-crash-flag'),
+  saveWorkspace: (workspace: any): Promise<{ filename: string }> => ipcRenderer.invoke('save-workspace', workspace),
+  loadWorkspace: (filename: string): Promise<any | null> => ipcRenderer.invoke('load-workspace', filename),
+  listWorkspaces: (): Promise<{ name: string; filename: string; createdAt: string }[]> => ipcRenderer.invoke('list-workspaces'),
+  deleteWorkspace: (filename: string): Promise<boolean> => ipcRenderer.invoke('delete-workspace', filename),
+  refreshDockMenu: (): void => { ipcRenderer.send('refresh-dock-menu'); },
+  setActiveWorkspace: (filename: string | null): void => { ipcRenderer.send('set-active-workspace', filename); },
+  onLoadWorkspace: (callback: (filename: string) => void): (() => void) => {
+    const handler = (_event: any, filename: string) => callback(filename);
+    ipcRenderer.on('load-workspace', handler);
+    return () => ipcRenderer.removeListener('load-workspace', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

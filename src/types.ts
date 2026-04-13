@@ -149,6 +149,43 @@ export type PanelId = 'explorer' | 'viewer' | 'terminal';
 
 export type PanelVisibility = { explorer: boolean; viewer: boolean; terminal: boolean };
 
+export interface PersistedPane {
+  cwd: string;
+}
+
+export interface PersistedGroup {
+  customLabel?: string;
+  icon?: string;
+  iconColor?: string;
+  panes: PersistedPane[];
+  focusedPaneIndex: number;
+  splitPcts: number[];
+  explorerRoot?: string | null;
+  panelVisibility?: PanelVisibility;
+  panelLayout?: PanelId[][];
+}
+
+export interface PersistedSession {
+  running: boolean;
+  savedAt: string;
+  groups: PersistedGroup[];
+  activeGroupIndex: number;
+}
+
+export interface SavedWorkspace {
+  version: 1;
+  name: string;
+  createdAt: string;
+  groups: PersistedGroup[];
+  activeGroupIndex: number;
+}
+
+export interface SavedWorkspaceMeta {
+  name: string;
+  filename: string;
+  createdAt: string;
+}
+
 export interface AppSettings {
   shellOverride: string | null;
   defaultLayout: LayoutPreset;
@@ -162,6 +199,7 @@ export interface AppSettings {
   newTabUsePreviousCwd: boolean;
   keybindingPreset: 'vscode' | 'intellij' | 'custom';
   customKeybindings: Partial<Record<string, string>>;
+  defaultWorkspace: string | null;
 }
 
 export interface ElectronAPI {
@@ -223,6 +261,16 @@ export interface ElectronAPI {
   watchFile: (filePath: string) => void;
   unwatchFile: (filePath: string) => void;
   onFileChanged: (callback: (filePath: string) => void) => () => void;
+  saveSession: (session: PersistedSession) => Promise<boolean>;
+  getSession: () => Promise<{ session: PersistedSession | null; wasCrash: boolean; pendingWorkspace?: string | null }>;
+  clearCrashFlag: () => Promise<boolean>;
+  saveWorkspace: (workspace: SavedWorkspace) => Promise<{ filename: string }>;
+  loadWorkspace: (filename: string) => Promise<SavedWorkspace | null>;
+  listWorkspaces: () => Promise<SavedWorkspaceMeta[]>;
+  deleteWorkspace: (filename: string) => Promise<boolean>;
+  refreshDockMenu: () => void;
+  setActiveWorkspace: (filename: string | null) => void;
+  onLoadWorkspace: (callback: (filename: string) => void) => () => void;
 }
 
 declare global {

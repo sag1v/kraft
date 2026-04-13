@@ -10,6 +10,7 @@ import { GlobalTooltip } from './components/GlobalTooltip';
 import { GitErrorToast } from './components/GitErrorToast';
 import { UpdateNotification } from './components/UpdateNotification';
 import { EasterEggGame } from './components/EasterEggGame';
+import { CrashRestoreBanner } from './components/CrashRestoreBanner';
 
 function AppInner() {
   const {
@@ -24,7 +25,7 @@ function AppInner() {
     setActiveFileTab,
     settings,
   } = useUIContext();
-  const { focusedPaneId } = useSessionContext();
+  const { focusedPaneId, groups, activeWorkspaceName } = useSessionContext();
   const [gameOpen, setGameOpen] = useState(false);
 
   useEffect(() => {
@@ -43,6 +44,18 @@ function AppInner() {
   settingsRef.current = settings;
   const focusedPaneIdRef = useRef(focusedPaneId);
   focusedPaneIdRef.current = focusedPaneId;
+
+  // Window title: workspace name > first tab's folder > "Kraft"
+  // Drives dock label, Mission Control, CMD+Tab — Electron syncs document.title automatically.
+  useEffect(() => {
+    if (activeWorkspaceName) {
+      document.title = activeWorkspaceName;
+      return;
+    }
+    const firstCwd = groups[0]?.panes[0]?.cwd;
+    const folderName = firstCwd ? (firstCwd.split('/').filter(Boolean).pop() ?? null) : null;
+    document.title = folderName ?? 'Kraft';
+  }, [activeWorkspaceName, groups]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -232,6 +245,7 @@ function AppInner() {
   return (
     <div className="app">
       <TopBar />
+      <CrashRestoreBanner />
       <div className="app-body">
         <PanelLayout />
         {gameOpen && <EasterEggGame onClose={() => setGameOpen(false)} />}

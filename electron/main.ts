@@ -208,6 +208,117 @@ function getSettingsPath(): string {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
+function getSessionPath(): string {
+  return path.join(app.getPath('userData'), 'session.json');
+}
+
+function getWorkspacesDir(): string {
+  return path.join(app.getPath('userData'), 'workspaces');
+}
+
+let pendingWorkspace: string | null = null;
+
+// Tracks which workspace filename is currently loaded in each renderer window.
+// webContentsId → workspace filename
+const windowActiveWorkspace = new Map<number, string>();
+
+async function rebuildDockMenu(): Promise<void> {
+  if (process.platform !== 'darwin') return;
+  const dir = getWorkspacesDir();
+  let workspaces: { name: string; filename: string }[] = [];
+  try {
+    await fs.promises.mkdir(dir, { recursive: true });
+    const files = await fs.promises.readdir(dir);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      try {
+        const data = await fs.promises.readFile(path.join(dir, file), 'utf-8');
+        const ws = JSON.parse(data);
+        workspaces.push({ name: ws.name || file.replace('.json', ''), filename: file });
+      } catch {}
+    }
+    // Newest first (filenames contain timestamp)
+    workspaces.sort((a, b) => b.filename.localeCompare(a.filename));
+    workspaces = workspaces.slice(0, 8);
+  } catch {}
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    { label: 'New Window', click: () => createWindow() },
+  ];
+
+  if (workspaces.length > 0) {
+    template.push({ type: 'separator' });
+    for (const ws of workspaces) {
+      const filename = ws.filename;
+      template.push({
+        label: ws.name,
+        click: () => {
+          // If this workspace is already open in a window, just focus it
+          const wins = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
+          const existing = wins.find(w => windowActiveWorkspace.get(w.webContents.id) === filename);
+          if (existing) {
+            if (existing.isMinimized()) existing.restore();
+            existing.show();
+            existing.focus();
+            return;
+          }
+          // Not open anywhere — create a new window and load the workspace into it
+          pendingWorkspace = filename;
+          createWindow();
+        },
+      });
+    }
+  }
+
+  app.dock.setMenu(Menu.buildFromTemplate(template));
+}
+
+interface PersistedSession {
+  running: boolean;
+  savedAt: string;
+  groups: any[];
+  activeGroupIndex: number;
+}
+
+let lastSession: PersistedSession | null = null;
+let sessionWasCrash = false;
+
+function initSession(): void {
+  try {
+    const data = fs.readFileSync(getSessionPath(), 'utf-8');
+    const session = JSON.parse(data) as PersistedSession;
+    if (session.running === true && session.groups?.length > 0) {
+      sessionWasCrash = true;
+      lastSession = session;
+    }
+  } catch {
+    // no prior session
+  }
+  // Mark current session as running (dirty flag)
+  const current: PersistedSession = {
+    running: true,
+    savedAt: new Date().toISOString(),
+    groups: lastSession?.groups ?? [],
+    activeGroupIndex: lastSession?.activeGroupIndex ?? 0,
+  };
+  try {
+    fs.writeFileSync(getSessionPath(), JSON.stringify(current, null, 2));
+  } catch {
+    // ignore write errors
+  }
+}
+
+function clearDirtyFlag(): void {
+  try {
+    const data = fs.readFileSync(getSessionPath(), 'utf-8');
+    const session = JSON.parse(data);
+    session.running = false;
+    fs.writeFileSync(getSessionPath(), JSON.stringify(session, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
 function loadSettings(): Record<string, any> {
   try {
     const data = fs.readFileSync(getSettingsPath(), 'utf-8');
@@ -444,6 +555,7 @@ function createWindow() {
   });
 
   win.on('closed', () => {
+    windowActiveWorkspace.delete(winWebContentsId);
     // Clean up PTY instances owned by this window
     for (const [id, instance] of ptyInstances) {
       if (instance.webContentsId === winWebContentsId) {
@@ -1053,6 +1165,105 @@ function setupIPC() {
     return true;
   });
 
+  ipcMain.handle('get-session', () => {
+    const result: { session: PersistedSession | null; wasCrash: boolean; pendingWorkspace: string | null } = {
+      session: lastSession,
+      wasCrash: sessionWasCrash,
+      pendingWorkspace,
+    };
+    pendingWorkspace = null; // consume it — only deliver once
+    return result;
+  });
+
+  ipcMain.handle('save-session', (_event, session: PersistedSession) => {
+    try {
+      fs.writeFileSync(getSessionPath(), JSON.stringify({ ...session, running: true }, null, 2));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle('clear-crash-flag', () => {
+    clearDirtyFlag();
+    return true;
+  });
+
+  ipcMain.handle('list-workspaces', async () => {
+    const dir = getWorkspacesDir();
+    try {
+      await fs.promises.mkdir(dir, { recursive: true });
+      const files = await fs.promises.readdir(dir);
+      const result: { name: string; filename: string; createdAt: string }[] = [];
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        try {
+          const data = await fs.promises.readFile(path.join(dir, file), 'utf-8');
+          const ws = JSON.parse(data);
+          result.push({
+            name: ws.name || file.replace('.json', ''),
+            filename: file,
+            createdAt: ws.createdAt || '',
+          });
+        } catch {
+          // skip corrupted files
+        }
+      }
+      return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle('save-workspace', async (_event, workspace: any) => {
+    const dir = getWorkspacesDir();
+    await fs.promises.mkdir(dir, { recursive: true });
+    const safeName = (workspace.name as string)
+      .replace(/[^a-z0-9_\- ]/gi, '_')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase()
+      .slice(0, 50);
+    const filename = `${safeName}-${Date.now()}.json`;
+    await fs.promises.writeFile(path.join(dir, filename), JSON.stringify(workspace, null, 2));
+    rebuildDockMenu();
+    return { filename };
+  });
+
+  ipcMain.handle('load-workspace', async (_event, filename: string) => {
+    try {
+      const data = await fs.promises.readFile(
+        path.join(getWorkspacesDir(), path.basename(filename)),
+        'utf-8'
+      );
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle('delete-workspace', async (_event, filename: string) => {
+    try {
+      await fs.promises.unlink(path.join(getWorkspacesDir(), path.basename(filename)));
+      rebuildDockMenu();
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.on('refresh-dock-menu', () => {
+    rebuildDockMenu();
+  });
+
+  ipcMain.on('set-active-workspace', (event, filename: string | null) => {
+    if (filename) {
+      windowActiveWorkspace.set(event.sender.id, filename);
+    } else {
+      windowActiveWorkspace.delete(event.sender.id);
+    }
+  });
+
   ipcMain.handle('get-zoom-level', (event) => {
     return event.sender.getZoomLevel();
   });
@@ -1197,15 +1408,12 @@ app.setName('Kraft');
 
 app.whenReady().then(() => {
   getShellEnv();
+  initSession();
   setupIPC();
   setupMenu();
   createWindow();
 
-  if (process.platform === 'darwin') {
-    app.dock.setMenu(Menu.buildFromTemplate([
-      { label: 'New Window', click: () => createWindow() },
-    ]));
-  }
+  rebuildDockMenu();
 
   updateChecker.onUpdateAvailable((info) => {
     broadcastToAllWindows('update-available', info);
@@ -1224,6 +1432,10 @@ app.whenReady().then(() => {
   });
 
   updateChecker.start();
+});
+
+app.on('before-quit', () => {
+  clearDirtyFlag();
 });
 
 app.on('window-all-closed', () => {

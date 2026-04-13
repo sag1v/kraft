@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalPane, TerminalGroup, PanelId, PanelVisibility, AgentContextDir } from '../types';
+import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalPane, TerminalGroup, PanelId, PanelVisibility, AgentContextDir, PersistedSession, PersistedGroup, SavedWorkspace, SavedWorkspaceMeta } from '../types';
 import { getThemeById, kraftDark } from '../themes';
 import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
 
@@ -124,6 +124,14 @@ interface SessionContextValue {
   commitAll: (repoRoot: string, message: string) => Promise<boolean>;
   undoLastCommit: (repoRoot: string) => Promise<void>;
   agentContextDirs: AgentContextDir[];
+  activeWorkspaceName: string | null;
+  crashSession: PersistedSession | null;
+  restoreCrashSession: () => Promise<void>;
+  dismissCrashSession: () => void;
+  saveWorkspace: (name: string) => Promise<string | null>;
+  loadWorkspace: (filename: string) => Promise<void>;
+  listWorkspaces: () => Promise<SavedWorkspaceMeta[]>;
+  deleteWorkspace: (filename: string) => Promise<void>;
 }
 
 const ALL_VISIBLE: PanelVisibility = { explorer: true, viewer: true, terminal: true };
@@ -141,6 +149,7 @@ const defaultSettings: AppSettings = {
   newTabUsePreviousCwd: false,
   keybindingPreset: 'vscode',
   customKeybindings: {},
+  defaultWorkspace: null,
 };
 
 const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false, aheadCount: 0 };
@@ -193,6 +202,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [agentContextDirsMap, setAgentContextDirsMap] = useState<Record<string, AgentContextDir[]>>({});
   const [recentlyClosedGroups, setRecentlyClosedGroups] = useState<TerminalGroup[]>([]);
   const recentlyClosedGroupsRef = useRef<TerminalGroup[]>([]);
+  const [crashSession, setCrashSession] = useState<PersistedSession | null>(null);
+  const [activeWorkspaceName, setActiveWorkspaceName] = useState<string | null>(null);
+  // Forward ref so the startup effect can call loadWorkspace before it's defined
+  const loadWorkspaceRef = useRef<((filename: string) => Promise<void>) | null>(null);
 
   const activeGroupIdRef = useRef(activeGroupId);
   activeGroupIdRef.current = activeGroupId;
@@ -292,6 +305,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (Array.isArray((saved as any).recentlyClosedGroups)) {
             recentlyClosedGroupsRef.current = (saved as any).recentlyClosedGroups;
             setRecentlyClosedGroups((saved as any).recentlyClosedGroups);
+          }
+        }
+        // Check for crash session or pending workspace (from dock menu)
+        if (window.api?.getSession) {
+          const { session, wasCrash, pendingWorkspace } = await window.api.getSession();
+          if (wasCrash && session && session.groups?.length > 0) {
+            setCrashSession(session);
+          } else if (pendingWorkspace) {
+            // Triggered from dock menu on a new window — load after a tick
+            // so the component tree is settled
+            const pw = pendingWorkspace;
+            setTimeout(() => loadWorkspaceRef.current?.(pw), 0);
+          } else {
+            // Auto-load default workspace if one is configured
+            const defaultWs = (saved as any).defaultWorkspace as string | null | undefined;
+            if (defaultWs) {
+              setTimeout(() => loadWorkspaceRef.current?.(defaultWs), 0);
+            }
           }
         }
       } catch {
@@ -985,6 +1016,175 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ── Session serialization helpers ─────────────────────────────────────────
+
+  const serializeGroups = useCallback((): PersistedGroup[] => {
+    return groupsRef.current.map(g => {
+      const focusedIndex = Math.max(0, g.panes.findIndex(p => p.id === g.focusedPaneId));
+      return {
+        customLabel: g.customLabel,
+        icon: g.autoIcon ? undefined : g.icon,
+        iconColor: g.autoIconColor ? undefined : g.iconColor,
+        panes: g.panes.map(p => ({ cwd: p.cwd })),
+        focusedPaneIndex: focusedIndex,
+        splitPcts: g.splitPcts,
+        explorerRoot: explorerRoots[g.id] ?? null,
+        panelVisibility: panelVisibilityMapRef.current[g.id],
+        panelLayout: panelLayoutMapRef.current[g.id],
+      };
+    });
+  }, [explorerRoots]);
+
+  const buildSessionPayload = useCallback((): PersistedSession => {
+    const gs = groupsRef.current;
+    const activeIndex = Math.max(0, gs.findIndex(g => g.id === activeGroupIdRef.current));
+    return {
+      running: true,
+      savedAt: new Date().toISOString(),
+      groups: serializeGroups(),
+      activeGroupIndex: activeIndex,
+    };
+  }, [serializeGroups]);
+
+  // Debounced session auto-save
+  const sessionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleSessionSave = useCallback(() => {
+    if (!window.api?.saveSession) return;
+    if (sessionSaveTimerRef.current !== null) clearTimeout(sessionSaveTimerRef.current);
+    sessionSaveTimerRef.current = setTimeout(() => {
+      sessionSaveTimerRef.current = null;
+      if (groupsRef.current.length === 0) return;
+      window.api.saveSession(buildSessionPayload());
+    }, 500);
+  }, [buildSessionPayload]);
+
+  // Save on every structural change
+  useEffect(() => {
+    scheduleSessionSave();
+  }, [groups, explorerRoots, panelVisibilityMap, panelLayoutMap, activeGroupId, scheduleSessionSave]);
+
+  // Internal: restore a list of persisted groups as new tabs (replaces all current groups)
+  const restorePersistedGroups = useCallback(async (persistedGroups: PersistedGroup[], activeGroupIndex: number) => {
+    if (!window.api?.createTerminal) return;
+    const shell = settingsRef.current.shellOverride || undefined;
+
+    const newGroups: TerminalGroup[] = [];
+    const newExplorerRoots: Record<string, string | null> = {};
+    const newPanelVisMap: Record<string, PanelVisibility> = {};
+    const newPanelLayoutMap: Record<string, PanelId[][]> = {};
+
+    for (const pg of persistedGroups) {
+      try {
+        const newPanes: TerminalPane[] = [];
+        for (const pp of pg.panes) {
+          const { id: paneId } = await window.api.createTerminal({ cwd: pp.cwd || undefined, shell, cols: 80, rows: 24 });
+          newPanes.push({ id: paneId, cwd: pp.cwd });
+        }
+        if (newPanes.length === 0) continue;
+
+        groupTabCounter++;
+        const gid = newGroupId();
+        const focusedPaneId = newPanes[Math.min(pg.focusedPaneIndex ?? 0, newPanes.length - 1)].id;
+        newGroups.push({
+          id: gid,
+          label: `Terminal ${groupTabCounter}`,
+          customLabel: pg.customLabel,
+          icon: pg.icon,
+          iconColor: pg.iconColor,
+          panes: newPanes,
+          focusedPaneId,
+          splitPcts: pg.splitPcts?.length === newPanes.length ? pg.splitPcts : equalSplitPcts(newPanes.length),
+        });
+
+        if (pg.explorerRoot != null) newExplorerRoots[gid] = pg.explorerRoot;
+        if (pg.panelVisibility) newPanelVisMap[gid] = pg.panelVisibility;
+        if (pg.panelLayout) newPanelLayoutMap[gid] = pg.panelLayout;
+      } catch (err) {
+        console.error('Failed to restore group:', err);
+      }
+    }
+
+    if (newGroups.length === 0) return;
+
+    setGroups(newGroups);
+    setExplorerRoots(prev => ({ ...prev, ...newExplorerRoots }));
+    setPanelVisibilityMap(prev => ({ ...prev, ...newPanelVisMap }));
+    setPanelLayoutMap(prev => ({ ...prev, ...newPanelLayoutMap }));
+    const activeId = newGroups[Math.min(activeGroupIndex, newGroups.length - 1)]?.id ?? newGroups[0].id;
+    setActiveGroupId(activeId);
+  }, []);
+
+  // ── Crash restore ─────────────────────────────────────────────────────────
+
+  const restoreCrashSession = useCallback(async () => {
+    if (!crashSession) return;
+    setCrashSession(null);
+    await restorePersistedGroups(crashSession.groups, crashSession.activeGroupIndex);
+    window.api?.clearCrashFlag?.();
+  }, [crashSession, restorePersistedGroups]);
+
+  const dismissCrashSession = useCallback(() => {
+    setCrashSession(null);
+    window.api?.clearCrashFlag?.();
+  }, []);
+
+  // ── Named workspaces ──────────────────────────────────────────────────────
+
+  const saveWorkspace = useCallback(async (name: string): Promise<string | null> => {
+    if (!window.api?.saveWorkspace) return null;
+    const workspace: SavedWorkspace = {
+      version: 1,
+      name,
+      createdAt: new Date().toISOString(),
+      groups: serializeGroups(),
+      activeGroupIndex: Math.max(0, groupsRef.current.findIndex(g => g.id === activeGroupIdRef.current)),
+    };
+    const { filename } = await window.api.saveWorkspace(workspace);
+    return filename;
+  }, [serializeGroups]);
+
+  const loadWorkspace = useCallback(async (filename: string) => {
+    if (!window.api?.loadWorkspace) return;
+    const workspace: SavedWorkspace | null = await window.api.loadWorkspace(filename);
+    if (!workspace || !Array.isArray(workspace.groups)) return;
+    // Destroy all current PTYs before replacing
+    for (const g of groupsRef.current) {
+      for (const p of g.panes) {
+        try { window.api?.destroyTerminal(p.id); } catch {}
+      }
+    }
+    setGroups([]);
+    setExplorerRoots({});
+    setOpenFileTabsMap({});
+    setPanelVisibilityMap({});
+    setPanelLayoutMap({});
+    setActiveGroupId(null);
+    await restorePersistedGroups(workspace.groups, workspace.activeGroupIndex);
+    setActiveWorkspaceName(workspace.name);
+    // Tell main process which workspace this window has loaded (for dock menu focus behavior)
+    window.api?.setActiveWorkspace?.(filename);
+  }, [restorePersistedGroups]);
+
+  loadWorkspaceRef.current = loadWorkspace;
+
+  const listWorkspaces = useCallback(async (): Promise<SavedWorkspaceMeta[]> => {
+    if (!window.api?.listWorkspaces) return [];
+    return window.api.listWorkspaces();
+  }, []);
+
+  const deleteWorkspace = useCallback(async (filename: string) => {
+    if (!window.api?.deleteWorkspace) return;
+    await window.api.deleteWorkspace(filename);
+  }, []);
+
+  // Listen for dock-menu-triggered workspace loads
+  useEffect(() => {
+    if (!window.api?.onLoadWorkspace) return;
+    return window.api.onLoadWorkspace((filename) => {
+      loadWorkspace(filename);
+    });
+  }, [loadWorkspace]);
+
   const setThemeId = useCallback((id: string) => {
     const t = getThemeById(id);
     setTheme(t);
@@ -1193,8 +1393,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     agentContextDirs,
     exitSplit,
     updateGroupSplitPcts,
-  }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedGroups,
-       setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, closePane, exitSplit, updateGroupSplitPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
+    activeWorkspaceName,
+    crashSession,
+    restoreCrashSession,
+    dismissCrashSession,
+    saveWorkspace,
+    loadWorkspace,
+    listWorkspaces,
+    deleteWorkspace,
+  }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedGroups, crashSession, activeWorkspaceName,
+       setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, closePane, exitSplit, updateGroupSplitPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile, restoreCrashSession, dismissCrashSession, saveWorkspace, loadWorkspace, listWorkspaces, deleteWorkspace]);
 
   return (
     <UIContext.Provider value={uiValue}>

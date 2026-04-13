@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSessionContext } from '../context/AppContext';
 import { TerminalTabIcon, TERMINAL_ICONS, TAB_COLORS } from '../terminalIcons';
+import { WorkspaceManager } from './WorkspaceManager';
+import type { WorkspaceManagerMode } from './WorkspaceManager';
 
 // ── Inline rename input ────────────────────────────────────────────────────
 
@@ -231,6 +233,7 @@ export function SessionBar({ className }: { className?: string }) {
   const [ctxSub, setCtxSub] = useState<'icon' | 'color' | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
   const [appBarCtxMenu, setAppBarCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [workspaceManagerMode, setWorkspaceManagerMode] = useState<WorkspaceManagerMode>(null);
 
   const closeCtx = useCallback(() => { setCtxMenu(null); setCtxSub(null); }, []);
   const closeAppBarCtx = useCallback(() => setAppBarCtxMenu(null), []);
@@ -368,8 +371,20 @@ export function SessionBar({ className }: { className?: string }) {
             onClick={() => { if (recentlyClosedGroups.length > 0) { restoreLastClosedGroup(); closeAppBarCtx(); } }}>
             Reopen Closed Session
           </button>
+          <div className="tab-context-separator" />
+          <button type="button" className="tab-context-item" role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { closeAppBarCtx(); setWorkspaceManagerMode('save'); }}>
+            Save Workspace...
+          </button>
+          <button type="button" className="tab-context-item" role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { closeAppBarCtx(); setWorkspaceManagerMode('load'); }}>
+            Workspaces...
+          </button>
         </div>
       )}
+      <WorkspaceManager mode={workspaceManagerMode} onClose={() => setWorkspaceManagerMode(null)} />
     </div>
   );
 }
