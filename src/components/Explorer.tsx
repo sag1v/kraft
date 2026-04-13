@@ -52,7 +52,7 @@ function getFolderStatus(
 interface TreeNodeProps {
   entry: DirEntry;
   depth: number;
-  onFileClick: (path: string) => void;
+  onFileClick: (path: string, fromMouseClick?: boolean) => void;
   onFileDoubleClick: () => void;
   onContextMenu: (path: string, isDirectory: boolean, e: React.MouseEvent) => void;
   collapseKey: number;
@@ -107,9 +107,9 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, onContextMenu,
     return () => cancelAnimationFrame(id);
   }, [entry.isDirectory, entry.path, syncedRevealFile, revealGeneration]);
 
-  const toggleOpen = useCallback(async () => {
+  const toggleOpen = useCallback(async (e: React.MouseEvent) => {
     if (!entry.isDirectory) {
-      onFileClick(entry.path);
+      onFileClick(entry.path, e.detail > 0);
       return;
     }
 
@@ -1281,18 +1281,24 @@ export function Explorer() {
   const revealLabel = platform === 'darwin' ? 'Reveal in Finder' : platform === 'win32' ? 'Reveal in Explorer' : 'Open in File Manager';
 
   const handleFileClick = useCallback(
-    (path: string) => {
+    (path: string, fromMouseClick?: boolean) => {
       setDiffFilePath(null);
       setOpenFilePath(path);
+      if (fromMouseClick && !panelVisibility.viewer) {
+        setPanelVisibility('viewer', true);
+      }
     },
-    [setOpenFilePath, setDiffFilePath]
+    [setOpenFilePath, setDiffFilePath, panelVisibility.viewer, setPanelVisibility]
   );
 
   const handleChangeFileClick = useCallback(
     (path: string) => {
       setDiffFilePath(path);
+      if (!panelVisibility.viewer) {
+        setPanelVisibility('viewer', true);
+      }
     },
-    [setDiffFilePath]
+    [setDiffFilePath, panelVisibility.viewer, setPanelVisibility]
   );
 
   const handleStageAll = useCallback((repoRoot?: string) => {
