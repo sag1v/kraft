@@ -31,6 +31,55 @@ interface PtyInstance {
   pid: number;
   shell: string;
   webContentsId: number;
+  /** cwd last reported via OSC 7 — avoids lsof on every poll */
+  trackedCwd?: string;
+  /** cleanup fn to remove the ZDOTDIR temp dir, if one was created */
+  zdotdirCleanup?: () => void;
+}
+
+/**
+ * Creates a temporary ZDOTDIR for zsh that sources the user's original config
+ * files and adds an OSC 7 (cwd notification) hook.  This gives instant cwd
+ * detection without any lsof calls.
+ *
+ * Handles all zsh startup files so user config is unaffected:
+ *   .zshenv / .zprofile / .zshrc / .zlogin
+ */
+async function createZshIntegration(): Promise<{ extraEnv: Record<string, string>; cleanup: () => void } | null> {
+  try {
+    const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'kraft-zsh-'));
+    const home = os.homedir();
+
+    // Stub that sources the corresponding home-dir file if it exists
+    const stub = (dotfile: string) =>
+      `[[ -f "${home}/${dotfile}" ]] && builtin source "${home}/${dotfile}"\n`;
+
+    await fs.promises.writeFile(path.join(tempDir, '.zshenv'), stub('.zshenv'));
+    await fs.promises.writeFile(path.join(tempDir, '.zprofile'), stub('.zprofile'));
+    await fs.promises.writeFile(path.join(tempDir, '.zlogin'), stub('.zlogin'));
+
+    const zshrc = stub('.zshrc') + `
+# Kraft shell integration — emit OSC 7 on every directory change
+__kraft_osc7() {
+  printf '\\033]7;file://%s%s\\033\\\\' "\${HOST:-\$(hostname -s 2>/dev/null || echo localhost)}" "\${PWD}"
+}
+# chpwd fires immediately on cd (before the prompt), precmd is the safety net
+autoload -Uz add-zsh-hook 2>/dev/null
+add-zsh-hook chpwd  __kraft_osc7 2>/dev/null
+add-zsh-hook precmd __kraft_osc7 2>/dev/null
+# Emit once at startup so the explorer knows the initial cwd
+__kraft_osc7
+`;
+    await fs.promises.writeFile(path.join(tempDir, '.zshrc'), zshrc);
+
+    const cleanup = () => {
+      fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    };
+
+    return { extraEnv: { ZDOTDIR: tempDir }, cleanup };
+  } catch {
+    return null;
+  }
 }
 
 const ptyInstances = new Map<string, PtyInstance>();
@@ -858,9 +907,16 @@ function setupIPC() {
   ipcMain.handle('create-terminal', async (event, options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => {
     const id = `term-${++terminalIdCounter}`;
     const shellPath = options.shell || getDefaultShell();
-    const shellArgs = shellPath.includes('zsh') ? ['--login'] : shellPath.includes('bash') ? ['--login'] : [];
-    const env = await getShellEnv();
+    const isZsh = /\bzsh$/.test(shellPath);
+    const shellArgs = isZsh ? ['--login'] : shellPath.includes('bash') ? ['--login'] : [];
+    const baseEnv = await getShellEnv();
     const webContentsId = event.sender.id;
+
+    // Inject zsh shell integration (OSC 7 on every cd) via a temp ZDOTDIR
+    const zshIntegration = isZsh ? await createZshIntegration() : null;
+    const env = zshIntegration
+      ? { ...baseEnv, ...zshIntegration.extraEnv }
+      : baseEnv;
 
     const ptyProcess = pty.spawn(shellPath, shellArgs, {
       name: 'xterm-256color',
@@ -875,15 +931,34 @@ function setupIPC() {
       pid: ptyProcess.pid,
       shell: shellPath,
       webContentsId,
+      zdotdirCleanup: zshIntegration?.cleanup,
     });
 
     agentManager.registerTerminal(id, ptyProcess.pid, options.cwd || os.homedir());
 
+    // OSC 7 regex: \e]7;url\e\\ or \e]7;url\a
+    const osc7Re = /\x1b\]7;(file:\/\/[^\x07\x1b]*?)(?:\x07|\x1b\\)/g;
+
     ptyProcess.onData((data: string) => {
       sendToWebContents(webContentsId, 'terminal-data', id, data);
+      // Track cwd from OSC 7 sequences so getTerminalCwd can skip lsof
+      let m: RegExpExecArray | null;
+      osc7Re.lastIndex = 0;
+      while ((m = osc7Re.exec(data)) !== null) {
+        try {
+          const url = new URL(m[1]);
+          const cwd = decodeURIComponent(url.pathname);
+          if (cwd) {
+            const inst = ptyInstances.get(id);
+            if (inst) inst.trackedCwd = cwd;
+          }
+        } catch { /* invalid URL, ignore */ }
+      }
     });
 
     ptyProcess.onExit(({ exitCode }: { exitCode: number }) => {
+      const inst = ptyInstances.get(id);
+      inst?.zdotdirCleanup?.();
       ptyInstances.delete(id);
       sendToWebContents(webContentsId, 'terminal-exit', id, exitCode);
     });
@@ -914,6 +989,11 @@ function setupIPC() {
   ipcMain.handle('terminal-get-cwd', async (_event, id: string) => {
     const instance = ptyInstances.get(id);
     if (!instance) return null;
+
+    // Fast path: OSC 7 already told us the cwd — no lsof needed
+    if (instance.trackedCwd) return instance.trackedCwd;
+
+    // Slow path: ask the OS (used by shells without OSC 7 support)
     try {
       let rawPath: string | null = null;
       if (process.platform === 'darwin') {
@@ -921,8 +1001,8 @@ function setupIPC() {
           encoding: 'utf-8',
           timeout: 2000,
         });
-        const lines = stdout.split('\n');
-        const nLine = lines.find(l => l.startsWith('n'));
+        const lines = (stdout as unknown as string).split('\n');
+        const nLine = lines.find((l: string) => l.startsWith('n'));
         rawPath = nLine ? nLine.slice(1) : null;
       } else if (process.platform === 'linux') {
         rawPath = await fs.promises.readlink(`/proc/${instance.pid}/cwd`);

@@ -899,8 +899,9 @@ export function Explorer() {
     explorerRoot,
     setExplorerRoot,
     explorerOutOfSync,
-    activeSessionId,
-    updateSessionCwd,
+    activeGroupId,
+    focusedPaneId,
+    updatePaneCwd,
     gitStatus,
     gitStagedStatus,
     gitIgnored,
@@ -914,22 +915,22 @@ export function Explorer() {
     commitAll,
     undoLastCommit,
     agentContextDirs,
-    createSessionAtPath,
+    createGroupAtPath,
   } = useSessionContext();
 
   const [activeViewMap, setActiveViewMap] = useState<Record<string, ExplorerView>>({});
   const syncLayout = settings.syncLayoutAcrossTabs;
   const activeView = syncLayout
     ? (activeViewMap['*'] ?? 'files')
-    : (activeSessionId ? (activeViewMap[activeSessionId] ?? 'files') : 'files');
+    : (activeGroupId ? (activeViewMap[activeGroupId] ?? 'files') : 'files');
   const setActiveView = useCallback((view: ExplorerView) => {
     if (syncLayout) {
       setActiveViewMap(prev => ({ ...prev, '*': view }));
     } else {
-      if (!activeSessionId) return;
-      setActiveViewMap(prev => ({ ...prev, [activeSessionId]: view }));
+      if (!activeGroupId) return;
+      setActiveViewMap(prev => ({ ...prev, [activeGroupId]: view }));
     }
-  }, [activeSessionId, syncLayout]);
+  }, [activeGroupId, syncLayout]);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [truncatedInfo, setTruncatedInfo] = useState<{ truncated: boolean; totalCount: number }>({ truncated: false, totalCount: 0 });
   const [loading, setLoading] = useState(false);
@@ -966,8 +967,8 @@ export function Explorer() {
   }, [fileContextMenu]);
 
   useEffect(() => {
-    if (!activeSessionId) return;
-    if (prevSessionIdRef.current === activeSessionId) return;
+    if (!activeGroupId) return;
+    if (prevSessionIdRef.current === activeGroupId) return;
 
     if (prevSessionIdRef.current && loadedRootRef.current) {
       treeCacheRef.current.set(prevSessionIdRef.current, {
@@ -978,9 +979,9 @@ export function Explorer() {
       });
     }
 
-    prevSessionIdRef.current = activeSessionId;
+    prevSessionIdRef.current = activeGroupId;
 
-    const cached = treeCacheRef.current.get(activeSessionId);
+    const cached = treeCacheRef.current.get(activeGroupId);
     if (cached) {
       loadedRootRef.current = cached.root;
       setEntries(cached.entries);
@@ -990,10 +991,10 @@ export function Explorer() {
       setEntries([]);
       setTruncatedInfo({ truncated: false, totalCount: 0 });
     }
-  }, [activeSessionId]);
+  }, [activeGroupId]);
 
   const loadFolder = useCallback(async (dirPath: string, forceRefresh = false) => {
-    if (!window.api?.readDirectory || !activeSessionId) return;
+    if (!window.api?.readDirectory || !activeGroupId) return;
 
     setExplorerRoot(dirPath);
     loadedRootRef.current = dirPath;
@@ -1005,7 +1006,7 @@ export function Explorer() {
       if (loadedRootRef.current === dirPath) {
         setEntries(result.entries);
         setTruncatedInfo({ truncated: result.truncated, totalCount: result.totalCount });
-        treeCacheRef.current.set(activeSessionId, {
+        treeCacheRef.current.set(activeGroupId, {
           root: dirPath,
           entries: result.entries,
           truncated: result.truncated,
@@ -1021,21 +1022,21 @@ export function Explorer() {
     if (loadedRootRef.current === dirPath) {
       setLoading(false);
     }
-  }, [setExplorerRoot, activeSessionId]);
+  }, [setExplorerRoot, activeGroupId]);
 
   useEffect(() => {
-    if (!explorerRoot || !activeSessionId) return;
+    if (!explorerRoot || !activeGroupId) return;
     if (loadedRootRef.current === explorerRoot) return;
     loadFolder(explorerRoot);
-  }, [explorerRoot, activeSessionId, loadFolder]);
+  }, [explorerRoot, activeGroupId, loadFolder]);
 
   useEffect(() => {
-    if (!settings.autoLoadExplorer || !cwd || !activeSessionId) return;
+    if (!settings.autoLoadExplorer || !cwd || !activeGroupId) return;
     const normalizedCwd = normPath(cwd);
     const normalizedRoot = explorerRoot ? normPath(explorerRoot) : null;
     if (normalizedRoot === normalizedCwd) return;
     loadFolder(cwd);
-  }, [settings.autoLoadExplorer, cwd, activeSessionId, explorerRoot, loadFolder]);
+  }, [settings.autoLoadExplorer, cwd, activeGroupId, explorerRoot, loadFolder]);
 
   useEffect(() => {
     if (!explorerRoot || !window.api?.watchDirectory || !window.api?.onDirectoryChanged) return;
@@ -1086,19 +1087,19 @@ export function Explorer() {
 
   const handleLoadCwd = useCallback(async () => {
     let dir = cwd;
-    if (activeSessionId && window.api?.getTerminalCwd) {
+    if (focusedPaneId && window.api?.getTerminalCwd) {
       try {
-        const liveCwd = await window.api.getTerminalCwd(activeSessionId);
+        const liveCwd = await window.api.getTerminalCwd(focusedPaneId);
         if (liveCwd) {
           dir = liveCwd;
-          updateSessionCwd(activeSessionId, liveCwd);
+          updatePaneCwd(focusedPaneId, liveCwd);
         }
       } catch {
         // fall back to context cwd
       }
     }
     if (dir) loadFolder(dir);
-  }, [cwd, activeSessionId, updateSessionCwd, loadFolder]);
+  }, [cwd, focusedPaneId, updatePaneCwd, loadFolder]);
 
   const showHiddenFilesRef = useRef(settings.showHiddenFiles);
   useEffect(() => {
@@ -1635,7 +1636,7 @@ export function Explorer() {
               <button
                 className="tab-context-item"
                 onClick={() => {
-                  createSessionAtPath(fileContextMenu.path);
+                  createGroupAtPath(fileContextMenu.path);
                   setPanelVisibility('terminal', true);
                   setFileContextMenu(null);
                 }}
@@ -1645,13 +1646,13 @@ export function Explorer() {
               <button
                 className="tab-context-item"
                 onClick={() => {
-                  if (activeSessionId) {
+                  if (focusedPaneId) {
                     const escaped = fileContextMenu.path.replace(/"/g, '\\"');
-                    window.api.writeTerminal(activeSessionId, `cd "${escaped}"\r`);
+                    window.api.writeTerminal(focusedPaneId, `cd "${escaped}"\r`);
                     setPanelVisibility('terminal', true);
                     requestAnimationFrame(() => {
                       document.querySelector<HTMLElement>(
-                        `[data-session-id="${activeSessionId}"] .xterm-helper-textarea`
+                        `[data-session-id="${focusedPaneId}"] .xterm-helper-textarea`
                       )?.focus();
                     });
                   }

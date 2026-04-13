@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalSession, PanelId, PanelVisibility, AgentContextDir } from '../types';
+import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalPane, TerminalGroup, PanelId, PanelVisibility, AgentContextDir } from '../types';
 import { getThemeById, kraftDark } from '../themes';
 import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
 
@@ -85,21 +85,26 @@ interface UIContextValue {
 
 interface SessionContextValue {
   cwd: string;
-  sessions: TerminalSession[];
-  activeSessionId: string | null;
-  addSession: (session: TerminalSession) => void;
-  removeSession: (id: string) => void;
-  setActiveSession: (id: string) => void;
-  createSession: () => Promise<void>;
-  createSessionAtPath: (path: string) => Promise<void>;
-  duplicateSession: (id: string) => Promise<void>;
-  destroySession: (id: string) => void;
-  updateSessionCwd: (id: string, cwd: string) => void;
-  renameSession: (id: string, customLabel: string) => void;
-  updateSessionAppearance: (id: string, icon?: string, iconColor?: string) => void;
-  reorderSessions: (fromIndex: number, toIndex: number) => void;
-  recentlyClosedSessions: TerminalSession[];
-  restoreLastClosedSession: () => Promise<void>;
+  groups: TerminalGroup[];
+  activeGroupId: string | null;
+  activeGroup: TerminalGroup | null;
+  focusedPaneId: string | null;
+  setActiveGroup: (id: string) => void;
+  setFocusedPane: (paneId: string) => void;
+  createGroup: () => Promise<void>;
+  createGroupAtPath: (path: string) => Promise<void>;
+  duplicateGroup: (id: string) => Promise<void>;
+  destroyGroup: (id: string) => void;
+  splitPane: () => Promise<void>;
+  closePane: (paneId: string) => void;
+  exitSplit: () => void;
+  updateGroupSplitPcts: (groupId: string, pcts: number[]) => void;
+  updatePaneCwd: (paneId: string, cwd: string) => void;
+  renameGroup: (id: string, customLabel: string) => void;
+  updateGroupAppearance: (id: string, icon?: string, iconColor?: string) => void;
+  reorderGroups: (fromIndex: number, toIndex: number) => void;
+  recentlyClosedGroups: TerminalGroup[];
+  restoreLastClosedGroup: () => Promise<void>;
   explorerRoot: string | null;
   setExplorerRoot: (path: string | null) => void;
   explorerOutOfSync: boolean;
@@ -144,18 +149,30 @@ const EMPTY_CONTEXT_DIRS: AgentContextDir[] = [];
 const UIContext = createContext<UIContextValue>(null!);
 const SessionContext = createContext<SessionContextValue>(null!);
 
-let sessionTabCounter = 0;
+let groupTabCounter = 0;
+
+function newGroupId() {
+  return `g-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
 function normPath(p: string) {
   return p.replace(/\/+$/, '');
+}
+
+/** Returns equal percentage flex values that sum to 100 for n panes. */
+function equalSplitPcts(n: number): number[] {
+  if (n === 0) return [];
+  const base = Math.floor(100 / n);
+  const remainder = 100 - base * n;
+  return Array.from({ length: n }, (_, i) => base + (i === n - 1 ? remainder : 0));
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [theme, setTheme] = useState<Theme>(kraftDark);
   const [layout, setLayoutState] = useState<LayoutPreset>('watch-shit-done');
-  const [sessions, setSessions] = useState<TerminalSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [groups, setGroups] = useState<TerminalGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [explorerRoots, setExplorerRoots] = useState<Record<string, string | null>>({});
   const [openFileTabsMap, setOpenFileTabsMap] = useState<Record<string, { files: string[]; activeFile: string | null }>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -174,14 +191,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [gitErrorViewContent, setGitErrorViewContent] = useState<string | null>(null);
   const [errorViewTitle, setErrorViewTitle] = useState<string>('Git Error Output');
   const [agentContextDirsMap, setAgentContextDirsMap] = useState<Record<string, AgentContextDir[]>>({});
-  const [recentlyClosedSessions, setRecentlyClosedSessions] = useState<TerminalSession[]>([]);
-  const recentlyClosedSessionsRef = useRef<TerminalSession[]>([]);
+  const [recentlyClosedGroups, setRecentlyClosedGroups] = useState<TerminalGroup[]>([]);
+  const recentlyClosedGroupsRef = useRef<TerminalGroup[]>([]);
 
-  const activeSessionIdRef = useRef(activeSessionId);
-  activeSessionIdRef.current = activeSessionId;
+  const activeGroupIdRef = useRef(activeGroupId);
+  activeGroupIdRef.current = activeGroupId;
 
-  const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
 
   const themeRef = useRef(theme);
   themeRef.current = theme;
@@ -193,11 +210,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const panelVisibilityMapRef = useRef(panelVisibilityMap);
   panelVisibilityMapRef.current = panelVisibilityMap;
   const panelVisibility = useMemo(() => {
-    if (activeSessionId && panelVisibilityMap[activeSessionId]) {
-      return panelVisibilityMap[activeSessionId];
+    if (activeGroupId && panelVisibilityMap[activeGroupId]) {
+      return panelVisibilityMap[activeGroupId];
     }
     return initialPanelVisibilityRef.current;
-  }, [activeSessionId, panelVisibilityMap]);
+  }, [activeGroupId, panelVisibilityMap]);
   const panelVisibilityRef = useRef(panelVisibility);
   panelVisibilityRef.current = panelVisibility;
 
@@ -207,17 +224,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const panelLayoutMapRef = useRef(panelLayoutMap);
   panelLayoutMapRef.current = panelLayoutMap;
   const panelLayout = useMemo(() => {
-    if (activeSessionId && panelLayoutMap[activeSessionId]) {
-      return panelLayoutMap[activeSessionId];
+    if (activeGroupId && panelLayoutMap[activeGroupId]) {
+      return panelLayoutMap[activeGroupId];
     }
     return settings.panelLayout;
-  }, [activeSessionId, panelLayoutMap, settings.panelLayout]);
+  }, [activeGroupId, panelLayoutMap, settings.panelLayout]);
 
-  const activeSession = sessions.find(s => s.id === activeSessionId) || null;
-  const cwd = activeSession?.cwd || homeDir || '';
-  const explorerRoot = activeSessionId ? explorerRoots[activeSessionId] ?? null : null;
+  const activeGroup = groups.find(g => g.id === activeGroupId) || null;
+  const focusedPaneId = activeGroup ? activeGroup.focusedPaneId : null;
+  const focusedPane = activeGroup
+    ? (activeGroup.panes.find(p => p.id === activeGroup.focusedPaneId) ?? activeGroup.panes[0] ?? null)
+    : null;
+  const cwd = focusedPane?.cwd || homeDir || '';
+  const explorerRoot = activeGroupId ? explorerRoots[activeGroupId] ?? null : null;
   const explorerOutOfSync = !!(explorerRoot && cwd && normPath(explorerRoot) !== normPath(cwd));
-  const agentContextDirs = (activeSessionId && agentContextDirsMap[activeSessionId]) || EMPTY_CONTEXT_DIRS;
+  const agentContextDirs = (focusedPaneId && agentContextDirsMap[focusedPaneId]) || EMPTY_CONTEXT_DIRS;
 
   const gitCacheRef = useRef<Map<string, GitInfo>>(new Map());
   const prevGitInfoRef = useRef<GitInfo>(defaultGitInfo);
@@ -268,9 +289,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (merged.defaultLayout === 'custom' && merged.customPanelVisibility) {
             initialPanelVisibilityRef.current = { ...merged.customPanelVisibility };
           }
-          if (Array.isArray((saved as any).recentlyClosedSessions)) {
-            recentlyClosedSessionsRef.current = (saved as any).recentlyClosedSessions;
-            setRecentlyClosedSessions((saved as any).recentlyClosedSessions);
+          if (Array.isArray((saved as any).recentlyClosedGroups)) {
+            recentlyClosedGroupsRef.current = (saved as any).recentlyClosedGroups;
+            setRecentlyClosedGroups((saved as any).recentlyClosedGroups);
           }
         }
       } catch {
@@ -285,13 +306,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!window.api?.onAgentDetected) return;
     const unsubscribe = window.api.onAgentDetected((terminalId, _agentId) => {
       const agentTabColor = themeRef.current.colors.agentAccent;
-      setSessions(prev =>
-        prev.map(s => {
-          if (s.id !== terminalId) return s;
-          if (s.icon !== undefined) return s;
-          const setColor = s.iconColor === undefined;
+      // terminalId is a pane (PTY) id — find the group containing it
+      setGroups(prev =>
+        prev.map(g => {
+          if (!g.panes.some(p => p.id === terminalId)) return g;
+          if (g.icon !== undefined) return g;
+          const setColor = g.iconColor === undefined;
           return {
-            ...s,
+            ...g,
             icon: AGENT_AUTO_TAB_ICON_ID,
             autoIcon: true,
             ...(setColor ? { iconColor: agentTabColor, autoIconColor: true } : {}),
@@ -318,15 +340,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         delete next[terminalId];
         return next;
       });
-      setSessions(prev =>
-        prev.map(s => {
-          if (s.id !== terminalId) return s;
-          if (!s.autoIcon) return s;
+      // terminalId is a pane (PTY) id — find the group containing it
+      setGroups(prev =>
+        prev.map(g => {
+          if (!g.panes.some(p => p.id === terminalId)) return g;
+          if (!g.autoIcon) return g;
           return {
-            ...s,
+            ...g,
             icon: undefined,
             autoIcon: undefined,
-            ...(s.autoIconColor ? { iconColor: undefined, autoIconColor: undefined } : {}),
+            ...(g.autoIconColor ? { iconColor: undefined, autoIconColor: undefined } : {}),
           };
         })
       );
@@ -336,56 +359,61 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const accent = theme.colors.agentAccent;
-    setSessions(prev => {
+    setGroups(prev => {
       let changed = false;
-      const next = prev.map(s => {
-        if (!s.autoIconColor) return s;
-        if (s.iconColor === accent) return s;
+      const next = prev.map(g => {
+        if (!g.autoIconColor) return g;
+        if (g.iconColor === accent) return g;
         changed = true;
-        return { ...s, iconColor: accent };
+        return { ...g, iconColor: accent };
       });
       return changed ? next : prev;
     });
   }, [theme]);
 
-  const addSession = useCallback((session: TerminalSession) => {
-    const prevId = activeSessionIdRef.current;
+  // Internal: add a fully-constructed group and make it active
+  const addGroup = useCallback((group: TerminalGroup) => {
+    const prevId = activeGroupIdRef.current;
 
-    setSessions(prev => {
-      if (prev.length === 0) return [...prev, session];
-      const usedColors = prev.map(s => s.iconColor).filter(Boolean) as string[];
-      const color = session.iconColor || pickRandomColor(usedColors);
-      return [...prev, { ...session, iconColor: color }];
+    setGroups(prev => {
+      if (prev.length === 0) return [...prev, group];
+      const usedColors = prev.map(g => g.iconColor).filter(Boolean) as string[];
+      const color = group.iconColor || pickRandomColor(usedColors);
+      return [...prev, { ...group, iconColor: color }];
     });
 
     setPanelVisibilityMap(prev => ({
       ...prev,
-      [session.id]: { ...initialPanelVisibilityRef.current },
+      [group.id]: { ...initialPanelVisibilityRef.current },
     }));
 
-    // If the previous session's explorer was synced with its cwd, auto-load
-    // the new session's explorer with its cwd so the user doesn't have to.
-    if (prevId && session.cwd) {
+    // If the previous group's explorer was synced with its cwd, auto-load
+    // the new group's explorer with its cwd so the user doesn't have to.
+    if (prevId && group.panes[0]?.cwd) {
       setExplorerRoots(prev => {
         const prevRoot = prev[prevId];
         if (!prevRoot) return prev;
-        const prevSession = sessionsRef.current.find(s => s.id === prevId);
-        if (!prevSession?.cwd) return prev;
-        if (normPath(prevRoot) !== normPath(prevSession.cwd)) return prev;
-        return { ...prev, [session.id]: normPath(session.cwd) };
+        const prevGroup = groupsRef.current.find(g => g.id === prevId);
+        const prevFocusedPane = prevGroup
+          ? (prevGroup.panes.find(p => p.id === prevGroup.focusedPaneId) ?? prevGroup.panes[0])
+          : null;
+        if (!prevFocusedPane?.cwd) return prev;
+        if (normPath(prevRoot) !== normPath(prevFocusedPane.cwd)) return prev;
+        return { ...prev, [group.id]: normPath(group.panes[0].cwd) };
       });
     }
 
-    setActiveSessionId(session.id);
+    setActiveGroupId(group.id);
   }, []);
 
-  const removeSession = useCallback((id: string) => {
-    setSessions(prev => {
-      const next = prev.filter(s => s.id !== id);
-      if (activeSessionIdRef.current === id && next.length > 0) {
-        setActiveSessionId(next[next.length - 1].id);
+  // Internal: remove a group and clean up associated state
+  const removeGroup = useCallback((id: string) => {
+    setGroups(prev => {
+      const next = prev.filter(g => g.id !== id);
+      if (activeGroupIdRef.current === id && next.length > 0) {
+        setActiveGroupId(next[next.length - 1].id);
       } else if (next.length === 0) {
-        setActiveSessionId(null);
+        setActiveGroupId(null);
       }
       return next;
     });
@@ -395,11 +423,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
     setOpenFileTabsMap(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    setAgentContextDirsMap(prev => {
       const next = { ...prev };
       delete next[id];
       return next;
@@ -416,113 +439,218 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const createSession = useCallback(async () => {
+  const createGroup = useCallback(async () => {
     if (!window.api?.createTerminal) return;
-    const activeSess = sessionsRef.current.find(s => s.id === activeSessionIdRef.current);
+    const activeGrp = groupsRef.current.find(g => g.id === activeGroupIdRef.current);
+    const focusedPane = activeGrp
+      ? (activeGrp.panes.find(p => p.id === activeGrp.focusedPaneId) ?? activeGrp.panes[0])
+      : null;
     const startCwd = settingsRef.current.newTabUsePreviousCwd
-      ? (activeSess?.cwd || homeDir || undefined)
+      ? (focusedPane?.cwd || homeDir || undefined)
       : (homeDir || undefined);
     const shell = settingsRef.current.shellOverride || undefined;
     try {
-      const { id } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
-      sessionTabCounter++;
-      addSession({ id, label: `Terminal ${sessionTabCounter}`, cwd: startCwd || '' });
+      const { id: paneId } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
+      groupTabCounter++;
+      addGroup({
+        id: newGroupId(),
+        label: `Terminal ${groupTabCounter}`,
+        panes: [{ id: paneId, cwd: startCwd || '' }],
+        focusedPaneId: paneId,
+        splitPcts: [100],
+      });
     } catch (err) {
       console.error('Failed to create terminal:', err);
     }
-  }, [homeDir, addSession]);
+  }, [homeDir, addGroup]);
 
-  const createSessionAtPath = useCallback(async (path: string) => {
+  const createGroupAtPath = useCallback(async (path: string) => {
     if (!window.api?.createTerminal) return;
     const shell = settingsRef.current.shellOverride || undefined;
     try {
-      const { id } = await window.api.createTerminal({ cwd: path, shell, cols: 80, rows: 24 });
-      sessionTabCounter++;
-      addSession({ id, label: `Terminal ${sessionTabCounter}`, cwd: path });
+      const { id: paneId } = await window.api.createTerminal({ cwd: path, shell, cols: 80, rows: 24 });
+      groupTabCounter++;
+      addGroup({
+        id: newGroupId(),
+        label: `Terminal ${groupTabCounter}`,
+        panes: [{ id: paneId, cwd: path }],
+        focusedPaneId: paneId,
+        splitPcts: [100],
+      });
     } catch (err) {
       console.error('Failed to create terminal:', err);
     }
-  }, [addSession]);
+  }, [addGroup]);
 
-  const duplicateSession = useCallback(async (sourceId: string) => {
+  const duplicateGroup = useCallback(async (sourceId: string) => {
     if (!window.api?.createTerminal) return;
-    const sourceSess = sessionsRef.current.find(s => s.id === sourceId);
-    const startCwd = sourceSess?.cwd || homeDir || undefined;
+    const sourceGrp = groupsRef.current.find(g => g.id === sourceId);
+    const sourceFocusedPane = sourceGrp
+      ? (sourceGrp.panes.find(p => p.id === sourceGrp.focusedPaneId) ?? sourceGrp.panes[0])
+      : null;
+    const startCwd = sourceFocusedPane?.cwd || homeDir || undefined;
     const shell = settingsRef.current.shellOverride || undefined;
     try {
-      const { id } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
-      sessionTabCounter++;
-      addSession({ id, label: `Terminal ${sessionTabCounter}`, cwd: startCwd || '' });
+      const { id: paneId } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
+      groupTabCounter++;
+      addGroup({
+        id: newGroupId(),
+        label: `Terminal ${groupTabCounter}`,
+        panes: [{ id: paneId, cwd: startCwd || '' }],
+        focusedPaneId: paneId,
+        splitPcts: [100],
+      });
     } catch (err) {
       console.error('Failed to duplicate terminal:', err);
     }
-  }, [homeDir, addSession]);
+  }, [homeDir, addGroup]);
 
-  const destroySession = useCallback((id: string) => {
-    if (sessionsRef.current.length <= 1) return;
-    const session = sessionsRef.current.find(s => s.id === id);
-    if (session) {
-      const entry: TerminalSession = {
-        id: session.id,
-        label: session.label,
-        customLabel: session.customLabel,
-        icon: session.autoIcon ? undefined : session.icon,
-        iconColor: session.autoIconColor ? undefined : session.iconColor,
-        cwd: session.cwd,
+  const destroyGroup = useCallback((id: string) => {
+    if (groupsRef.current.length <= 1) return;
+    const grp = groupsRef.current.find(g => g.id === id);
+    if (grp) {
+      // Save a snapshot for recent-closed restore (pane IDs are now stale but metadata is valid)
+      const snapshot: TerminalGroup = {
+        ...grp,
+        autoIcon: undefined,
+        autoIconColor: undefined,
+        icon: grp.autoIcon ? undefined : grp.icon,
+        iconColor: grp.autoIconColor ? undefined : grp.iconColor,
       };
-      const closed = [entry, ...recentlyClosedSessionsRef.current].slice(0, 10);
-      recentlyClosedSessionsRef.current = closed;
-      setRecentlyClosedSessions(closed);
-      window.api?.saveSettings({ ...settingsRef.current, recentlyClosedSessions: closed });
+      const closed = [snapshot, ...recentlyClosedGroupsRef.current].slice(0, 10);
+      recentlyClosedGroupsRef.current = closed;
+      setRecentlyClosedGroups(closed);
+      window.api?.saveSettings({ ...settingsRef.current, recentlyClosedGroups: closed });
+      // Destroy all PTYs in the group
+      for (const pane of grp.panes) {
+        try { window.api?.destroyTerminal(pane.id); } catch {}
+      }
     }
-    try { window.api?.destroyTerminal(id); } catch {}
-    removeSession(id);
-  }, [removeSession]);
+    removeGroup(id);
+  }, [removeGroup]);
 
-  const restoreLastClosedSession = useCallback(async () => {
-    const queue = recentlyClosedSessionsRef.current;
+  const restoreLastClosedGroup = useCallback(async () => {
+    const queue = recentlyClosedGroupsRef.current;
     if (queue.length === 0) return;
     const [toRestore, ...remaining] = queue;
-    recentlyClosedSessionsRef.current = remaining;
-    setRecentlyClosedSessions(remaining);
-    window.api?.saveSettings({ ...settingsRef.current, recentlyClosedSessions: remaining });
+    recentlyClosedGroupsRef.current = remaining;
+    setRecentlyClosedGroups(remaining);
+    window.api?.saveSettings({ ...settingsRef.current, recentlyClosedGroups: remaining });
     if (!window.api?.createTerminal) return;
     const shell = settingsRef.current.shellOverride || undefined;
     try {
-      const { id } = await window.api.createTerminal({ cwd: toRestore.cwd || undefined, shell, cols: 80, rows: 24 });
-      sessionTabCounter++;
-      addSession({
-        id,
-        label: `Terminal ${sessionTabCounter}`,
-        customLabel: toRestore.customLabel,
-        icon: toRestore.icon,
-        iconColor: toRestore.iconColor,
-        cwd: toRestore.cwd,
+      // Restore all panes of the closed group
+      const newPanes: TerminalPane[] = [];
+      for (const oldPane of toRestore.panes) {
+        const { id: paneId } = await window.api.createTerminal({ cwd: oldPane.cwd || undefined, shell, cols: 80, rows: 24 });
+        newPanes.push({ id: paneId, cwd: oldPane.cwd });
+      }
+      if (newPanes.length === 0) return;
+      groupTabCounter++;
+      addGroup({
+        ...toRestore,
+        id: newGroupId(),
+        panes: newPanes,
+        focusedPaneId: newPanes[0].id,
+        splitPcts: equalSplitPcts(newPanes.length),
       });
     } catch (err) {
       console.error('Failed to restore terminal:', err);
     }
-  }, [addSession]);
+  }, [addGroup]);
 
-  const setActiveSession = useCallback((id: string) => {
-    setActiveSessionId(id);
+  const setActiveGroup = useCallback((id: string) => {
+    setActiveGroupId(id);
   }, []);
 
-  const updateSessionCwd = useCallback((id: string, newCwd: string) => {
-    if (!newCwd) return;
-    const normalized = normPath(newCwd);
-    setSessions(prev => {
-      const idx = prev.findIndex(s => s.id === id);
-      if (idx === -1 || prev[idx].cwd === normalized) return prev;
-      const next = [...prev];
-      next[idx] = { ...prev[idx], cwd: normalized };
+  const setFocusedPane = useCallback((paneId: string) => {
+    setGroups(prev => prev.map(g => {
+      if (!g.panes.some(p => p.id === paneId)) return g;
+      return { ...g, focusedPaneId: paneId };
+    }));
+  }, []);
+
+  const splitPane = useCallback(async () => {
+    if (!window.api?.createTerminal) return;
+    const activeGrp = groupsRef.current.find(g => g.id === activeGroupIdRef.current);
+    if (!activeGrp) return;
+    const currentPane = activeGrp.panes.find(p => p.id === activeGrp.focusedPaneId) ?? activeGrp.panes[0];
+    // Splits always inherit the focused pane's cwd (independent of newTabUsePreviousCwd setting).
+    const startCwd = currentPane?.cwd || homeDir || undefined;
+    const shell = settingsRef.current.shellOverride || undefined;
+    try {
+      const { id: paneId } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
+      const newPane: TerminalPane = { id: paneId, cwd: startCwd || '' };
+      setGroups(prev => prev.map(g => {
+        if (g.id !== activeGroupIdRef.current) return g;
+        const newPanes = [...g.panes, newPane];
+        return { ...g, panes: newPanes, focusedPaneId: paneId, splitPcts: equalSplitPcts(newPanes.length) };
+      }));
+    } catch (err) {
+      console.error('Failed to split pane:', err);
+    }
+  }, [homeDir]);
+
+  const closePane = useCallback((paneId: string) => {
+    setGroups(prev => prev.map(g => {
+      if (!g.panes.some(p => p.id === paneId)) return g;
+      const newPanes = g.panes.filter(p => p.id !== paneId);
+      const newFocusedId = g.focusedPaneId === paneId
+        ? (newPanes[0]?.id ?? '')
+        : g.focusedPaneId;
+      return { ...g, panes: newPanes, focusedPaneId: newFocusedId, splitPcts: equalSplitPcts(newPanes.length) };
+    }));
+    try { window.api?.destroyTerminal(paneId); } catch {}
+    setAgentContextDirsMap(prev => {
+      const next = { ...prev };
+      delete next[paneId];
       return next;
     });
   }, []);
 
-  const renameSession = useCallback((id: string, customLabel: string) => {
-    setSessions(prev => {
-      const idx = prev.findIndex(s => s.id === id);
+  /** Close all panes except the focused one, collapsing split mode. */
+  const exitSplit = useCallback(() => {
+    const grp = groupsRef.current.find(g => g.id === activeGroupIdRef.current);
+    if (!grp || grp.panes.length < 2) return;
+    const panestoClose = grp.panes.filter(p => p.id !== grp.focusedPaneId);
+    for (const pane of panestoClose) {
+      try { window.api?.destroyTerminal(pane.id); } catch {}
+    }
+    setAgentContextDirsMap(prev => {
+      const next = { ...prev };
+      for (const pane of panestoClose) delete next[pane.id];
+      return next;
+    });
+    setGroups(prev => prev.map(g => {
+      if (g.id !== activeGroupIdRef.current) return g;
+      const focused = g.panes.find(p => p.id === g.focusedPaneId);
+      if (!focused) return g;
+      return { ...g, panes: [focused], splitPcts: [100] };
+    }));
+  }, []);
+
+  const updateGroupSplitPcts = useCallback((groupId: string, pcts: number[]) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g;
+      return { ...g, splitPcts: pcts };
+    }));
+  }, []);
+
+  const updatePaneCwd = useCallback((paneId: string, newCwd: string) => {
+    if (!newCwd) return;
+    const normalized = normPath(newCwd);
+    setGroups(prev => prev.map(g => {
+      const paneIdx = g.panes.findIndex(p => p.id === paneId);
+      if (paneIdx === -1 || g.panes[paneIdx].cwd === normalized) return g;
+      const newPanes = [...g.panes];
+      newPanes[paneIdx] = { ...g.panes[paneIdx], cwd: normalized };
+      return { ...g, panes: newPanes };
+    }));
+  }, []);
+
+  const renameGroup = useCallback((id: string, customLabel: string) => {
+    setGroups(prev => {
+      const idx = prev.findIndex(g => g.id === id);
       if (idx === -1) return prev;
       const next = [...prev];
       next[idx] = { ...prev[idx], customLabel: customLabel || undefined };
@@ -530,9 +658,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const updateSessionAppearance = useCallback((id: string, icon?: string, iconColor?: string) => {
-    setSessions(prev => {
-      const idx = prev.findIndex(s => s.id === id);
+  const updateGroupAppearance = useCallback((id: string, icon?: string, iconColor?: string) => {
+    setGroups(prev => {
+      const idx = prev.findIndex(g => g.id === id);
       if (idx === -1) return prev;
       const next = [...prev];
       next[idx] = {
@@ -544,8 +672,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const reorderSessions = useCallback((fromIndex: number, toIndex: number) => {
-    setSessions(prev => {
+  const reorderGroups = useCallback((fromIndex: number, toIndex: number) => {
+    setGroups(prev => {
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
@@ -554,34 +682,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setExplorerRoot = useCallback((path: string | null) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
-    setExplorerRoots(prev => ({ ...prev, [sid]: path }));
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
+    setExplorerRoots(prev => ({ ...prev, [gid]: path }));
   }, []);
 
-  const sessionTabs = activeSessionId ? openFileTabsMap[activeSessionId] : undefined;
+  const sessionTabs = activeGroupId ? openFileTabsMap[activeGroupId] : undefined;
   const openFiles = sessionTabs?.files ?? [];
   const openFilePath = sessionTabs?.activeFile ?? null;
 
   const setOpenFilePath = useCallback((path: string | null) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
     setOpenFileTabsMap(prev => {
-      const entry = prev[sid] ?? { files: [], activeFile: null };
+      const entry = prev[gid] ?? { files: [], activeFile: null };
       if (!path) {
-        return { ...prev, [sid]: { ...entry, activeFile: null } };
+        return { ...prev, [gid]: { ...entry, activeFile: null } };
       }
       const files = entry.files.includes(path) ? entry.files : [...entry.files, path];
-      return { ...prev, [sid]: { files, activeFile: path } };
+      return { ...prev, [gid]: { files, activeFile: path } };
     });
   }, []);
 
   const closeFileTab = useCallback((path: string) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
     setDiffFilePathState(prev => (prev === path ? null : prev));
     setOpenFileTabsMap(prev => {
-      const entry = prev[sid];
+      const entry = prev[gid];
       if (!entry) return prev;
       const idx = entry.files.indexOf(path);
       if (idx === -1) return prev;
@@ -594,52 +722,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           activeFile = files[Math.min(idx, files.length - 1)];
         }
       }
-      return { ...prev, [sid]: { files, activeFile } };
+      return { ...prev, [gid]: { files, activeFile } };
     });
   }, []);
 
   const closeOtherFileTabs = useCallback((keepPath: string) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
     setOpenFileTabsMap(prev => {
-      const entry = prev[sid];
+      const entry = prev[gid];
       if (!entry || !entry.files.includes(keepPath)) return prev;
-      return { ...prev, [sid]: { files: [keepPath], activeFile: keepPath } };
+      return { ...prev, [gid]: { files: [keepPath], activeFile: keepPath } };
     });
     setDiffFilePathState(prev => (prev && prev !== keepPath ? null : prev));
   }, []);
 
   const closeAllFileTabs = useCallback(() => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
     setOpenFileTabsMap(prev => {
-      const entry = prev[sid];
+      const entry = prev[gid];
       if (!entry || entry.files.length === 0) return prev;
-      return { ...prev, [sid]: { files: [], activeFile: null } };
+      return { ...prev, [gid]: { files: [], activeFile: null } };
     });
     setDiffFilePathState(null);
   }, []);
 
   const setActiveFileTab = useCallback((path: string) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
     setOpenFileTabsMap(prev => {
-      const entry = prev[sid];
+      const entry = prev[gid];
       if (!entry || !entry.files.includes(path)) return prev;
-      return { ...prev, [sid]: { ...entry, activeFile: path } };
+      return { ...prev, [gid]: { ...entry, activeFile: path } };
     });
   }, []);
 
   const reorderFileTabs = useCallback((fromIndex: number, toIndex: number) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
     setOpenFileTabsMap(prev => {
-      const entry = prev[sid];
+      const entry = prev[gid];
       if (!entry) return prev;
       const files = [...entry.files];
       const [moved] = files.splice(fromIndex, 1);
       files.splice(toIndex, 0, moved);
-      return { ...prev, [sid]: { ...entry, files } };
+      return { ...prev, [gid]: { ...entry, files } };
     });
   }, []);
 
@@ -847,12 +975,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setDiffFilePath = useCallback((path: string | null) => {
     setDiffFilePathState(path);
     if (path) {
-      const sid = activeSessionIdRef.current;
-      if (!sid) return;
+      const gid = activeGroupIdRef.current;
+      if (!gid) return;
       setOpenFileTabsMap(prev => {
-        const entry = prev[sid] ?? { files: [], activeFile: null };
+        const entry = prev[gid] ?? { files: [], activeFile: null };
         const files = entry.files.includes(path) ? entry.files : [...entry.files, path];
-        return { ...prev, [sid]: { files, activeFile: path } };
+        return { ...prev, [gid]: { files, activeFile: path } };
       });
     }
   }, []);
@@ -875,8 +1003,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     initialPanelVisibilityRef.current = vis;
     setPanelVisibilityMap(prev => {
       const next: Record<string, PanelVisibility> = {};
-      for (const sid of Object.keys(prev)) {
-        next[sid] = { ...vis };
+      for (const gid of Object.keys(prev)) {
+        next[gid] = { ...vis };
       }
       return next;
     });
@@ -894,20 +1022,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setPanelLayout = useCallback((newLayout: PanelId[][]) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
     const normalized = normalizePanelLayout(newLayout);
     setLayoutState('custom');
     if (settingsRef.current.syncLayoutAcrossTabs) {
       setPanelLayoutMap(prev => {
         const next: Record<string, PanelId[][]> = {};
-        for (const s of Object.keys(prev)) {
-          next[s] = normalized.map(r => [...r]);
+        for (const g of Object.keys(prev)) {
+          next[g] = normalized.map(r => [...r]);
         }
         return next;
       });
     } else {
-      setPanelLayoutMap(prev => ({ ...prev, [sid]: normalized }));
+      setPanelLayoutMap(prev => ({ ...prev, [gid]: normalized }));
     }
     setSettings(prev => {
       const next: AppSettings = {
@@ -922,20 +1050,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setPanelVisibility = useCallback((panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => {
-    const sid = activeSessionIdRef.current;
-    if (!sid) return;
-    const current = panelVisibilityMapRef.current[sid] ?? { ...initialPanelVisibilityRef.current };
+    const gid = activeGroupIdRef.current;
+    if (!gid) return;
+    const current = panelVisibilityMapRef.current[gid] ?? { ...initialPanelVisibilityRef.current };
     const next = { ...current, [panel]: visible };
     if (settingsRef.current.syncLayoutAcrossTabs) {
       setPanelVisibilityMap(prev => {
         const updated: Record<string, PanelVisibility> = {};
-        for (const s of Object.keys(prev)) {
-          updated[s] = { ...next };
+        for (const g of Object.keys(prev)) {
+          updated[g] = { ...next };
         }
         return updated;
       });
     } else {
-      setPanelVisibilityMap(prev => ({ ...prev, [sid]: next }));
+      setPanelVisibilityMap(prev => ({ ...prev, [gid]: next }));
     }
     setLayoutState('custom');
     setSettings(prev => {
@@ -981,8 +1109,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const vis: PanelVisibility = newVis;
       setPanelVisibilityMap(prev => {
         const next: Record<string, PanelVisibility> = {};
-        for (const sid of Object.keys(prev)) {
-          next[sid] = { ...vis };
+        for (const gid of Object.keys(prev)) {
+          next[gid] = { ...vis };
         }
         return next;
       });
@@ -1026,21 +1154,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const sessionValue = useMemo<SessionContextValue>(() => ({
     cwd,
-    sessions,
-    activeSessionId,
-    addSession,
-    removeSession,
-    setActiveSession,
-    createSession,
-    createSessionAtPath,
-    duplicateSession,
-    destroySession,
-    updateSessionCwd,
-    renameSession,
-    updateSessionAppearance,
-    reorderSessions,
-    recentlyClosedSessions,
-    restoreLastClosedSession,
+    groups,
+    activeGroupId,
+    activeGroup,
+    focusedPaneId,
+    setActiveGroup,
+    setFocusedPane,
+    createGroup,
+    createGroupAtPath,
+    duplicateGroup,
+    destroyGroup,
+    splitPane,
+    closePane,
+    updatePaneCwd,
+    renameGroup,
+    updateGroupAppearance,
+    reorderGroups,
+    recentlyClosedGroups,
+    restoreLastClosedGroup,
     explorerRoot,
     setExplorerRoot,
     explorerOutOfSync,
@@ -1060,8 +1191,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     commitAll,
     undoLastCommit,
     agentContextDirs,
-  }), [cwd, sessions, activeSessionId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedSessions,
-       addSession, removeSession, setActiveSession, createSession, createSessionAtPath, duplicateSession, destroySession, updateSessionCwd, renameSession, updateSessionAppearance, reorderSessions, restoreLastClosedSession, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
+    exitSplit,
+    updateGroupSplitPcts,
+  }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedGroups,
+       setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, closePane, exitSplit, updateGroupSplitPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile]);
 
   return (
     <UIContext.Provider value={uiValue}>

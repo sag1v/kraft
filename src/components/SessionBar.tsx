@@ -32,9 +32,10 @@ function RenameInput({ value, onCommit, onCancel }: {
 
 // ── Single tab ─────────────────────────────────────────────────────────────
 
-function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClose, onRename, onRenameChange, onContextMenu, onDragStart, onDragOver, onDrop }: {
-  session: { id: string; label: string; customLabel?: string; icon?: string; iconColor?: string; cwd: string };
+function SessionTab({ group, isActive, isInSplit, isClosable, dropSide, onActivate, onClose, onRename, onRenameChange, onContextMenu, onDragStart, onDragOver, onDrop }: {
+  group: { id: string; label: string; customLabel?: string; icon?: string; iconColor?: string; panes: { id: string; cwd: string }[] };
   isActive: boolean;
+  isInSplit: boolean;
   isClosable: boolean;
   dropSide: 'left' | 'right' | null;
   onActivate: () => void;
@@ -48,25 +49,26 @@ function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClo
 }) {
   const [renaming, setRenaming] = useState(false);
   const setRenamingWithNotify = (v: boolean) => { setRenaming(v); onRenameChange(v); };
-  const dirName = session.cwd ? session.cwd.split('/').pop() || session.label : session.label;
-  const displayName = session.customLabel || dirName;
+  const cwd = group.panes[0]?.cwd ?? '';
+  const dirName = cwd ? cwd.split('/').pop() || group.label : group.label;
+  const displayName = group.customLabel || dirName;
 
   const dropClass = dropSide ? ` drop-${dropSide}` : '';
 
   return (
     <div
-      className={`session-tab${isActive ? ' active' : ''}${dropClass}`}
+      className={`session-tab${isActive ? ' active' : ''}${isInSplit ? ' session-tab--in-split' : ''}${dropClass}`}
       onClick={onActivate}
       onMouseDown={e => { if (e.button === 1 && isClosable) { e.preventDefault(); onClose(); } }}
       onContextMenu={onContextMenu}
       onDoubleClick={e => { e.stopPropagation(); setRenamingWithNotify(true); }}
-      title={session.cwd || displayName}
+      title={cwd || displayName}
       draggable
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <TerminalTabIcon iconId={session.icon} color={session.iconColor} />
+      <TerminalTabIcon iconId={group.icon} color={group.iconColor} />
       {renaming ? (
         <RenameInput
           value={displayName}
@@ -93,62 +95,76 @@ function SessionTab({ session, isActive, isClosable, dropSide, onActivate, onClo
 
 export function SessionBar({ className }: { className?: string }) {
   const {
-    sessions,
-    activeSessionId,
-    setActiveSession,
-    createSession,
-    duplicateSession,
-    destroySession,
-    renameSession,
-    updateSessionAppearance,
-    reorderSessions,
-    recentlyClosedSessions,
-    restoreLastClosedSession,
+    groups,
+    activeGroupId,
+    activeGroup,
+    setActiveGroup,
+    createGroup,
+    duplicateGroup,
+    destroyGroup,
+    renameGroup,
+    updateGroupAppearance,
+    reorderGroups,
+    recentlyClosedGroups,
+    restoreLastClosedGroup,
+    splitPane,
+    closePane,
   } = useSessionContext();
 
   const [isAnyRenaming, setIsAnyRenaming] = useState(false);
 
-  const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
-  const activeSessionIdRef = useRef(activeSessionId);
-  activeSessionIdRef.current = activeSessionId;
-  const createSessionRef = useRef(createSession);
-  createSessionRef.current = createSession;
-  const recentlyClosedSessionsRef = useRef(recentlyClosedSessions);
-  recentlyClosedSessionsRef.current = recentlyClosedSessions;
-  const restoreLastClosedSessionRef = useRef(restoreLastClosedSession);
-  restoreLastClosedSessionRef.current = restoreLastClosedSession;
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
+  const activeGroupIdRef = useRef(activeGroupId);
+  activeGroupIdRef.current = activeGroupId;
+  const activeGroupRef = useRef(activeGroup);
+  activeGroupRef.current = activeGroup;
+  const createGroupRef = useRef(createGroup);
+  createGroupRef.current = createGroup;
+  const recentlyClosedGroupsRef = useRef(recentlyClosedGroups);
+  recentlyClosedGroupsRef.current = recentlyClosedGroups;
+  const restoreLastClosedGroupRef = useRef(restoreLastClosedGroup);
+  restoreLastClosedGroupRef.current = restoreLastClosedGroup;
+  const splitPaneRef = useRef(splitPane);
+  splitPaneRef.current = splitPane;
+  const closePaneRef = useRef(closePane);
+  closePaneRef.current = closePane;
+
 
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
         e.preventDefault();
-        createSessionRef.current();
+        createGroupRef.current();
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'T') {
         e.preventDefault();
-        if (recentlyClosedSessionsRef.current.length > 0) {
-          restoreLastClosedSessionRef.current();
+        if (recentlyClosedGroupsRef.current.length > 0) {
+          restoreLastClosedGroupRef.current();
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'W') {
         e.preventDefault();
-        const sid = activeSessionIdRef.current;
-        if (sid && sessionsRef.current.length > 1) destroySession(sid);
+        const gid = activeGroupIdRef.current;
+        if (gid && groupsRef.current.length > 1) destroyGroup(gid);
       }
       if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
-        const s = sessionsRef.current;
-        if (s.length < 2) return;
-        const idx = s.findIndex(x => x.id === activeSessionIdRef.current);
-        const next = e.shiftKey ? (idx - 1 + s.length) % s.length : (idx + 1) % s.length;
-        setActiveSession(s[next].id);
+        const gs = groupsRef.current;
+        if (gs.length < 2) return;
+        const idx = gs.findIndex(x => x.id === activeGroupIdRef.current);
+        const next = e.shiftKey ? (idx - 1 + gs.length) % gs.length : (idx + 1) % gs.length;
+        setActiveGroup(gs[next].id);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        splitPaneRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [destroySession, setActiveSession]);
+  }, [destroyGroup, setActiveGroup]);
 
   // Drag to reorder
   const dragIndexRef = useRef<number | null>(null);
@@ -206,12 +222,12 @@ export function SessionBar({ className }: { className?: string }) {
     if (from === null || !indicator) return;
     const effective = getEffectiveDropIndex(from, indicator.index, indicator.side);
     if (effective !== from) {
-      reorderSessions(from, effective);
+      reorderGroups(from, effective);
     }
-  }, [reorderSessions, dropIndicator, getEffectiveDropIndex]);
+  }, [reorderGroups, dropIndicator, getEffectiveDropIndex]);
 
   // Context menu
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; groupId: string } | null>(null);
   const [ctxSub, setCtxSub] = useState<'icon' | 'color' | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
   const [appBarCtxMenu, setAppBarCtxMenu] = useState<{ x: number; y: number } | null>(null);
@@ -221,30 +237,31 @@ export function SessionBar({ className }: { className?: string }) {
   const closeAllCtx = useCallback(() => { setCtxMenu(null); setCtxSub(null); setAppBarCtxMenu(null); }, []);
 
   const handleCloseOthers = useCallback((keepId: string) => {
-    sessionsRef.current.filter(s => s.id !== keepId).forEach(s => destroySession(s.id));
-  }, [destroySession]);
+    groupsRef.current.filter(g => g.id !== keepId).forEach(g => destroyGroup(g.id));
+  }, [destroyGroup]);
 
   return (
     <div className={className ?? 'session-bar'}>
       <div className="session-bar-tabs" onDragLeave={handleDragLeave} onDragEnd={handleDragEnd}>
-        {sessions.map((session, i) => (
+        {groups.map((group, i) => (
           <SessionTab
-            key={session.id}
-            session={session}
-            isActive={session.id === activeSessionId}
-            isClosable={sessions.length > 1}
+            key={group.id}
+            group={group}
+            isActive={group.id === activeGroupId}
+            isInSplit={group.panes.length >= 2}
+            isClosable={groups.length > 1}
             dropSide={dropIndicator?.index === i ? dropIndicator.side : null}
-            onActivate={() => setActiveSession(session.id)}
-            onClose={() => destroySession(session.id)}
-            onRename={label => renameSession(session.id, label)}
+            onActivate={() => setActiveGroup(group.id)}
+            onClose={() => destroyGroup(group.id)}
+            onRename={label => renameGroup(group.id, label)}
             onRenameChange={setIsAnyRenaming}
-            onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, sessionId: session.id }); }}
+            onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, groupId: group.id }); }}
             onDragStart={handleDragStart(i)}
             onDragOver={handleDragOver(i)}
             onDrop={handleDrop(i)}
           />
         ))}
-        <button className="session-bar-add" onClick={createSession} title="New session">+</button>
+        <button className="session-bar-add" onClick={createGroup} title="New session">+</button>
       </div>
       {!isAnyRenaming && (
         <div
@@ -267,13 +284,13 @@ export function SessionBar({ className }: { className?: string }) {
           {ctxSub === 'icon' && (
             <div className="tab-context-picker tab-icon-picker">
               {TERMINAL_ICONS.map(icon => {
-                const s = sessions.find(x => x.id === ctxMenu.sessionId);
+                const g = groups.find(x => x.id === ctxMenu.groupId);
                 return (
                   <button key={icon.id} type="button"
-                    className={`tab-icon-option ${(s?.icon || 'terminal') === icon.id ? 'active' : ''}`}
+                    className={`tab-icon-option ${(g?.icon || 'terminal') === icon.id ? 'active' : ''}`}
                     data-tooltip={icon.label} data-tooltip-pos="bottom"
                     onMouseDown={e => e.preventDefault()}
-                    onClick={() => { updateSessionAppearance(ctxMenu.sessionId, icon.id, undefined); closeCtx(); }}>
+                    onClick={() => { updateGroupAppearance(ctxMenu.groupId, icon.id, undefined); closeCtx(); }}>
                     {icon.svg}
                   </button>
                 );
@@ -284,10 +301,10 @@ export function SessionBar({ className }: { className?: string }) {
             <div className="tab-context-picker tab-color-picker">
               {TAB_COLORS.map(color => (
                 <button key={color.id} type="button"
-                  className={`tab-color-option ${(sessions.find(s => s.id === ctxMenu.sessionId)?.iconColor || '') === color.value ? 'active' : ''}`}
+                  className={`tab-color-option ${(groups.find(g => g.id === ctxMenu.groupId)?.iconColor || '') === color.value ? 'active' : ''}`}
                   data-tooltip={color.label} data-tooltip-pos="bottom"
                   onMouseDown={e => e.preventDefault()}
-                  onClick={() => { updateSessionAppearance(ctxMenu.sessionId, undefined, color.value); closeCtx(); }}>
+                  onClick={() => { updateGroupAppearance(ctxMenu.groupId, undefined, color.value); closeCtx(); }}>
                   {color.value
                     ? <span className="tab-color-swatch" style={{ background: color.value }} />
                     : <span className="tab-color-swatch tab-color-default"><span className="tab-color-reset-line" /></span>}
@@ -298,20 +315,29 @@ export function SessionBar({ className }: { className?: string }) {
           <div className="tab-context-separator" />
           <button type="button" className="tab-context-item" role="menuitem"
             onMouseDown={e => e.preventDefault()}
-            onClick={() => { duplicateSession(ctxMenu.sessionId); closeCtx(); }}>
+            onClick={() => { duplicateGroup(ctxMenu.groupId); closeCtx(); }}>
             Duplicate Tab
           </button>
           <div className="tab-context-separator" />
-          {sessions.length > 1 && (
+          <button type="button" className="tab-context-item" role="menuitem"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => {
+              if (ctxMenu.groupId === activeGroupId) splitPane();
+              closeCtx();
+            }}>
+            Split Terminal
+          </button>
+          <div className="tab-context-separator" />
+          {groups.length > 1 && (
             <>
               <button type="button" className="tab-context-item" role="menuitem"
                 onMouseDown={e => e.preventDefault()}
-                onClick={() => { destroySession(ctxMenu.sessionId); closeCtx(); }}>
+                onClick={() => { destroyGroup(ctxMenu.groupId); closeCtx(); }}>
                 Close
               </button>
               <button type="button" className="tab-context-item" role="menuitem"
                 onMouseDown={e => e.preventDefault()}
-                onClick={() => { handleCloseOthers(ctxMenu.sessionId); closeCtx(); }}>
+                onClick={() => { handleCloseOthers(ctxMenu.groupId); closeCtx(); }}>
                 Close Others
               </button>
             </>
@@ -334,12 +360,12 @@ export function SessionBar({ className }: { className?: string }) {
         <div className="tab-context-menu" style={{ left: appBarCtxMenu.x, top: appBarCtxMenu.y }} role="menu">
           <button type="button" className="tab-context-item" role="menuitem"
             onMouseDown={e => e.preventDefault()}
-            onClick={() => { createSession(); closeAppBarCtx(); }}>
+            onClick={() => { createGroup(); closeAppBarCtx(); }}>
             New Terminal
           </button>
-          <button type="button" className={`tab-context-item${recentlyClosedSessions.length === 0 ? ' disabled' : ''}`} role="menuitem"
+          <button type="button" className={`tab-context-item${recentlyClosedGroups.length === 0 ? ' disabled' : ''}`} role="menuitem"
             onMouseDown={e => e.preventDefault()}
-            onClick={() => { if (recentlyClosedSessions.length > 0) { restoreLastClosedSession(); closeAppBarCtx(); } }}>
+            onClick={() => { if (recentlyClosedGroups.length > 0) { restoreLastClosedGroup(); closeAppBarCtx(); } }}>
             Reopen Closed Session
           </button>
         </div>

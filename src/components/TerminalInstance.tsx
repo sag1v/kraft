@@ -286,21 +286,30 @@ class FilePathLinkProvider implements ILinkProvider {
 interface TerminalInstanceProps {
   sessionId: string;
   isActive: boolean;
+  /** Which pane has keyboard focus (defaults to isActive). */
+  isFocused?: boolean;
   theme: Theme;
   cwd: string;
   workspaceRoots: string[];
   onCwdChange: (sessionId: string, cwd: string) => void;
   onOpenFile: (filePath: string) => void;
+  /** Called on mousedown — lets the parent focus this pane in split mode. */
+  onActivate?: () => void;
+  /** Extra inline styles merged onto the root div (e.g. flex sizing in split view). */
+  style?: React.CSSProperties;
 }
 
 export const TerminalInstance = React.memo(function TerminalInstance({
   sessionId,
   isActive,
+  isFocused,
   theme,
   cwd,
   workspaceRoots,
   onCwdChange,
   onOpenFile,
+  onActivate,
+  style,
 }: TerminalInstanceProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -477,7 +486,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
           const newCwd = await window.api.getTerminalCwd(sessionIdRef.current);
           if (newCwd) reportCwd(newCwd);
         } catch { /* ignore */ }
-      }, 500);
+      }, 150);
     };
 
     const removeDataListener = window.api.onTerminalData((termId, data) => {
@@ -498,6 +507,9 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       window.api.writeTerminal(sessionIdRef.current, data);
       if (data.includes('\r') || data.includes('\n')) {
         cwdCheckArmed = true;
+        // Start the timer immediately on Enter — don't wait for output to arrive first.
+        // This ensures quick cwd detection even when the shell responds slowly.
+        checkCwdSoon();
       }
     });
 
@@ -525,7 +537,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       } catch {
         // ignore
       }
-    }, 5000);
+    }, 2000);
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -556,6 +568,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     }
   }, [theme]);
 
+  // Fit and sync PTY size whenever this pane becomes visible.
   useEffect(() => {
     if (!isActive) return;
     const rafId = requestAnimationFrame(() => {
@@ -567,7 +580,6 @@ export const TerminalInstance = React.memo(function TerminalInstance({
             xtermRef.current.cols,
             xtermRef.current.rows
           );
-          xtermRef.current.focus();
         }
       } catch {
         // ignore
@@ -575,6 +587,16 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     });
     return () => cancelAnimationFrame(rafId);
   }, [isActive]);
+
+  // Focus the xterm textarea when this pane is designated as the active one.
+  // In single-session mode isFocused is undefined, so it falls back to isActive.
+  useEffect(() => {
+    if (!(isFocused ?? isActive)) return;
+    const rafId = requestAnimationFrame(() => {
+      try { xtermRef.current?.focus(); } catch { /* ignore */ }
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [isActive, isFocused]);
 
   useEffect(() => {
     let rafId = 0;
@@ -609,9 +631,10 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
   return (
     <div
-      className={`terminal-instance${isDragOver ? ' terminal-drag-over' : ''}`}
+      className={`terminal-instance${isDragOver ? ' terminal-drag-over' : ''}${isFocused === true ? ' terminal-instance--focused' : ''}`}
       data-session-id={sessionId}
-      style={{ display: isActive ? 'flex' : 'none', flex: 1, height: '100%', position: 'relative' }}
+      style={{ display: isActive ? 'flex' : 'none', flex: 1, height: '100%', position: 'relative', ...style }}
+      onMouseDown={() => onActivate?.()}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}

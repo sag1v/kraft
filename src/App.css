@@ -1712,6 +1712,110 @@ body {
   min-height: 0;
 }
 
+/* ── Split terminal ── */
+
+.terminal-split-divider {
+  width: 4px;
+  min-width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.terminal-split-divider:hover,
+.terminal-split-divider:active {
+  background: var(--accent);
+}
+
+.terminal-panel--split .terminal-instance--focused {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* ── Per-pane close button ── */
+.terminal-pane-wrapper {
+  position: relative;
+}
+
+.terminal-pane-close-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+  pointer-events: none;
+}
+
+.terminal-pane-wrapper:hover .terminal-pane-close-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.terminal-pane-close-btn:hover {
+  color: var(--fg);
+  background: var(--bg-tertiary);
+}
+
+.session-tab--in-split::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 4px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  opacity: 0.8;
+}
+
+.panel-split-btn {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  padding: 0 6px;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.panel-header:hover .panel-split-btn {
+  opacity: 0.6;
+}
+
+.panel-split-btn:hover {
+  opacity: 1 !important;
+  color: var(--fg);
+}
+
+.panel-split-btn--active {
+  opacity: 0.8 !important;
+  color: var(--accent);
+}
+
+.panel-split-btn--active:hover {
+  color: var(--accent) !important;
+  opacity: 1 !important;
+}
+
 .terminal-instance {
   flex-direction: column;
   overflow: hidden;

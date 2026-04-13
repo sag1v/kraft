@@ -24,7 +24,7 @@ function AppInner() {
     setActiveFileTab,
     settings,
   } = useUIContext();
-  const { activeSessionId } = useSessionContext();
+  const { focusedPaneId } = useSessionContext();
   const [gameOpen, setGameOpen] = useState(false);
 
   useEffect(() => {
@@ -41,8 +41,8 @@ function AppInner() {
   openFilesRef.current = openFiles;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const activeSessionIdRef = useRef(activeSessionId);
-  activeSessionIdRef.current = activeSessionId;
+  const focusedPaneIdRef = useRef(focusedPaneId);
+  focusedPaneIdRef.current = focusedPaneId;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -99,7 +99,7 @@ function AppInner() {
         if (!panelVisRef.current.terminal) setPanelVisibility('terminal', true);
         flashPanel('terminal');
         requestAnimationFrame(() => {
-          const sid = activeSessionIdRef.current;
+          const sid = focusedPaneIdRef.current;
           const el = sid
             ? document.querySelector<HTMLElement>(`[data-session-id="${sid}"] .xterm-helper-textarea`)
             : document.querySelector<HTMLElement>('.xterm-helper-textarea');

@@ -44,7 +44,12 @@ export interface AgentContextDir {
   name: string;
 }
 
-export interface TerminalSession {
+export interface TerminalPane {
+  id: string;  // PTY terminal ID
+  cwd: string;
+}
+
+export interface TerminalGroup {
   id: string;
   label: string;
   customLabel?: string;
@@ -54,7 +59,9 @@ export interface TerminalSession {
   autoIcon?: boolean;
   /** True when the color was auto-set by agent detection (not manually chosen). */
   autoIconColor?: boolean;
-  cwd: string;
+  panes: TerminalPane[];
+  focusedPaneId: string;      // which pane has keyboard focus
+  splitPcts: number[];        // flex percentage for each pane (length === panes.length)
 }
 
 export interface UpdateInfo {
