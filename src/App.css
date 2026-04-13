@@ -944,9 +944,7 @@ body {
 }
 
 .tree-row.tree-row-typeahead-focused {
-  background: color-mix(in srgb, var(--accent) 20%, var(--bg-tertiary));
-  outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
-  outline-offset: -1px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .explorer-tree:focus {

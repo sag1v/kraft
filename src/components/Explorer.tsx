@@ -948,6 +948,7 @@ export function Explorer() {
   const typeaheadBufferRef = useRef('');
   const typeaheadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typeaheadFocusedElRef = useRef<Element | null>(null);
+  const mouseClickedRowRef = useRef<HTMLElement | null>(null);
   const contextMenuKeyboardRef = useRef(false);
 
   useEffect(() => {
@@ -1133,7 +1134,10 @@ export function Explorer() {
 
   const handleTreeFocus = useCallback(() => {
     if (!explorerTreeRef.current) return;
+    const clickedTarget = mouseClickedRowRef.current;
+    mouseClickedRowRef.current = null;
     const target =
+      clickedTarget ??
       explorerTreeRef.current.querySelector<HTMLElement>('.tree-row-explorer-active') ??
       explorerTreeRef.current.querySelector<HTMLElement>('.tree-row');
     if (!target) return;
@@ -1141,6 +1145,19 @@ export function Explorer() {
     target.classList.add('tree-row-typeahead-focused');
     typeaheadFocusedElRef.current = target;
     target.scrollIntoView({ block: 'nearest' });
+  }, []);
+
+  const handleTreeMouseDown = useCallback((e: React.MouseEvent) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('.tree-row');
+    if (!row) return;
+    // Store for handleTreeFocus to use when the container is gaining focus for the first time
+    mouseClickedRowRef.current = row;
+    // When the tree already has focus, onFocus won't fire again, so update the highlight directly
+    if (document.activeElement === explorerTreeRef.current) {
+      typeaheadFocusedElRef.current?.classList.remove('tree-row-typeahead-focused');
+      row.classList.add('tree-row-typeahead-focused');
+      typeaheadFocusedElRef.current = row;
+    }
   }, []);
 
   useEffect(() => {
@@ -1489,6 +1506,7 @@ export function Explorer() {
             className="explorer-tree"
             ref={explorerTreeRef}
             tabIndex={0}
+            onMouseDown={handleTreeMouseDown}
             onKeyDown={handleTreeKeyDown}
             onFocus={handleTreeFocus}
             onBlur={clearTypeahead}
