@@ -103,7 +103,7 @@ interface SessionContextValue {
   renameGroup: (id: string, customLabel: string) => void;
   updateGroupAppearance: (id: string, icon?: string, iconColor?: string) => void;
   reorderGroups: (fromIndex: number, toIndex: number) => void;
-  recentlyClosedGroups: TerminalGroup[];
+  recentlyClosedGroups: { group: TerminalGroup; index: number }[];
   restoreLastClosedGroup: () => Promise<void>;
   explorerRoot: string | null;
   setExplorerRoot: (path: string | null) => void;
@@ -200,8 +200,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [gitErrorViewContent, setGitErrorViewContent] = useState<string | null>(null);
   const [errorViewTitle, setErrorViewTitle] = useState<string>('Git Error Output');
   const [agentContextDirsMap, setAgentContextDirsMap] = useState<Record<string, AgentContextDir[]>>({});
-  const [recentlyClosedGroups, setRecentlyClosedGroups] = useState<TerminalGroup[]>([]);
-  const recentlyClosedGroupsRef = useRef<TerminalGroup[]>([]);
+  const [recentlyClosedGroups, setRecentlyClosedGroups] = useState<{ group: TerminalGroup; index: number }[]>([]);
+  const recentlyClosedGroupsRef = useRef<{ group: TerminalGroup; index: number }[]>([]);
   const [crashSession, setCrashSession] = useState<PersistedSession | null>(null);
   const [activeWorkspaceName, setActiveWorkspaceName] = useState<string | null>(null);
   // Forward ref so the startup effect can call loadWorkspace before it's defined
@@ -303,8 +303,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             initialPanelVisibilityRef.current = { ...merged.customPanelVisibility };
           }
           if (Array.isArray((saved as any).recentlyClosedGroups)) {
-            recentlyClosedGroupsRef.current = (saved as any).recentlyClosedGroups;
-            setRecentlyClosedGroups((saved as any).recentlyClosedGroups);
+            // Migrate old format (plain TerminalGroup[]) to new { group, index } format
+            const loaded = ((saved as any).recentlyClosedGroups as any[])
+              .filter((item: any) => item && typeof item === 'object')
+              .map((item: any) =>
+                item.group && typeof item.index === 'number'
+                  ? item
+                  : { group: item, index: 0 }
+              );
+            recentlyClosedGroupsRef.current = loaded;
+            setRecentlyClosedGroups(loaded);
           }
         }
         // Check for crash session or pending workspace (from dock menu)
@@ -402,15 +410,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [theme]);
 
-  // Internal: add a fully-constructed group and make it active
-  const addGroup = useCallback((group: TerminalGroup) => {
+  // Internal: add a fully-constructed group and make it active.
+  // Pass atIndex to insert at a specific position instead of appending.
+  const addGroup = useCallback((group: TerminalGroup, atIndex?: number) => {
     const prevId = activeGroupIdRef.current;
 
     setGroups(prev => {
       if (prev.length === 0) return [...prev, group];
       const usedColors = prev.map(g => g.iconColor).filter(Boolean) as string[];
       const color = group.iconColor || pickRandomColor(usedColors);
-      return [...prev, { ...group, iconColor: color }];
+      const groupWithColor = { ...group, iconColor: color };
+      if (atIndex !== undefined) {
+        const clamped = Math.max(0, Math.min(atIndex, prev.length));
+        const next = [...prev];
+        next.splice(clamped, 0, groupWithColor);
+        return next;
+      }
+      return [...prev, groupWithColor];
     });
 
     setPanelVisibilityMap(prev => ({
@@ -548,7 +564,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         icon: grp.autoIcon ? undefined : grp.icon,
         iconColor: grp.autoIconColor ? undefined : grp.iconColor,
       };
-      const closed = [snapshot, ...recentlyClosedGroupsRef.current].slice(0, 10);
+      const closedAtIndex = groupsRef.current.findIndex(g => g.id === id);
+      const closed = [{ group: snapshot, index: closedAtIndex }, ...recentlyClosedGroupsRef.current].slice(0, 10);
       recentlyClosedGroupsRef.current = closed;
       setRecentlyClosedGroups(closed);
       window.api?.saveSettings({ ...settingsRef.current, recentlyClosedGroups: closed });
@@ -563,7 +580,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const restoreLastClosedGroup = useCallback(async () => {
     const queue = recentlyClosedGroupsRef.current;
     if (queue.length === 0) return;
-    const [toRestore, ...remaining] = queue;
+    const [{ group: toRestore, index: restoreIndex }, ...remaining] = queue;
     recentlyClosedGroupsRef.current = remaining;
     setRecentlyClosedGroups(remaining);
     window.api?.saveSettings({ ...settingsRef.current, recentlyClosedGroups: remaining });
@@ -584,7 +601,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         panes: newPanes,
         focusedPaneId: newPanes[0].id,
         splitPcts: equalSplitPcts(newPanes.length),
-      });
+      }, restoreIndex);
     } catch (err) {
       console.error('Failed to restore terminal:', err);
     }
