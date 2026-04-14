@@ -677,6 +677,33 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle('create-file', async (_event, filePath: string) => {
+    try {
+      await fs.promises.writeFile(filePath, '', { flag: 'wx', encoding: 'utf-8' });
+      return { error: null };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('create-directory', async (_event, dirPath: string) => {
+    try {
+      await fs.promises.mkdir(dirPath);
+      return { error: null };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('trash-path', async (_event, targetPath: string) => {
+    try {
+      await shell.trashItem(targetPath);
+      return { error: null };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('search-files', async (_event, rootDir: string, query: string) => {
     const maxResults = 50;
     const lowerQuery = query.toLowerCase();

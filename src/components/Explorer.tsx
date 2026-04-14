@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { VscFolderOpened, VscFiles, VscSourceControl } from 'react-icons/vsc';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from 'react';
+import { VscFolderOpened, VscFiles, VscSourceControl, VscNewFile, VscNewFolder } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
@@ -49,6 +49,46 @@ function getFolderStatus(
   return null;
 }
 
+interface CreateState {
+  type: 'file' | 'folder';
+  parentPath: string;
+  value: string;
+}
+
+const CreateCtx = createContext<{
+  pending: CreateState | null;
+  onChange: (v: string) => void;
+  onCancel: () => void;
+} | null>(null);
+
+function CreateInputRow({ depth, type, value, onChange, onConfirm, onCancel }: {
+  depth: number;
+  type: 'file' | 'folder';
+  value: string;
+  onChange: (v: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  return (
+    <div className="tree-row" style={{ paddingLeft: `${depth * 16 + 8}px`, gap: 4 }}>
+      <FileIcon name={value || (type === 'folder' ? 'newfolder' : 'newfile')} isDirectory={type === 'folder'} isOpen={false} />
+      <input
+        ref={inputRef}
+        className="tree-create-input"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+          if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        }}
+        onBlur={onCancel}
+      />
+    </div>
+  );
+}
+
 interface TreeNodeProps {
   entry: DirEntry;
   depth: number;
@@ -69,6 +109,7 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, onContextMenu,
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const fileRowRef = useRef<HTMLDivElement>(null);
+  const createCtx = useContext(CreateCtx);
 
   useEffect(() => {
     setIsOpen(false);
@@ -97,6 +138,21 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, onContextMenu,
       cancelled = true;
     };
   }, [entry.isDirectory, entry.path, syncedRevealFile, revealGeneration, children, showHiddenFiles]);
+
+  const isPendingTarget = entry.isDirectory && createCtx?.pending?.parentPath === entry.path;
+
+  useEffect(() => {
+    if (!isPendingTarget) return;
+    setIsOpen(true);
+    if (children !== null) return;
+    let cancelled = false;
+    setLoading(true);
+    window.api.readDirectory(entry.path, undefined, undefined, showHiddenFiles)
+      .then((res) => { if (!cancelled) setChildren(res.entries); })
+      .catch(() => { if (!cancelled) setChildren([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [isPendingTarget, entry.isDirectory, entry.path, children, showHiddenFiles]);
 
   useEffect(() => {
     if (entry.isDirectory || !syncedRevealFile) return;
@@ -183,6 +239,35 @@ function TreeNode({ entry, depth, onFileClick, onFileDoubleClick, onContextMenu,
               revealGeneration={revealGeneration}
             />
           ))}
+          {isPendingTarget && createCtx?.pending && (
+            <CreateInputRow
+              depth={depth + 1}
+              type={createCtx.pending.type}
+              value={createCtx.pending.value}
+              onChange={createCtx.onChange}
+              onConfirm={async () => {
+                const name = createCtx.pending!.value.trim();
+                if (!name) { createCtx.onCancel(); return; }
+                const fullPath = entry.path + '/' + name;
+                if (createCtx.pending!.type === 'file') {
+                  const result = await window.api.createFile(fullPath);
+                  if (!result.error) {
+                    const res = await window.api.readDirectory(entry.path, true, undefined, showHiddenFiles);
+                    setChildren(res.entries);
+                    onFileClick(fullPath, true);
+                  }
+                } else {
+                  const result = await window.api.createDirectory(fullPath);
+                  if (!result.error) {
+                    const res = await window.api.readDirectory(entry.path, true, undefined, showHiddenFiles);
+                    setChildren(res.entries);
+                  }
+                }
+                createCtx.onCancel();
+              }}
+              onCancel={createCtx.onCancel}
+            />
+          )}
         </div>
       )}
     </div>
@@ -936,6 +1021,7 @@ export function Explorer() {
   const [loading, setLoading] = useState(false);
   const [collapseKey, setCollapseKey] = useState(0);
   const [platform, setPlatform] = useState('darwin');
+  const [pendingCreate, setPendingCreate] = useState<CreateState | null>(null);
   const [fileContextMenu, setFileContextMenu] = useState<{ x: number; y: number; path: string; isDirectory: boolean } | null>(null);
   const fileContextMenuRef = useRef<HTMLDivElement>(null);
   const loadedRootRef = useRef<string | null>(null);
@@ -1341,6 +1427,21 @@ export function Explorer() {
   const [rootOpen, setRootOpen] = useState(true);
   const [revealGeneration, setRevealGeneration] = useState(0);
 
+  const startCreate = useCallback((type: 'file' | 'folder', parentPath: string) => {
+    setPendingCreate({ type, parentPath, value: '' });
+    if (parentPath === explorerRoot) {
+      setRootOpen(true);
+    }
+  }, [explorerRoot]);
+
+  const cancelCreate = useCallback(() => {
+    setPendingCreate(null);
+  }, []);
+
+  const changeCreateValue = useCallback((v: string) => {
+    setPendingCreate(prev => prev ? { ...prev, value: v } : null);
+  }, []);
+
   const agentContextPathsKey = useMemo(
     () => agentContextDirs.map(d => d.path).join('\0'),
     [agentContextDirs],
@@ -1431,6 +1532,7 @@ export function Explorer() {
   const rootNameColor = rootFolderStatus ? STATUS_COLOR_VAR[rootFolderStatus] : undefined;
 
   return (
+    <CreateCtx.Provider value={{ pending: pendingCreate, onChange: changeCreateValue, onCancel: cancelCreate }}>
     <>
     <div className="panel explorer-panel">
       <div className="panel-header">
@@ -1446,8 +1548,24 @@ export function Explorer() {
               ↻
             </IconButton>
           )}
-          {activeView === 'files' && (
+          {activeView === 'files' && explorerRoot && (
             <>
+              <IconButton
+                className="explorer-action-btn"
+                tooltip="New File"
+                tooltipPos="bottom"
+                onClick={() => startCreate('file', explorerRoot)}
+              >
+                <VscNewFile size={14} />
+              </IconButton>
+              <IconButton
+                className="explorer-action-btn"
+                tooltip="New Folder"
+                tooltipPos="bottom"
+                onClick={() => startCreate('folder', explorerRoot)}
+              >
+                <VscNewFolder size={14} />
+              </IconButton>
               <IconButton
                 className="explorer-action-btn"
                 tooltip="Collapse all folders"
@@ -1532,7 +1650,7 @@ export function Explorer() {
             {rootOpen && (
               loading ? (
                 <div className="explorer-loading">Loading...</div>
-              ) : entries.length === 0 ? (
+              ) : entries.length === 0 && !pendingCreate ? (
                 <div className="explorer-empty">Empty directory</div>
               ) : (
                 <>
@@ -1556,6 +1674,33 @@ export function Explorer() {
                     <div className="explorer-truncated-row" style={{ paddingLeft: 16 }}>
                       {truncatedInfo.totalCount - entries.length} more items not shown
                     </div>
+                  )}
+                  {pendingCreate?.parentPath === explorerRoot && (
+                    <CreateInputRow
+                      depth={1}
+                      type={pendingCreate.type}
+                      value={pendingCreate.value}
+                      onChange={changeCreateValue}
+                      onConfirm={async () => {
+                        const name = pendingCreate.value.trim();
+                        if (!name) { cancelCreate(); return; }
+                        const fullPath = explorerRoot + '/' + name;
+                        if (pendingCreate.type === 'file') {
+                          const result = await window.api.createFile(fullPath);
+                          if (!result.error) {
+                            await loadFolder(explorerRoot, true);
+                            handleFileClick(fullPath, true);
+                          }
+                        } else {
+                          const result = await window.api.createDirectory(fullPath);
+                          if (!result.error) {
+                            await loadFolder(explorerRoot, true);
+                          }
+                        }
+                        cancelCreate();
+                      }}
+                      onCancel={cancelCreate}
+                    />
                   )}
                 </>
               )
@@ -1604,9 +1749,13 @@ export function Explorer() {
       const relativePath = explorerRoot && fileContextMenu.path.startsWith(explorerRoot + '/')
         ? fileContextMenu.path.slice(explorerRoot.length + 1)
         : null;
+      const newItemParent = fileContextMenu.isDirectory
+        ? fileContextMenu.path
+        : fileContextMenu.path.split('/').slice(0, -1).join('/');
       const menuHeight = 116
         + (relativePath !== null ? 28 : 0)
-        + (fileContextMenu.isDirectory ? 64 : 0);
+        + (fileContextMenu.isDirectory ? 64 : 0)
+        + 65 + 37;
       const x = Math.min(fileContextMenu.x, window.innerWidth - menuWidth - 8);
       const y = Math.min(fileContextMenu.y, window.innerHeight - menuHeight - 8);
       return (
@@ -1630,6 +1779,19 @@ export function Explorer() {
             }
           }}
         >
+          <button
+            className="tab-context-item"
+            onClick={() => { startCreate('file', newItemParent); setFileContextMenu(null); }}
+          >
+            New File
+          </button>
+          <button
+            className="tab-context-item"
+            onClick={() => { startCreate('folder', newItemParent); setFileContextMenu(null); }}
+          >
+            New Folder
+          </button>
+          <div className="tab-context-separator" />
           <button
             className="tab-context-item"
             onClick={() => { window.api.showItemInFolder(fileContextMenu.path); setFileContextMenu(null); }}
@@ -1684,9 +1846,26 @@ export function Explorer() {
               Copy Relative Path
             </button>
           )}
+          <div className="tab-context-separator" />
+          <button
+            className="tab-context-item tab-context-item-danger"
+            onClick={async () => {
+              const name = fileContextMenu.path.split('/').pop() ?? fileContextMenu.path;
+              const label = fileContextMenu.isDirectory ? `folder "${name}"` : `"${name}"`;
+              if (!window.confirm(`Move ${label} to trash?`)) return;
+              setFileContextMenu(null);
+              const result = await window.api.trashPath(fileContextMenu.path);
+              if (!result.error) {
+                handleRefresh();
+              }
+            }}
+          >
+            Delete
+          </button>
         </div>
       );
     })()}
     </>
+    </CreateCtx.Provider>
   );
 }

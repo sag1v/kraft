@@ -798,6 +798,21 @@ body {
   font-style: italic;
 }
 
+.tree-create-input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  padding: 1px 5px;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px;
+  height: 18px;
+  box-sizing: border-box;
+}
+
 .explorer-actions {
   display: flex;
   align-items: center;
@@ -1885,6 +1900,10 @@ body {
 
 .tab-context-item.disabled:hover {
   background: none;
+}
+
+.tab-context-item-danger {
+  color: var(--git-deleted, #f14c4c);
 }
 
 .tab-context-has-sub::after {
