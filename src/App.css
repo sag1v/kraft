@@ -3466,26 +3466,43 @@ body {
   display: block;
 }
 
-.easter-egg-exit {
+.easter-egg-exit-group {
   position: absolute;
   top: 10px;
   right: 10px;
-  width: 24px;
-  height: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+}
+
+.easter-egg-exit {
+  width: 28px;
+  height: 28px;
   border: 1px solid;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
-  opacity: 0.5;
-  transition: opacity 0.15s;
-  z-index: 2;
+  opacity: 0.8;
+  transition: opacity 0.15s, transform 0.1s;
 }
 
 .easter-egg-exit:hover {
   opacity: 1;
+  transform: scale(1.1);
+}
+
+.easter-egg-exit-hint {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
 }
 
 .easter-egg-msg {

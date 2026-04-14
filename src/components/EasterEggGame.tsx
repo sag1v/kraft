@@ -17,6 +17,7 @@ const HEAT_RAMP_S  = 90;   // seconds from heat=0 to heat=1 after the delay
 const JUMP_ARC    = 14;
 const ROT_LEFT    = -Math.PI / 2;
 const ROT_RIGHT   =  Math.PI / 2;
+const REFERENCE_H = 480;  // design height — game scales proportionally to match actual height
 
 // Derived from canvas width at runtime
 function gameLeft(W: number)  { return Math.round((W - GAME_W) / 2); }
@@ -147,8 +148,9 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const scoreElRef   = useRef<HTMLSpanElement>(null);
   const timeElRef    = useRef<HTMLSpanElement>(null);
-  const wRef = useRef(300);
-  const hRef = useRef(480);
+  const wRef    = useRef(300);
+  const hRef    = useRef(480);
+  const scaleRef = useRef(1);
 
   const gsRef = useRef<GS>({
     scroll: 0, speed: BASE_SPEED, side: 'left',
@@ -181,9 +183,12 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     const gs   = gsRef.current;
     const W    = wRef.current;
     const H    = hRef.current;
-    const gx   = gameLeft(W);   // left edge of game area
-    const lCX  = leftCX(W);
-    const rCX  = rightCX(W);
+    const scale = scaleRef.current;
+    const Wg   = W / scale;   // game-space width
+    const Hg   = H / scale;   // game-space height
+    const gx   = gameLeft(Wg);
+    const lCX  = leftCX(Wg);
+    const rCX  = rightCX(Wg);
 
     const corridorL = gx + WALL_W;
     const corridorW = GAME_W - 2 * WALL_W;
@@ -191,17 +196,21 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     // Heat factor: 0 for first HEAT_DELAY_S, then ramps to 1 over HEAT_RAMP_S
     const heat = getHeat(Date.now() - gs.startTime);
 
+    // Scale the entire game world to fill the canvas proportionally
+    ctx.save();
+    ctx.scale(scale, scale);
+
     // Background
     ctx.fillStyle = c.bg;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, Wg, Hg);
 
     // ── Layer 1 (far): slow dot grid across full canvas ──
     {
       const off = gs.scroll * 0.2 % 50;
       ctx.fillStyle   = c.bgTertiary;
       ctx.globalAlpha = 0.55;
-      for (let x = 25; x < W; x += 50) {
-        for (let y = -off; y < H + 50; y += 50) {
+      for (let x = 25; x < Wg; x += 50) {
+        for (let y = -off; y < Hg + 50; y += 50) {
           ctx.fillRect(x, y, 1, 1);
         }
       }
@@ -213,7 +222,7 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
       const off = gs.scroll * 0.5 % 28;
       ctx.fillStyle   = c.bgTertiary;
       ctx.globalAlpha = 0.5;
-      for (let y = -off; y < H + 28; y += 28) {
+      for (let y = -off; y < Hg + 28; y += 28) {
         // left outer zone — two bands at different distances
         if (gx > 16) ctx.fillRect(gx - 16, y, 10, 1);
         if (gx > 40) ctx.fillRect(gx - 40, y,  6, 1);
@@ -226,21 +235,21 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
 
     // Walls
     ctx.fillStyle = c.bgTertiary;
-    ctx.fillRect(gx, 0, WALL_W, H);
-    ctx.fillRect(gx + GAME_W - WALL_W, 0, WALL_W, H);
+    ctx.fillRect(gx, 0, WALL_W, Hg);
+    ctx.fillRect(gx + GAME_W - WALL_W, 0, WALL_W, Hg);
 
     // ── Heat tint overlay on walls ──
     // Use heat² so early opacity barely registers and ramps up naturally
     const heatA = heat * heat;
     if (heatA > 0) {
       const [hr, hg, hb] = hotRgb(heat);
-      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      const grad = ctx.createLinearGradient(0, 0, 0, Hg);
       grad.addColorStop(0,    `rgba(${hr}, ${hg}, ${hb}, ${0.20 * heatA})`);
       grad.addColorStop(0.45, `rgba(${hr}, ${hg}, ${hb}, ${0.55 * heatA})`);
       grad.addColorStop(1,    `rgba(${hr}, ${hg}, ${hb}, ${0.30 * heatA})`);
       ctx.fillStyle = grad;
-      ctx.fillRect(gx, 0, WALL_W, H);
-      ctx.fillRect(gx + GAME_W - WALL_W, 0, WALL_W, H);
+      ctx.fillRect(gx, 0, WALL_W, Hg);
+      ctx.fillRect(gx + GAME_W - WALL_W, 0, WALL_W, Hg);
     }
 
     // ── Motion: scrolling stripes on wall faces (1x) ──
@@ -254,7 +263,7 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
       ctx.fillStyle   = c.fgDim;
       ctx.globalAlpha = 0.35;
     }
-    for (let y = -stripeOffset; y <= H + stripeSpacing; y += stripeSpacing) {
+    for (let y = -stripeOffset; y <= Hg + stripeSpacing; y += stripeSpacing) {
       ctx.fillRect(gx + 3,                    y, WALL_W - 5, 1);
       ctx.fillRect(gx + GAME_W - WALL_W + 2,  y, WALL_W - 5, 1);
     }
@@ -267,8 +276,8 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     } else {
       ctx.fillStyle = c.border;
     }
-    ctx.fillRect(corridorL,          0, 1, H);
-    ctx.fillRect(corridorL + corridorW, 0, 1, H);
+    ctx.fillRect(corridorL,             0, 1, Hg);
+    ctx.fillRect(corridorL + corridorW, 0, 1, Hg);
 
     // Pre-compute player transform once — used by obstacle tracking and draw
     const { cx, cy, rot } = getPlayerTransform(gs, lCX, rCX);
@@ -278,7 +287,7 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     // Obstacles — drawn as spikes (triangles)
     for (const obs of gs.obstacles) {
       const sy  = obs.wy - gs.scroll;
-      if (sy > H + 20 || sy + obs.h < 0) continue;
+      if (sy > Hg + 20 || sy + obs.h < 0) continue;
       const mid = sy + obs.h / 2;
       // base x (attached to wall) and tip x (pointing into corridor)
       const baseX = obs.side === 'left' ? gx + WALL_W       : gx + GAME_W - WALL_W;
@@ -424,12 +433,14 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
       for (let i = 0; i < 4; i++) {
         const sx   = corridorL + (corridorW / 5) * (i + 1);
         const offY = (fgScroll + i * (spc / 4)) % spc;
-        for (let y = -offY; y < H + spc; y += spc) {
+        for (let y = -offY; y < Hg + spc; y += spc) {
           ctx.fillRect(sx, y, 1, 9);
         }
       }
       ctx.globalAlpha = 1;
     }
+
+    ctx.restore();
   }, []);
 
   // ── Resize observer ───────────────────────────────────────────────────────
@@ -441,8 +452,9 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
       const w = container.clientWidth;
       const h = container.clientHeight;
       if (w === wRef.current && h === hRef.current) return;
-      wRef.current  = w;
-      hRef.current  = h;
+      wRef.current   = w;
+      hRef.current   = h;
+      scaleRef.current = h / REFERENCE_H;
       canvas.width  = w;
       canvas.height = h;
       drawFrame();
@@ -460,7 +472,7 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
 
     const tick = () => {
       const gs = gsRef.current;
-      const H  = hRef.current;
+      const Hg = hRef.current / scaleRef.current;  // game-space height
 
       gs.scroll += gs.speed;
       gs.speed   = Math.min(gs.speed + 0.0005, MAX_SPEED);
@@ -474,7 +486,7 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
           gs.jumpT   = 0;
           gs.side    = gs.fromSide === 'left' ? 'right' : 'left';
           // Landing effects
-          const W2       = wRef.current;
+          const W2         = wRef.current / scaleRef.current;  // game-space
           const wallInnerX = gs.side === 'left' ? leftCX(W2) : rightCX(W2);
           emitImpactLines(gs, wallInnerX, gs.side);
         }
@@ -486,14 +498,14 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
 
       // Friction sparks — trickle from wall contact while grounded
       if (!gs.jumping && Math.random() < 0.55) {
-        const W2  = wRef.current;
+        const W2  = wRef.current / scaleRef.current;  // game-space
         const dir   = gs.side === 'left' ? 1 : -1;
         // Emit from wall contact (Bob's back), drift upward + outward
         // Moving opposite to travel direction = friction wake trailing behind him
         const emitX = gs.side === 'left' ? leftCX(W2) : rightCX(W2);
         gs.particles.push({
           x:     emitX + dir * Math.random() * 5,
-          y:     PLAYER_Y + Math.random() * PLAYER_SIZE,
+          y:     PLAYER_Y - Math.random() * PLAYER_SIZE * 0.8,
           vx:    dir * (0.4 + Math.random() * 0.8),
           vy:    -(gs.speed * 0.35 + 0.5 + Math.random() * 1.2),
           life:  0.5 + Math.random() * 0.3,
@@ -511,7 +523,7 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
       gs.particles = gs.particles.filter(p => p.life > 0);
 
       // Spawn obstacles — difficulty ramps via height and gap variance
-      if (gs.scroll + H + 60 > gs.nextSpawn) {
+      if (gs.scroll + Hg + 60 > gs.nextSpawn) {
         const diff  = 1 - Math.exp(-gs.score / 180); // 0→1, plateaus ~score 300
 
         // Obstacles grow taller with difficulty
@@ -557,11 +569,11 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
 
   // ── Input ─────────────────────────────────────────────────────────────────
   const startGame = useCallback(() => {
-    const H = hRef.current;
+    const Hg = hRef.current / scaleRef.current;
     gsRef.current = {
       scroll: 0, speed: BASE_SPEED, side: 'left',
       jumping: false, fromSide: 'left', jumpT: 0,
-      obstacles: [], nextSpawn: H + 200, score: 0,
+      obstacles: [], nextSpawn: Hg + 200, score: 0,
       startTime: Date.now(),
       particles: [], impactLines: [],
     };
@@ -569,11 +581,11 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
   }, []);
 
   const startCountdown = useCallback(() => {
-    const H = hRef.current;
+    const Hg = hRef.current / scaleRef.current;
     gsRef.current = {
       scroll: 0, speed: BASE_SPEED, side: 'left',
       jumping: false, fromSide: 'left', jumpT: 0,
-      obstacles: [], nextSpawn: H + 200, score: 0,
+      obstacles: [], nextSpawn: Hg + 200, score: 0,
       startTime: Date.now(),
       particles: [], impactLines: [],
     };
@@ -623,13 +635,16 @@ export function EasterEggGame({ onClose }: { onClose: () => void }) {
     <div ref={containerRef} className="easter-egg-container" style={{ background: c.bg }}>
       <canvas ref={canvasRef} className="easter-egg-canvas" />
 
-      <button
-        className="easter-egg-exit"
-        style={{ color: c.fgDim, background: c.bgSecondary, borderColor: c.border }}
-        onClick={onClose}
-      >
-        ✕
-      </button>
+      <div className="easter-egg-exit-group">
+        <button
+          className="easter-egg-exit"
+          style={{ color: c.fg, background: c.bgSecondary, borderColor: c.border }}
+          onClick={onClose}
+        >
+          ✕
+        </button>
+        <span className="easter-egg-exit-hint" style={{ color: c.fgMuted }}>esc</span>
+      </div>
 
       {phase === 'playing' && (
         <div className="easter-egg-live-hud" style={{ color: c.fgDim }}>
