@@ -66,22 +66,20 @@ async function createRelease() {
 
 async function uploadPackage(filePath, packageVersion) {
   const fileName = basename(filePath);
-  const fileBuffer = readFileSync(filePath);
-  const sizeMB = (fileBuffer.byteLength / 1024 / 1024).toFixed(1);
+  const sizeMB = (statSync(filePath).size / 1024 / 1024).toFixed(1);
 
-  const url = `/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${packageVersion}/${encodeURIComponent(fileName)}`;
+  const uploadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${packageVersion}/${encodeURIComponent(fileName)}`;
   console.log(`Uploading ${fileName} (${sizeMB} MB) to packages/generic/kraft/${packageVersion}/...`);
 
-  const res = await api(url, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/octet-stream' },
-    body: fileBuffer,
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Failed to upload ${fileName}: ${res.status} ${body}`);
-  }
+  execSync(
+    `curl --retry 3 --retry-delay 5 --retry-connrefused -fS \
+      -X PUT \
+      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+      -H "Content-Type: application/octet-stream" \
+      --upload-file "${filePath}" \
+      "${uploadUrl}"`,
+    { stdio: 'inherit' }
+  );
 
   const downloadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${packageVersion}/${encodeURIComponent(fileName)}`;
   console.log(`Uploaded ${fileName}`);
@@ -130,19 +128,18 @@ function generateLatestMacYml(zipPath, dmgPath) {
 
 async function uploadLatestYml(ymlContent) {
   // Upload to stable "latest" path so electron-updater always checks the same URL
-  const url = `/projects/${PROJECT_NUM_ID}/packages/generic/kraft/latest/latest-mac.yml`;
+  const uploadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/latest/latest-mac.yml`;
   console.log('Uploading latest-mac.yml to packages/generic/kraft/latest/...');
 
-  const res = await api(url, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/octet-stream' },
-    body: Buffer.from(ymlContent, 'utf-8'),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Failed to upload latest-mac.yml: ${res.status} ${body}`);
-  }
+  execSync(
+    `curl --retry 3 --retry-delay 5 --retry-connrefused -fS \
+      -X PUT \
+      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary @- \
+      "${uploadUrl}"`,
+    { input: ymlContent, stdio: ['pipe', 'inherit', 'inherit'] }
+  );
 
   const downloadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/latest/latest-mac.yml`;
   console.log('Uploaded latest-mac.yml');
