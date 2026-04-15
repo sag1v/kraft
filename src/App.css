@@ -37,6 +37,8 @@
   --diff-remove: #ff6b7a;
 
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --editor-font-size: 13px;
+  --explorer-font-size: 13px;
   --topbar-height: 38px;
   --footer-height: 26px;
   --panel-header-height: 30px;
@@ -929,7 +931,7 @@ body {
   gap: 6px;
   padding: 2px 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--explorer-font-size, 13px);
   color: var(--fg);
   transition: background 0.1s;
 }
@@ -2329,6 +2331,18 @@ body {
   color: var(--fg);
   min-width: 40px;
   text-align: center;
+}
+
+.settings-row-indent {
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+  margin-left: 4px;
+}
+
+.settings-row-label-sm {
+  font-size: 12px;
+  color: var(--fg-muted);
+  flex: 1;
 }
 
 /* ── Settings: Theme selector ── */

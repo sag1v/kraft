@@ -14,6 +14,20 @@ import {
 } from '../keybindings';
 import type { FocusShortcutId } from '../keybindings';
 
+const FONT_FAMILIES = [
+  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
+  { value: 'Fira Code', label: 'Fira Code' },
+  { value: 'Cascadia Code', label: 'Cascadia Code' },
+  { value: 'SF Mono', label: 'SF Mono' },
+  { value: 'Menlo', label: 'Menlo' },
+  { value: 'Monaco', label: 'Monaco' },
+  { value: 'Consolas', label: 'Consolas' },
+  { value: 'Courier New', label: 'Courier New' },
+];
+
+const MIN_FONT_SIZE = 10;
+const MAX_FONT_SIZE = 22;
+
 const shells = [
   { value: '', label: 'System Default' },
   { value: '/bin/zsh', label: 'zsh' },
@@ -337,6 +351,7 @@ export function Settings() {
     : themes;
   const showTheme = !isSearching || filteredThemes.length > 0;
   const showZoom = !isSearching || matches('zoom level scale size');
+  const showFont = !isSearching || matches('font family size typeface monospace sync terminal editor explorer');
 
   const filteredLayouts = isSearching
     ? layouts.filter(l => matches(l.label) || matches(l.value) || matches('layout panel arrange'))
@@ -366,7 +381,7 @@ export function Settings() {
   }).filter(g => g.items.length > 0);
   const showKeybindings = !isSearching || filteredShortcuts.length > 0 || matches('preset vscode intellij custom keybinding focus panel');
 
-  const showAppearance = showTheme || showZoom;
+  const showAppearance = showTheme || showZoom || showFont;
 
   const visibleCategories = new Set<SettingsCategory>();
   if (showAppearance) visibleCategories.add('appearance');
@@ -467,6 +482,101 @@ export function Settings() {
                 )}
 
                 {showZoom && <ZoomControl />}
+
+                {showFont && (
+                  <>
+                    <div className="settings-row">
+                      <div className="settings-row-info">
+                        <span className="settings-row-title">Font Family</span>
+                        <span className="settings-row-desc">The monospace font used in the terminal and editor.</span>
+                      </div>
+                      <select
+                        className="settings-select"
+                        value={settings.fontFamily}
+                        onChange={(e) => updateSettings({ fontFamily: e.target.value })}
+                      >
+                        {FONT_FAMILIES.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="settings-row">
+                      <div className="settings-row-info">
+                        <span className="settings-row-title">Font Size</span>
+                        <span className="settings-row-desc">
+                          {settings.syncFontSizes
+                            ? 'One font size applied to all panels.'
+                            : 'Each panel has its own independent font size.'}
+                        </span>
+                      </div>
+                      <button
+                        className="settings-toggle"
+                        data-checked={settings.syncFontSizes}
+                        data-tooltip="Sync font sizes across all panels"
+                        data-tooltip-pos="bottom"
+                        onClick={() => {
+                          if (!settings.syncFontSizes) {
+                            // Re-enable sync: align editor/explorer to terminal size
+                            updateSettings({
+                              syncFontSizes: true,
+                              editorFontSize: settings.fontSize,
+                              explorerFontSize: settings.fontSize,
+                            });
+                          } else {
+                            updateSettings({ syncFontSizes: false });
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {settings.syncFontSizes ? (
+                      <div className="settings-row settings-row-indent">
+                        <span className="settings-row-label-sm">All panels</span>
+                        <div className="settings-font-size">
+                          <button
+                            className="settings-font-btn"
+                            onClick={() => updateSettings({ fontSize: Math.max(MIN_FONT_SIZE, settings.fontSize - 1), editorFontSize: Math.max(MIN_FONT_SIZE, settings.fontSize - 1), explorerFontSize: Math.max(MIN_FONT_SIZE, settings.fontSize - 1) })}
+                          >−</button>
+                          <span className="settings-font-value">{settings.fontSize}px</span>
+                          <button
+                            className="settings-font-btn"
+                            onClick={() => updateSettings({ fontSize: Math.min(MAX_FONT_SIZE, settings.fontSize + 1), editorFontSize: Math.min(MAX_FONT_SIZE, settings.fontSize + 1), explorerFontSize: Math.min(MAX_FONT_SIZE, settings.fontSize + 1) })}
+                          >+</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="settings-row settings-row-indent">
+                          <span className="settings-row-label-sm">Terminal</span>
+                          <div className="settings-font-size">
+                            <button className="settings-font-btn" onClick={() => updateSettings({ fontSize: Math.max(MIN_FONT_SIZE, settings.fontSize - 1) })}>−</button>
+                            <span className="settings-font-value">{settings.fontSize}px</span>
+                            <button className="settings-font-btn" onClick={() => updateSettings({ fontSize: Math.min(MAX_FONT_SIZE, settings.fontSize + 1) })}>+</button>
+                          </div>
+                        </div>
+                        <div className="settings-row settings-row-indent">
+                          <span className="settings-row-label-sm">Editor</span>
+                          <div className="settings-font-size">
+                            <button className="settings-font-btn" onClick={() => updateSettings({ editorFontSize: Math.max(MIN_FONT_SIZE, settings.editorFontSize - 1) })}>−</button>
+                            <span className="settings-font-value">{settings.editorFontSize}px</span>
+                            <button className="settings-font-btn" onClick={() => updateSettings({ editorFontSize: Math.min(MAX_FONT_SIZE, settings.editorFontSize + 1) })}>+</button>
+                          </div>
+                        </div>
+                        <div className="settings-row settings-row-indent">
+                          <span className="settings-row-label-sm">Explorer</span>
+                          <div className="settings-font-size">
+                            <button className="settings-font-btn" onClick={() => updateSettings({ explorerFontSize: Math.max(MIN_FONT_SIZE, settings.explorerFontSize - 1) })}>−</button>
+                            <span className="settings-font-value">{settings.explorerFontSize}px</span>
+                            <button className="settings-font-btn" onClick={() => updateSettings({ explorerFontSize: Math.min(MAX_FONT_SIZE, settings.explorerFontSize + 1) })}>+</button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

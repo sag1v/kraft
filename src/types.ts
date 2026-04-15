@@ -200,6 +200,11 @@ export interface AppSettings {
   keybindingPreset: 'vscode' | 'intellij' | 'custom';
   customKeybindings: Partial<Record<string, string>>;
   defaultWorkspace: string | null;
+  fontFamily: string;
+  fontSize: number;
+  syncFontSizes: boolean;
+  editorFontSize: number;
+  explorerFontSize: number;
 }
 
 export interface ElectronAPI {

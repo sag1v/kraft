@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useUIContext } from '../context/AppContext';
 import {
   EditorView,
   keymap,
@@ -176,7 +177,7 @@ const editorTheme = EditorView.theme({
   '.cm-content': {
     caretColor: 'var(--accent)',
     fontFamily: 'var(--font-mono)',
-    fontSize: '13px',
+    fontSize: 'var(--editor-font-size, 13px)',
     lineHeight: '1.6',
     padding: '8px 0',
   },
@@ -192,7 +193,7 @@ const editorTheme = EditorView.theme({
   '.cm-lineNumbers .cm-gutterElement': {
     padding: '0 4px 0 8px',
     minWidth: '32px',
-    fontSize: '13px',
+    fontSize: 'var(--editor-font-size, 13px)',
     lineHeight: '1.6',
   },
   '.cm-activeLineGutter': {
@@ -237,6 +238,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const editorRef = useRef<EditorView | null>(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    const { settings } = useUIContext();
+    const effectiveEditorFontSize = settings.syncFontSizes ? settings.fontSize : settings.editorFontSize;
 
     useImperativeHandle(ref, () => ({
       navigateConflict: (direction) => {
@@ -318,6 +321,15 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         });
       }
     }, [value]);
+
+    // When the editor font size changes, the CSS variable is updated immediately but
+    // CodeMirror caches its internal geometry (gutter width, line heights). Calling
+    // requestMeasure() forces a synchronous re-measure so gutter and content stay aligned.
+    useEffect(() => {
+      const view = editorRef.current;
+      if (!view) return;
+      view.requestMeasure();
+    }, [effectiveEditorFontSize]);
 
     return <div ref={containerRef} className="viewer-code-editor" />;
   }

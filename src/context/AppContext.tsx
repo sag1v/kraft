@@ -150,6 +150,11 @@ const defaultSettings: AppSettings = {
   keybindingPreset: 'vscode',
   customKeybindings: {},
   defaultWorkspace: null,
+  fontFamily: 'JetBrains Mono',
+  fontSize: 14,
+  syncFontSizes: true,
+  editorFontSize: 13,
+  explorerFontSize: 13,
 };
 
 const defaultGitInfo: GitInfo = { branch: null, repoName: null, isGitRepo: false, aheadCount: 0 };

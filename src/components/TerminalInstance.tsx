@@ -289,6 +289,8 @@ interface TerminalInstanceProps {
   /** Which pane has keyboard focus (defaults to isActive). */
   isFocused?: boolean;
   theme: Theme;
+  fontFamily?: string;
+  fontSize?: number;
   cwd: string;
   workspaceRoots: string[];
   onCwdChange: (sessionId: string, cwd: string) => void;
@@ -304,6 +306,8 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   isActive,
   isFocused,
   theme,
+  fontFamily = 'JetBrains Mono',
+  fontSize = 14,
   cwd,
   workspaceRoots,
   onCwdChange,
@@ -410,8 +414,8 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     let receivedFirstOutput = false;
 
     const xterm = new XTerm({
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace',
-      fontSize: 14,
+      fontFamily: `"${fontFamily}", "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace`,
+      fontSize,
       theme: buildXtermTheme(theme),
       cursorBlink: true,
       cursorStyle: 'underline',
@@ -567,6 +571,16 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       xtermRef.current.options.theme = buildXtermTheme(theme);
     }
   }, [theme]);
+
+  useEffect(() => {
+    if (xtermRef.current) {
+      xtermRef.current.options.fontFamily = `"${fontFamily}", "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace`;
+      xtermRef.current.options.fontSize = fontSize;
+      requestAnimationFrame(() => {
+        try { fitAddonRef.current?.fit(); } catch { /* ignore */ }
+      });
+    }
+  }, [fontFamily, fontSize]);
 
   // Fit and sync PTY size whenever this pane becomes visible.
   useEffect(() => {

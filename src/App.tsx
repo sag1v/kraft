@@ -83,6 +83,15 @@ function AppInner() {
     root.style.setProperty('--git-conflict', c.ansi.red);
   }, [theme]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--font-mono', `"${settings.fontFamily}", "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace`);
+    const editorSize = settings.syncFontSizes ? settings.fontSize : settings.editorFontSize;
+    const explorerSize = settings.syncFontSizes ? settings.fontSize : settings.explorerFontSize;
+    root.style.setProperty('--editor-font-size', `${editorSize}px`);
+    root.style.setProperty('--explorer-font-size', `${explorerSize}px`);
+  }, [settings.fontFamily, settings.fontSize, settings.syncFontSizes, settings.editorFontSize, settings.explorerFontSize]);
+
   const flashPanel = useCallback((panelId: string) => {
     const panel = document.querySelector<HTMLElement>(`[data-panel-id="${panelId}"]`);
     if (!panel) return;

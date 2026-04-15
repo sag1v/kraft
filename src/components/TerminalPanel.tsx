@@ -15,7 +15,7 @@ function SplitIcon() {
 }
 
 export function TerminalPanel() {
-  const { theme, setPanelVisibility, setOpenFilePath } = useUIContext();
+  const { theme, settings, setPanelVisibility, setOpenFilePath } = useUIContext();
   const {
     groups,
     activeGroup,
@@ -158,6 +158,8 @@ export function TerminalPanel() {
                   isActive={isActiveGrp}
                   isFocused={isFocused}
                   theme={theme}
+                  fontFamily={settings.fontFamily}
+                  fontSize={settings.fontSize}
                   cwd={pane.cwd}
                   workspaceRoots={workspaceRoots}
                   onCwdChange={handleCwdChange}
