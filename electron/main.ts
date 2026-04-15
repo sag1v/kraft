@@ -457,9 +457,21 @@ function setupMenu() {
           click: () => applyZoomDelta(0.5),
         },
         {
+          label: 'Zoom In (Numpad)',
+          accelerator: 'CommandOrControl+numadd',
+          click: () => applyZoomDelta(0.5),
+          visible: false,
+        },
+        {
           label: 'Zoom Out',
           accelerator: 'CommandOrControl+-',
           click: () => applyZoomDelta(-0.5),
+        },
+        {
+          label: 'Zoom Out (Numpad)',
+          accelerator: 'CommandOrControl+numsub',
+          click: () => applyZoomDelta(-0.5),
+          visible: false,
         },
         {
           label: 'Reset Zoom',
