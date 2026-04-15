@@ -224,6 +224,7 @@ const scrollPositions = new Map<string, number>();
 
 export interface CodeEditorHandle {
   navigateConflict: (direction: 'next' | 'prev') => void;
+  scrollToLine: (lineNumber: number) => void;
 }
 
 interface CodeEditorProps {
@@ -244,6 +245,17 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     useImperativeHandle(ref, () => ({
       navigateConflict: (direction) => {
         if (editorRef.current) navigateConflict(editorRef.current, direction);
+      },
+      scrollToLine: (lineNumber: number) => {
+        const view = editorRef.current;
+        if (!view) return;
+        const clampedLine = Math.max(1, Math.min(lineNumber, view.state.doc.lines));
+        const line = view.state.doc.line(clampedLine);
+        view.dispatch({
+          selection: { anchor: line.from },
+          effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+        });
+        view.focus();
       },
     }));
 

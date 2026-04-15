@@ -802,6 +802,203 @@ function setupIPC() {
     return results;
   });
 
+  ipcMain.handle('search-content', async (_event, rootDir: string, query: string, options: {
+    caseSensitive?: boolean;
+    wholeWord?: boolean;
+    useRegex?: boolean;
+    includePattern?: string;
+    excludePattern?: string;
+  } = {}) => {
+    if (!query || !query.trim()) return [];
+
+    const MAX_FILES = 100;
+    const MAX_MATCHES_PER_FILE = 50;
+    const MAX_FILE_SIZE = 512 * 1024; // 512 KB
+
+    const { caseSensitive = false, wholeWord = false, useRegex = false, includePattern, excludePattern } = options;
+
+    let lineRegex: RegExp;
+    try {
+      let pattern = useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (wholeWord) pattern = `\\b${pattern}\\b`;
+      lineRegex = new RegExp(pattern, caseSensitive ? 'g' : 'gi');
+    } catch {
+      return [];
+    }
+
+    interface MatchEntry {
+      lineNumber: number;
+      lineContent: string;
+      matchStart: number;
+      matchEnd: number;
+    }
+
+    interface FileResult {
+      path: string;
+      matches: MatchEntry[];
+    }
+
+    function getFirstMatchPos(content: string): { start: number; end: number } | null {
+      lineRegex.lastIndex = 0;
+      const m = lineRegex.exec(content);
+      return m ? { start: m.index, end: m.index + m[0].length } : null;
+    }
+
+    const fileMap = new Map<string, FileResult>();
+
+    function processGrepOutput(stdout: string, isAbsolute: boolean): void {
+      for (const line of stdout.split('\n')) {
+        if (!line) continue;
+
+        const firstColon = line.indexOf(':');
+        if (firstColon === -1) continue;
+        const secondColon = line.indexOf(':', firstColon + 1);
+        if (secondColon === -1) continue;
+
+        const filePart = line.slice(0, firstColon);
+        const lineNumStr = line.slice(firstColon + 1, secondColon);
+        const content = line.slice(secondColon + 1);
+        const lineNum = parseInt(lineNumStr, 10);
+
+        if (isNaN(lineNum) || lineNum < 1) continue;
+
+        const filePath = isAbsolute ? filePart : path.join(rootDir, filePart);
+
+        if (!fileMap.has(filePath)) {
+          if (fileMap.size >= MAX_FILES) continue;
+          fileMap.set(filePath, { path: filePath, matches: [] });
+        }
+
+        const fileResult = fileMap.get(filePath)!;
+        if (fileResult.matches.length >= MAX_MATCHES_PER_FILE) continue;
+
+        const matchPos = getFirstMatchPos(content);
+        if (matchPos) {
+          fileResult.matches.push({
+            lineNumber: lineNum,
+            lineContent: content.trimEnd(),
+            matchStart: matchPos.start,
+            matchEnd: matchPos.end,
+          });
+        }
+      }
+    }
+
+    // Try git grep first (respects .gitignore, fast for large repos)
+    let didUseGitGrep = false;
+    try {
+      const gitArgs: string[] = ['grep', '-n', '--untracked'];
+      if (!caseSensitive) gitArgs.push('-i');
+      if (wholeWord) gitArgs.push('-w');
+      if (useRegex) gitArgs.push('-E'); else gitArgs.push('-F');
+
+      if (includePattern) {
+        gitArgs.push('--', query, `*${includePattern}`);
+      } else {
+        gitArgs.push('--', query);
+      }
+
+      const result = await shellExec('git', gitArgs, {
+        cwd: rootDir,
+        encoding: 'utf-8',
+        timeout: 15000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const stdout = result.stdout as unknown as string;
+
+      if (stdout) processGrepOutput(stdout, false);
+      didUseGitGrep = true;
+    } catch (e: any) {
+      // exit code 1 = no matches (git grep convention, not an error)
+      if (e?.code === 1) {
+        didUseGitGrep = true;
+      }
+      // Otherwise: not a git repo or git unavailable — fall through
+    }
+
+    // Fallback: Node.js directory traversal
+    if (!didUseGitGrep) {
+      const SKIP_DIRS = new Set([
+        'node_modules', '.git', '__pycache__', '.next', '.nuxt',
+        'coverage', '.cache', '.turbo', 'dist', 'build', '.svn', '.hg',
+      ]);
+      const BINARY_EXTS = new Set([
+        '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp',
+        '.mp4', '.mp3', '.wav', '.pdf', '.zip', '.tar', '.gz', '.7z',
+        '.exe', '.dylib', '.so', '.dll', '.wasm',
+        '.ttf', '.otf', '.woff', '.woff2', '.eot',
+        '.class', '.pyc', '.pyo', '.o', '.a',
+      ]);
+
+      const inclRe = includePattern
+        ? new RegExp('^' + includePattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
+        : null;
+      const exclRe = excludePattern
+        ? new RegExp('^' + excludePattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
+        : null;
+
+      let queue = [rootDir];
+      while (queue.length > 0 && fileMap.size < MAX_FILES) {
+        const nextQueue: string[] = [];
+        for (const dir of queue) {
+          if (fileMap.size >= MAX_FILES) break;
+          let dirEntries: fs.Dirent[];
+          try {
+            dirEntries = await fs.promises.readdir(dir, { withFileTypes: true });
+          } catch {
+            continue;
+          }
+
+          for (const entry of dirEntries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+                nextQueue.push(fullPath);
+              }
+            } else if (entry.isFile()) {
+              const ext = path.extname(entry.name).toLowerCase();
+              if (BINARY_EXTS.has(ext)) continue;
+              if (inclRe && !inclRe.test(entry.name)) continue;
+              if (exclRe && exclRe.test(entry.name)) continue;
+
+              try {
+                const stat = await fs.promises.stat(fullPath);
+                if (stat.size > MAX_FILE_SIZE) continue;
+
+                const content = await fs.promises.readFile(fullPath, 'utf-8');
+                if (content.includes('\0')) continue; // binary file guard
+
+                const lines = content.split('\n');
+                const fileMatches: MatchEntry[] = [];
+
+                for (let i = 0; i < lines.length && fileMatches.length < MAX_MATCHES_PER_FILE; i++) {
+                  const matchPos = getFirstMatchPos(lines[i]);
+                  if (matchPos) {
+                    fileMatches.push({
+                      lineNumber: i + 1,
+                      lineContent: lines[i].trimEnd(),
+                      matchStart: matchPos.start,
+                      matchEnd: matchPos.end,
+                    });
+                  }
+                }
+
+                if (fileMatches.length > 0 && fileMap.size < MAX_FILES) {
+                  fileMap.set(fullPath, { path: fullPath, matches: fileMatches });
+                }
+              } catch {
+                // unreadable file, skip
+              }
+            }
+          }
+        }
+        queue = nextQueue;
+      }
+    }
+
+    return Array.from(fileMap.values());
+  });
+
   ipcMain.handle('get-git-info', async (_event, dirPath: string) => {
     try {
       const [branchResult, rootResult] = await Promise.all([

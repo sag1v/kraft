@@ -41,6 +41,14 @@ const api = {
   createDirectory: (dirPath: string): Promise<{ error: string | null }> => ipcRenderer.invoke('create-directory', dirPath),
   trashPath: (targetPath: string): Promise<{ error: string | null }> => ipcRenderer.invoke('trash-path', targetPath),
   searchFiles: (rootDir: string, query: string): Promise<Array<{ path: string; isDirectory: boolean }>> => ipcRenderer.invoke('search-files', rootDir, query),
+  searchContent: (rootDir: string, query: string, options?: {
+    caseSensitive?: boolean;
+    wholeWord?: boolean;
+    useRegex?: boolean;
+    includePattern?: string;
+    excludePattern?: string;
+  }): Promise<Array<{ path: string; matches: Array<{ lineNumber: number; lineContent: string; matchStart: number; matchEnd: number }> }>> =>
+    ipcRenderer.invoke('search-content', rootDir, query, options ?? {}),
   getGitInfo: (dirPath: string): Promise<GitInfo> => ipcRenderer.invoke('get-git-info', dirPath),
   getGitStatus: (dirPath: string): Promise<{ files: Record<string, string>; staged: Record<string, string>; repoRoot: string | null; ignored: string[] }> =>
     ipcRenderer.invoke('get-git-status', dirPath),

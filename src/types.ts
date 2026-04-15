@@ -27,6 +27,18 @@ export interface SearchFileResult {
   isDirectory: boolean;
 }
 
+export interface ContentSearchMatch {
+  lineNumber: number;
+  lineContent: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+export interface ContentSearchFileResult {
+  path: string;
+  matches: ContentSearchMatch[];
+}
+
 export interface GitInfo {
   branch: string | null;
   repoName: string | null;
@@ -217,6 +229,13 @@ export interface ElectronAPI {
   createDirectory: (dirPath: string) => Promise<{ error: string | null }>;
   trashPath: (targetPath: string) => Promise<{ error: string | null }>;
   searchFiles: (rootDir: string, query: string) => Promise<SearchFileResult[]>;
+  searchContent: (rootDir: string, query: string, options?: {
+    caseSensitive?: boolean;
+    wholeWord?: boolean;
+    useRegex?: boolean;
+    includePattern?: string;
+    excludePattern?: string;
+  }) => Promise<ContentSearchFileResult[]>;
   getGitInfo: (dirPath: string) => Promise<GitInfo>;
   getGitStatus: (dirPath: string) => Promise<GitStatusResult>;
   getGitDiff: (filePath: string, repoRoot: string) => Promise<GitDiffResult>;

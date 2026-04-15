@@ -16,6 +16,7 @@ export function EditorPanel() {
     closeOtherFileTabs,
     closeAllFileTabs,
     setActiveFileTab,
+    setOpenFilePath,
     reorderFileTabs,
     homeDir,
     setPanelVisibility,
@@ -31,6 +32,9 @@ export function EditorPanel() {
   const [loading, setLoading] = useState(false);
   const [fileVersion, setFileVersion] = useState(0);
   const fetchedVersionRef = useRef<Record<string, number>>({});
+  const pendingNavLineRef = useRef<number | null>(null);
+  const openFilePathRef = useRef(openFilePath);
+  openFilePathRef.current = openFilePath;
 
   // Search state — used by DiffView only; CodeEditor handles its own search natively
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +101,40 @@ export function EditorPanel() {
       unsubscribe();
     };
   }, [openFilePath]);
+
+  // Handle navigation requests from search panel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { path: targetPath, line } = (e as CustomEvent<{ path: string; line: number }>).detail;
+      pendingNavLineRef.current = line;
+      setPanelVisibility('editor', true);
+      if (openFilePathRef.current === targetPath) {
+        // File already open — scroll immediately after render
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            codeEditorRef.current?.scrollToLine(line);
+            pendingNavLineRef.current = null;
+          });
+        });
+      } else {
+        setOpenFilePath(targetPath);
+      }
+    };
+    window.addEventListener('kraft:open-file-at-line', handler);
+    return () => window.removeEventListener('kraft:open-file-at-line', handler);
+  }, [setOpenFilePath, setPanelVisibility]);
+
+  // Scroll to pending line once file finishes loading
+  useEffect(() => {
+    if (loading || !openFilePath || pendingNavLineRef.current === null) return;
+    const line = pendingNavLineRef.current;
+    pendingNavLineRef.current = null;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        codeEditorRef.current?.scrollToLine(line);
+      });
+    });
+  }, [loading, openFilePath]);
 
   const isDiffMode = !!(openFilePath && diffFilePath === openFilePath);
   const isConflictFile = !!(openFilePath && gitStatus[openFilePath] === 'conflict');

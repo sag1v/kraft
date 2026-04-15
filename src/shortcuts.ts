@@ -17,6 +17,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'open-settings', category: 'General', label: 'Open Settings', keys: mod(',') },
   { id: 'command-palette', category: 'General', label: 'Command Palette', keys: mod('Shift+P') },
   { id: 'quick-open', category: 'General', label: 'Quick Open File', keys: mod('P') },
+  { id: 'search-across-files', category: 'General', label: 'Search Across Files', keys: mod('Shift+F') },
   { id: 'reload-window', category: 'General', label: 'Reload Window', keys: mod('Shift+R') },
 
   // View

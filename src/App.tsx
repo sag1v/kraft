@@ -200,6 +200,13 @@ function AppInner() {
         return;
       }
 
+      if (e.shiftKey && (e.key === 'f' || e.key === 'F') && !e.altKey) {
+        e.preventDefault();
+        if (!panelVisRef.current.explorer) setPanelVisibility('explorer', true);
+        window.dispatchEvent(new CustomEvent('kraft:open-search'));
+        return;
+      }
+
       if (e.shiftKey && (e.key === 'r' || e.key === 'R') && !e.altKey) {
         e.preventDefault();
         window.api?.reloadWindow?.();

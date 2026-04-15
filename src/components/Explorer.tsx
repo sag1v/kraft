@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from 'react';
-import { VscFolderOpened, VscFiles, VscSourceControl, VscNewFile, VscNewFolder } from 'react-icons/vsc';
+import { VscFolderOpened, VscFiles, VscSourceControl, VscNewFile, VscNewFolder, VscSearch } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton } from './IconButton';
 import { shortenPath, normPath, isPathWithinRoot } from '../utils';
-import type { DirEntry, GitFileStatus, AgentContextDir, DirReadResult } from '../types';
+import type { DirEntry, GitFileStatus, AgentContextDir, DirReadResult, ContentSearchFileResult } from '../types';
 import { tooltipWithShortcut } from '../shortcuts';
 
 const MAX_DIR_ENTRIES = 500;
 
-type ExplorerView = 'files' | 'source-control';
+type ExplorerView = 'files' | 'source-control' | 'search';
 
 const STATUS_COLOR_VAR: Record<string, string> = {
   modified: 'var(--git-modified)',
@@ -977,6 +977,239 @@ interface TreeCache {
   totalCount?: number;
 }
 
+function SearchView({ explorerRoot }: { explorerRoot: string | null }) {
+  const { setOpenFilePath, setPanelVisibility } = useUIContext();
+  const [query, setQuery] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [useRegex, setUseRegex] = useState(false);
+  const [includePattern, setIncludePattern] = useState('');
+  const [excludePattern, setExcludePattern] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [results, setResults] = useState<ContentSearchFileResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchedQuery, setSearchedQuery] = useState('');
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchCounterRef = useRef(0);
+
+  // Focus input when this view becomes active (kraft:open-search)
+  useEffect(() => {
+    const handler = () => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener('kraft:open-search', handler);
+    return () => window.removeEventListener('kraft:open-search', handler);
+  }, []);
+
+  // Auto-focus on first mount
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
+  const doSearch = useCallback(async (q: string) => {
+    if (!q.trim() || !explorerRoot) {
+      setResults([]);
+      setSearchedQuery('');
+      return;
+    }
+    const id = ++searchCounterRef.current;
+    setSearching(true);
+    try {
+      const res = await window.api.searchContent(explorerRoot, q, {
+        caseSensitive,
+        wholeWord,
+        useRegex,
+        includePattern: includePattern.trim() || undefined,
+        excludePattern: excludePattern.trim() || undefined,
+      });
+      if (searchCounterRef.current !== id) return;
+      setResults(res);
+      setSearchedQuery(q);
+    } catch {
+      if (searchCounterRef.current !== id) return;
+      setResults([]);
+    } finally {
+      if (searchCounterRef.current === id) setSearching(false);
+    }
+  }, [explorerRoot, caseSensitive, wholeWord, useRegex, includePattern, excludePattern]);
+
+  const scheduleSearch = useCallback((q: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSearch(q), 250);
+  }, [doSearch]);
+
+  // Re-run search when options change
+  useEffect(() => {
+    if (query.trim()) scheduleSearch(query);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseSensitive, wholeWord, useRegex, includePattern, excludePattern]);
+
+  const handleOpenMatch = useCallback((filePath: string, lineNumber: number) => {
+    setOpenFilePath(filePath);
+    setPanelVisibility('editor', true);
+    window.dispatchEvent(new CustomEvent('kraft:open-file-at-line', { detail: { path: filePath, line: lineNumber } }));
+  }, [setOpenFilePath, setPanelVisibility]);
+
+  function getBasename(p: string) {
+    return p.split('/').filter(Boolean).pop() ?? p;
+  }
+
+  function getRelativePath(base: string, full: string) {
+    const b = base.endsWith('/') ? base : base + '/';
+    return full.startsWith(b) ? full.slice(b.length) : full;
+  }
+
+  const totalMatches = results.reduce((sum, f) => sum + f.matches.length, 0);
+
+  return (
+    <div className="search-view">
+      <div className="search-input-row">
+        <input
+          ref={searchInputRef}
+          className="search-input"
+          placeholder="Search"
+          value={query}
+          spellCheck={false}
+          onChange={e => {
+            setQuery(e.target.value);
+            scheduleSearch(e.target.value);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              if (debounceRef.current) clearTimeout(debounceRef.current);
+              doSearch(query);
+            }
+            if (e.key === 'Escape') {
+              setQuery('');
+              setResults([]);
+              setSearchedQuery('');
+            }
+          }}
+        />
+        <div className="search-options-row">
+          <button
+            className={`search-option-btn${caseSensitive ? ' search-option-btn-active' : ''}`}
+            title="Match Case"
+            onClick={() => setCaseSensitive(v => !v)}
+          >Aa</button>
+          <button
+            className={`search-option-btn${wholeWord ? ' search-option-btn-active' : ''}`}
+            title="Match Whole Word"
+            onClick={() => setWholeWord(v => !v)}
+          >ab</button>
+          <button
+            className={`search-option-btn${useRegex ? ' search-option-btn-active' : ''}`}
+            title="Use Regular Expression"
+            onClick={() => setUseRegex(v => !v)}
+          >.*</button>
+        </div>
+      </div>
+
+      <div className="search-filters-section">
+        <button
+          className="search-filters-toggle"
+          onClick={() => setShowFilters(v => !v)}
+        >
+          <span className="search-filters-chevron">{showFilters ? '▾' : '▸'}</span>
+          <span>Files to include/exclude</span>
+        </button>
+        {showFilters && (
+          <div className="search-filter-inputs">
+            <input
+              className="search-filter-input"
+              placeholder="Include (e.g. *.ts)"
+              value={includePattern}
+              spellCheck={false}
+              onChange={e => setIncludePattern(e.target.value)}
+            />
+            <input
+              className="search-filter-input"
+              placeholder="Exclude (e.g. *.test.ts)"
+              value={excludePattern}
+              spellCheck={false}
+              onChange={e => setExcludePattern(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
+      {!explorerRoot && (
+        <div className="search-empty-state">Open a folder to search</div>
+      )}
+
+      {searching && (
+        <div className="search-loading-row">
+          <span className="search-loading-dot" />
+          <span className="search-loading-dot" />
+          <span className="search-loading-dot" />
+        </div>
+      )}
+
+      {!searching && searchedQuery && results.length === 0 && (
+        <div className="search-empty-state">No results for "{searchedQuery}"</div>
+      )}
+
+      {!searching && results.length > 0 && (
+        <div className="search-results">
+          <div className="search-summary">
+            {totalMatches} result{totalMatches !== 1 ? 's' : ''} in {results.length} file{results.length !== 1 ? 's' : ''}
+          </div>
+          {results.map(fileResult => {
+            const isCollapsed = collapsedFiles.has(fileResult.path);
+            const fileName = getBasename(fileResult.path);
+            const relPath = explorerRoot ? getRelativePath(explorerRoot, fileResult.path) : fileResult.path;
+            const dirPart = relPath.length > fileName.length
+              ? relPath.slice(0, relPath.length - fileName.length - 1)
+              : '';
+            return (
+              <div key={fileResult.path} className="search-file-group">
+                <div
+                  className="search-file-header"
+                  onClick={() => setCollapsedFiles(prev => {
+                    const next = new Set(prev);
+                    if (next.has(fileResult.path)) next.delete(fileResult.path);
+                    else next.add(fileResult.path);
+                    return next;
+                  })}
+                >
+                  <span className="search-file-chevron">{isCollapsed ? '▸' : '▾'}</span>
+                  <FileIcon name={fileName} isDirectory={false} isOpen={false} />
+                  <span className="search-file-name">{fileName}</span>
+                  {dirPart && <span className="search-file-dir">{dirPart}</span>}
+                  <span className="search-file-count">{fileResult.matches.length}</span>
+                </div>
+                {!isCollapsed && (
+                  <div className="search-file-matches">
+                    {fileResult.matches.map((match, i) => (
+                      <div
+                        key={i}
+                        className="search-match-row"
+                        onClick={() => handleOpenMatch(fileResult.path, match.lineNumber)}
+                      >
+                        <span className="search-match-linenum">{match.lineNumber}</span>
+                        <span className="search-match-content">
+                          {match.lineContent.slice(0, match.matchStart)}
+                          <mark className="search-match-highlight">
+                            {match.lineContent.slice(match.matchStart, match.matchEnd)}
+                          </mark>
+                          {match.lineContent.slice(match.matchEnd)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Explorer() {
   const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath, settings, panelVisibility } = useUIContext();
   const {
@@ -1016,6 +1249,14 @@ export function Explorer() {
       setActiveViewMap(prev => ({ ...prev, [activeGroupId]: view }));
     }
   }, [activeGroupId, syncLayout]);
+
+  // Switch to search view when Cmd+Shift+F fires
+  useEffect(() => {
+    const handler = () => setActiveView('search');
+    window.addEventListener('kraft:open-search', handler);
+    return () => window.removeEventListener('kraft:open-search', handler);
+  }, [setActiveView]);
+
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [truncatedInfo, setTruncatedInfo] = useState<{ truncated: boolean; totalCount: number }>({ truncated: false, totalCount: 0 });
   const [loading, setLoading] = useState(false);
@@ -1607,6 +1848,14 @@ export function Explorer() {
           <VscFiles size={16} />
         </button>
         <button
+          className={`explorer-view-tab ${activeView === 'search' ? 'explorer-view-tab-active' : ''}`}
+          onClick={() => setActiveView('search')}
+          data-tooltip="Search"
+          data-tooltip-pos="bottom"
+        >
+          <VscSearch size={16} />
+        </button>
+        <button
           className={`explorer-view-tab ${activeView === 'source-control' ? 'explorer-view-tab-active' : ''}`}
           onClick={() => setActiveView('source-control')}
           data-tooltip="Source Control"
@@ -1721,6 +1970,8 @@ export function Explorer() {
               />
             ))}
           </div>
+        ) : activeView === 'search' ? (
+          <SearchView explorerRoot={explorerRoot} />
         ) : (
           <SourceControlView
             gitStatus={gitStatus}
