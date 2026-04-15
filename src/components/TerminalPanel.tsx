@@ -54,7 +54,7 @@ export function TerminalPanel() {
 
   const handleOpenFile = useCallback((filePath: string) => {
     setOpenFilePath(filePath);
-    setPanelVisibility('viewer', true);
+    setPanelVisibility('editor', true);
   }, [setOpenFilePath, setPanelVisibility]);
 
   // ── Split divider drag ────────────────────────────────────────────────────

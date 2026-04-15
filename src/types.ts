@@ -145,9 +145,9 @@ export type LayoutPreset =
   | 'really'
   | 'custom';
 
-export type PanelId = 'explorer' | 'viewer' | 'terminal';
+export type PanelId = 'explorer' | 'editor' | 'terminal';
 
-export type PanelVisibility = { explorer: boolean; viewer: boolean; terminal: boolean };
+export type PanelVisibility = { explorer: boolean; editor: boolean; terminal: boolean };
 
 export interface PersistedPane {
   cwd: string;

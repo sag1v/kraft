@@ -95,11 +95,11 @@ export function CommandPalette() {
         run: () => setPanelVisibility('explorer', !panelVisibility.explorer),
       },
       {
-        id: 'toggle-viewer',
+        id: 'toggle-editor',
         category: 'View',
-        label: 'Toggle Viewer',
-        shortcut: shortcutLabel('toggle-viewer'),
-        run: () => setPanelVisibility('viewer', !panelVisibility.viewer),
+        label: 'Toggle Editor',
+        shortcut: shortcutLabel('toggle-editor'),
+        run: () => setPanelVisibility('editor', !panelVisibility.editor),
       },
       {
         id: 'toggle-terminal',

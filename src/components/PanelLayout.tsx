@@ -3,11 +3,11 @@ import { VscFolderOpened } from 'react-icons/vsc';
 import { useUIContext } from '../context/AppContext';
 import type { PanelId } from '../types';
 import { Explorer } from './Explorer';
-import { Viewer } from './Viewer';
+import { EditorPanel } from './EditorPanel';
 import { TerminalPanel } from './TerminalPanel';
 
 const MemoExplorer = React.memo(Explorer);
-const MemoViewer = React.memo(Viewer);
+const MemoEditorPanel = React.memo(EditorPanel);
 const MemoTerminalPanel = React.memo(TerminalPanel);
 
 type DropPosition = 'left' | 'right' | 'top' | 'bottom';
@@ -490,26 +490,26 @@ export function PanelLayout() {
   }, [panelLayout]);
 
   const layoutAllowsExplorer = layout !== 'get-shit-done';
-  const layoutAllowsViewer = layout !== 'get-shit-done';
+  const layoutAllowsEditor = layout !== 'get-shit-done';
 
   const showExplorer = layoutAllowsExplorer && panelVisibility.explorer;
-  const showViewer = layoutAllowsViewer && panelVisibility.viewer;
+  const showEditorPanel = layoutAllowsEditor && panelVisibility.editor;
   const showTerminal = panelVisibility.terminal;
 
   const isPanelVisible = useCallback((id: PanelId): boolean => {
     if (id === 'explorer') return showExplorer;
-    if (id === 'viewer') return showViewer;
+    if (id === 'editor') return showEditorPanel;
     return showTerminal;
-  }, [showExplorer, showViewer, showTerminal]);
+  }, [showExplorer, showEditorPanel, showTerminal]);
 
   const effectiveLayout = useMemo(() => {
     const visiblePanels = new Set(
-      (['explorer', 'viewer', 'terminal'] as PanelId[]).filter(isPanelVisible)
+      (['explorer', 'editor', 'terminal'] as PanelId[]).filter(isPanelVisible)
     );
     if (visiblePanels.size === 0) return [];
 
     let grid = panelLayout.map(r => [...r]);
-    const hiddenPanels = (['explorer', 'viewer', 'terminal'] as PanelId[]).filter(
+    const hiddenPanels = (['explorer', 'editor', 'terminal'] as PanelId[]).filter(
       id => !visiblePanels.has(id)
     );
     for (const hidden of hiddenPanels) {
@@ -1030,11 +1030,11 @@ export function PanelLayout() {
     return result;
   }, [effectiveLayout, onHandleMouseDown]);
 
-  const hasHiddenPanel = !panelVisibility.explorer || !panelVisibility.viewer || !panelVisibility.terminal;
+  const hasHiddenPanel = !panelVisibility.explorer || !panelVisibility.editor || !panelVisibility.terminal;
 
   const showIndicator = !!dropIndicator;
 
-  const allPanelIds: PanelId[] = ['explorer', 'viewer', 'terminal'];
+  const allPanelIds: PanelId[] = ['explorer', 'editor', 'terminal'];
 
   return (
     <div className="kraft-layout-root">
@@ -1059,7 +1059,7 @@ export function PanelLayout() {
               onPointerDown={visible ? (e) => onPanelPointerDown(id, e) : undefined}
             >
               {id === 'explorer' && <MemoExplorer />}
-              {id === 'viewer' && <MemoViewer />}
+              {id === 'editor' && <MemoEditorPanel />}
               {id === 'terminal' && <MemoTerminalPanel />}
             </div>
           );
@@ -1124,8 +1124,8 @@ export function PanelLayout() {
           {!panelVisibility.explorer && (
             <button type="button" className="panel-restore-btn" data-tooltip="Restore Explorer panel" onClick={() => setPanelVisibility('explorer', true)}>Explorer</button>
           )}
-          {!panelVisibility.viewer && (
-            <button type="button" className="panel-restore-btn" data-tooltip="Restore Viewer panel" onClick={() => setPanelVisibility('viewer', true)}>Viewer</button>
+          {!panelVisibility.editor && (
+            <button type="button" className="panel-restore-btn" data-tooltip="Restore Editor panel" onClick={() => setPanelVisibility('editor', true)}>Editor</button>
           )}
           {!panelVisibility.terminal && (
             <button type="button" className="panel-restore-btn" data-tooltip="Restore Terminal panel" onClick={() => setPanelVisibility('terminal', true)}>Terminal</button>
@@ -1145,11 +1145,11 @@ function PanelDragGhostChrome({ panelId }: { panelId: PanelId }) {
       </>
     );
   }
-  if (panelId === 'viewer') {
+  if (panelId === 'editor') {
     return (
       <>
-        <span className="panel-title panel-icon viewer-icon tabbed-panel-title">{'{}'}</span>
-        <span className="kraft-panel-drag-ghost-label">Viewer</span>
+        <span className="panel-title panel-icon editor-icon tabbed-panel-title">{'{}'}</span>
+        <span className="kraft-panel-drag-ghost-label">Editor</span>
       </>
     );
   }

@@ -1370,21 +1370,21 @@ export function Explorer() {
     (path: string, fromMouseClick?: boolean) => {
       setDiffFilePath(null);
       setOpenFilePath(path);
-      if (fromMouseClick && !panelVisibility.viewer) {
-        setPanelVisibility('viewer', true);
+      if (fromMouseClick && !panelVisibility.editor) {
+        setPanelVisibility('editor', true);
       }
     },
-    [setOpenFilePath, setDiffFilePath, panelVisibility.viewer, setPanelVisibility]
+    [setOpenFilePath, setDiffFilePath, panelVisibility.editor, setPanelVisibility]
   );
 
   const handleChangeFileClick = useCallback(
     (path: string) => {
       setDiffFilePath(path);
-      if (!panelVisibility.viewer) {
-        setPanelVisibility('viewer', true);
+      if (!panelVisibility.editor) {
+        setPanelVisibility('editor', true);
       }
     },
-    [setDiffFilePath, panelVisibility.viewer, setPanelVisibility]
+    [setDiffFilePath, panelVisibility.editor, setPanelVisibility]
   );
 
   const handleStageAll = useCallback((repoRoot?: string) => {
@@ -1407,8 +1407,8 @@ export function Explorer() {
     }
   }, [gitStagedStatus, unstageFiles]);
 
-  const showViewerPanel = useCallback(() => {
-    setPanelVisibility('viewer', true);
+  const showEditorPanel = useCallback(() => {
+    setPanelVisibility('editor', true);
   }, [setPanelVisibility]);
 
   const handleDiscardFile = useCallback((filePath: string) => {
@@ -1449,13 +1449,13 @@ export function Explorer() {
 
   const syncedRevealFile = useMemo(() => {
     if (explorerOutOfSync || !openFilePath) return null;
-    if (!panelVisibility.viewer) return null;
+    if (!panelVisibility.editor) return null;
     if (explorerRoot && isPathWithinRoot(openFilePath, explorerRoot)) return openFilePath;
     for (const d of agentContextDirs) {
       if (isPathWithinRoot(openFilePath, d.path)) return openFilePath;
     }
     return null;
-  }, [explorerOutOfSync, openFilePath, explorerRoot, agentContextPathsKey, panelVisibility.viewer]);
+  }, [explorerOutOfSync, openFilePath, explorerRoot, agentContextPathsKey, panelVisibility.editor]);
 
   useEffect(() => {
     if (!syncedRevealFile) return;
@@ -1511,7 +1511,7 @@ export function Explorer() {
         </div>
         <div className="panel-body explorer-tree">
           <div className="explorer-prompt">
-            <div className="viewer-empty-icon">~</div>
+            <div className="editor-empty-icon">~</div>
             <div className="explorer-prompt-text">
               No folder loaded
             </div>
@@ -1660,7 +1660,7 @@ export function Explorer() {
                       entry={entry}
                       depth={1}
                       onFileClick={handleFileClick}
-                      onFileDoubleClick={showViewerPanel}
+                      onFileDoubleClick={showEditorPanel}
                       onContextMenu={handleFileContextMenu}
                       collapseKey={collapseKey}
                       gitStatus={combinedGitStatus}
@@ -1710,7 +1710,7 @@ export function Explorer() {
                 key={dir.path}
                 dir={dir}
                 onFileClick={handleFileClick}
-                onFileDoubleClick={showViewerPanel}
+                onFileDoubleClick={showEditorPanel}
                 onContextMenu={handleFileContextMenu}
                 collapseKey={collapseKey}
                 gitStatus={combinedGitStatus}
@@ -1727,7 +1727,7 @@ export function Explorer() {
             gitStagedStatus={gitStagedStatus}
             allRoots={allRoots}
             onFileClick={handleChangeFileClick}
-            onFileDoubleClick={showViewerPanel}
+            onFileDoubleClick={showEditorPanel}
             onStageFile={(path) => stageFiles([path])}
             onUnstageFile={(path) => unstageFiles([path])}
             onStageAll={handleStageAll}

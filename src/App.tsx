@@ -132,10 +132,10 @@ function AppInner() {
 
       if (matchesKeyCombo(e, getEffectiveCombo('focus-editor', s))) {
         e.preventDefault();
-        if (!panelVisRef.current.viewer) setPanelVisibility('viewer', true);
-        flashPanel('viewer');
+        if (!panelVisRef.current.editor) setPanelVisibility('editor', true);
+        flashPanel('editor');
         requestAnimationFrame(() => {
-          document.querySelector<HTMLElement>('.viewer-code-editor .cm-content')?.focus();
+          document.querySelector<HTMLElement>('.editor-code-editor .cm-content')?.focus();
         });
         return;
       }
@@ -167,7 +167,7 @@ function AppInner() {
       if (e.key === '\\') {
         if (e.shiftKey || e.altKey) return;
         e.preventDefault();
-        setPanelVisibility('viewer', !panelVisRef.current.viewer);
+        setPanelVisibility('editor', !panelVisRef.current.editor);
         return;
       }
 

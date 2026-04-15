@@ -76,7 +76,7 @@ export function UpdateNotification() {
     if (!errorMsg) return;
     setErrorViewTitle('Update Error');
     setGitErrorViewContent(errorMsg);
-    setPanelVisibility('viewer', true);
+    setPanelVisibility('editor', true);
   }, [errorMsg, setErrorViewTitle, setGitErrorViewContent, setPanelVisibility]);
 
   if (!visible || !updateInfo) return null;

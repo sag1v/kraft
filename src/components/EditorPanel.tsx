@@ -8,7 +8,7 @@ import { DiffView } from './DiffView';
 import { shortenPath } from '../utils';
 import { CodeEditor, type CodeEditorHandle } from './CodeEditor';
 
-export function Viewer() {
+export function EditorPanel() {
   const {
     openFilePath,
     openFiles,
@@ -257,8 +257,8 @@ export function Viewer() {
           <>
             <FileIcon name={name} isDirectory={false} />
             <span className="tab-item-label">{name}</span>
-            {subpath && <span className="viewer-tab-subpath">{subpath}</span>}
-            {isUnsaved && <span className="viewer-tab-unsaved" title="Unsaved changes">●</span>}
+            {subpath && <span className="editor-tab-subpath">{subpath}</span>}
+            {isUnsaved && <span className="editor-tab-unsaved" title="Unsaved changes">●</span>}
           </>
         ),
       };
@@ -267,9 +267,9 @@ export function Viewer() {
   );
 
   return (
-    <div className="panel viewer-panel">
+    <div className="panel editor-panel">
       <div className="panel-header tabbed-panel-header">
-        <span className="panel-title panel-icon viewer-icon tabbed-panel-title" data-tooltip="Viewer - drag to reorder" data-tooltip-pos="bottom">{'{}'}</span>
+        <span className="panel-title panel-icon editor-icon tabbed-panel-title" data-tooltip="Editor - drag to reorder" data-tooltip-pos="bottom">{'{}'}</span>
         <TabBar
           tabs={tabs}
           activeId={openFilePath}
@@ -281,7 +281,7 @@ export function Viewer() {
         />
         {openFilePath && fileHasChanges && !isConflictFile && (
           <button
-            className={`viewer-diff-toggle ${isDiffMode ? 'active' : ''}`}
+            className={`editor-diff-toggle ${isDiffMode ? 'active' : ''}`}
             onClick={() => setDiffFilePath(isDiffMode ? null : openFilePath)}
             data-tooltip={isDiffMode ? 'Show code' : 'Show diff'}
             data-tooltip-pos="bottom"
@@ -289,7 +289,7 @@ export function Viewer() {
             Diff
           </button>
         )}
-        <PanelMinimizeButton onMinimize={() => setPanelVisibility('viewer', false)} tooltip={tooltipWithShortcut('Hide Viewer', 'toggle-viewer')} />
+        <PanelMinimizeButton onMinimize={() => setPanelVisibility('editor', false)} tooltip={tooltipWithShortcut('Hide Editor', 'toggle-editor')} />
       </div>
       {tabContextMenu && openFiles.length > 0 && (
         <div
@@ -339,64 +339,64 @@ export function Viewer() {
         </div>
       )}
       {searchVisible && effectiveDiffMode && openFilePath && (
-        <div className="viewer-search-bar">
+        <div className="editor-search-bar">
           <input
             ref={searchInputRef}
-            className="viewer-search-input"
+            className="editor-search-input"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             placeholder="Search..."
             spellCheck={false}
           />
-          <span className="viewer-search-count">
+          <span className="editor-search-count">
             {searchQuery
               ? diffMatchCount === 0 ? 'No results' : `${activeMatchIndex + 1} / ${diffMatchCount}`
               : ''}
           </span>
-          <button className="viewer-search-btn" onClick={goPrev} title="Previous (Shift+Enter)">↑</button>
-          <button className="viewer-search-btn" onClick={goNext} title="Next (Enter)">↓</button>
+          <button className="editor-search-btn" onClick={goPrev} title="Previous (Shift+Enter)">↑</button>
+          <button className="editor-search-btn" onClick={goNext} title="Next (Enter)">↓</button>
           <button
-            className={`viewer-search-btn viewer-search-toggle${caseSensitive ? ' active' : ''}`}
+            className={`editor-search-btn editor-search-toggle${caseSensitive ? ' active' : ''}`}
             onClick={() => setCaseSensitive(v => !v)}
             title="Match Case"
           >Aa</button>
           <button
-            className={`viewer-search-btn viewer-search-toggle${wholeWord ? ' active' : ''}`}
+            className={`editor-search-btn editor-search-toggle${wholeWord ? ' active' : ''}`}
             onClick={() => setWholeWord(v => !v)}
             title="Match Whole Word"
           >W</button>
-          <button className="viewer-search-btn" onClick={() => { setSearchVisible(false); setSearchQuery(''); }} title="Close (Esc)">✕</button>
+          <button className="editor-search-btn" onClick={() => { setSearchVisible(false); setSearchQuery(''); }} title="Close (Esc)">✕</button>
         </div>
       )}
       {isConflictFile && !effectiveDiffMode && (
-        <div className="viewer-conflict-banner">
-          <span className="viewer-conflict-icon">!</span>
+        <div className="editor-conflict-banner">
+          <span className="editor-conflict-icon">!</span>
           {conflictCount > 0 ? (
             <>
-              <span className="viewer-conflict-count">
+              <span className="editor-conflict-count">
                 {conflictCount} merge conflict{conflictCount !== 1 ? 's' : ''}
               </span>
-              <div className="viewer-conflict-nav">
+              <div className="editor-conflict-nav">
                 <button
-                  className="viewer-conflict-nav-btn"
+                  className="editor-conflict-nav-btn"
                   onClick={() => codeEditorRef.current?.navigateConflict('prev')}
                   title="Previous conflict"
                 >↑</button>
                 <button
-                  className="viewer-conflict-nav-btn"
+                  className="editor-conflict-nav-btn"
                   onClick={() => codeEditorRef.current?.navigateConflict('next')}
                   title="Next conflict"
                 >↓</button>
               </div>
             </>
           ) : (
-            <span className="viewer-conflict-count viewer-conflict-all-resolved">
+            <span className="editor-conflict-count editor-conflict-all-resolved">
               All conflicts resolved
             </span>
           )}
           <button
-            className="viewer-conflict-resolve-btn"
+            className="editor-conflict-resolve-btn"
             disabled={conflictCount > 0}
             onClick={markResolved}
             title={conflictCount > 0 ? 'Resolve all conflicts first' : 'Stage file as resolved'}
@@ -405,7 +405,7 @@ export function Viewer() {
           </button>
         </div>
       )}
-      <div className="panel-body viewer-body">
+      <div className="panel-body editor-body">
         {effectiveDiffMode && openFilePath ? (
           <DiffView
             filePath={openFilePath}
@@ -417,12 +417,12 @@ export function Viewer() {
             onMatchCountChange={handleDiffMatchCountChange}
           />
         ) : loading ? (
-          <div className="viewer-placeholder">Loading...</div>
+          <div className="editor-placeholder">Loading...</div>
         ) : error ? (
-          <div className="viewer-placeholder viewer-error">{error}</div>
+          <div className="editor-placeholder editor-error">{error}</div>
         ) : !openFilePath ? (
-          <div className="viewer-placeholder">
-            <div className="viewer-empty-icon">[ ]</div>
+          <div className="editor-placeholder">
+            <div className="editor-empty-icon">[ ]</div>
             <div>Select a file from the Explorer</div>
           </div>
         ) : content !== null ? (
@@ -435,21 +435,21 @@ export function Viewer() {
         ) : null}
       </div>
       {gitErrorViewContent && (
-        <div className="viewer-git-error-overlay">
-          <div className="viewer-git-error-header">
-            <span className="viewer-git-error-icon">⚠</span>
-            <span className="viewer-git-error-title">{errorViewTitle}</span>
+        <div className="editor-git-error-overlay">
+          <div className="editor-git-error-header">
+            <span className="editor-git-error-icon">⚠</span>
+            <span className="editor-git-error-title">{errorViewTitle}</span>
             <CopyButton text={gitErrorViewContent} />
             <button
-              className="viewer-git-error-close"
+              className="editor-git-error-close"
               onClick={() => setGitErrorViewContent(null)}
               aria-label="Close"
             >
               ×
             </button>
           </div>
-          <div className="viewer-git-error-body">
-            <pre className="viewer-git-error-pre">{gitErrorViewContent}</pre>
+          <div className="editor-git-error-body">
+            <pre className="editor-git-error-pre">{gitErrorViewContent}</pre>
           </div>
         </div>
       )}
@@ -469,7 +469,7 @@ function CopyButton({ text }: { text: string }) {
 
   return (
     <button
-      className="viewer-git-error-copy"
+      className="editor-git-error-copy"
       onClick={handleCopy}
       aria-label="Copy error"
     >

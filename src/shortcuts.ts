@@ -25,12 +25,12 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'focus-editor',   category: 'View', label: 'Focus Editor',   keys: '' },
   { id: 'toggle-explorer', category: 'View', label: 'Toggle Explorer', keys: mod('B') },
   { id: 'toggle-terminal', category: 'View', label: 'Toggle Terminal', keys: mod('J') },
-  { id: 'toggle-viewer', category: 'View', label: 'Toggle Viewer', keys: mod('\\') },
+  { id: 'toggle-editor', category: 'View', label: 'Toggle Editor', keys: mod('\\') },
   { id: 'zoom-in', category: 'View', label: 'Zoom In', keys: mod('+') },
   { id: 'zoom-out', category: 'View', label: 'Zoom Out', keys: mod('-') },
   { id: 'zoom-reset', category: 'View', label: 'Reset Zoom', keys: mod('0') },
 
-  // Editor / Viewer
+  // Editor
   { id: 'search-in-file', category: 'Editor', label: 'Search in File', keys: mod('F') },
   { id: 'close-tab', category: 'Editor', label: 'Close File Tab', keys: mod('W') },
   { id: 'prev-tab', category: 'Editor', label: 'Previous File Tab', keys: mod('Shift+[') },

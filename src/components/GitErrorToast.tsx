@@ -21,7 +21,7 @@ export function GitErrorToast() {
 
   const handleExpand = () => {
     setGitErrorViewContent(gitError);
-    setPanelVisibility('viewer', true);
+    setPanelVisibility('editor', true);
     clearGitError();
   };
 

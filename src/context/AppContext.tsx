@@ -4,12 +4,12 @@ import { getThemeById, kraftDark } from '../themes';
 import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
 
 const GET_SHIT_DONE_LAYOUT: PanelId[][] = [['terminal']];
-const WATCH_SHIT_DONE_LAYOUT: PanelId[][] = [['explorer', 'terminal'], ['explorer', 'viewer']];
-const WHY_LAYOUT: PanelId[][] = [['explorer', 'viewer', 'terminal']];
-const REALLY_LAYOUT: PanelId[][] = [['explorer'], ['viewer'], ['terminal']];
-const MY_LAYOUT_DEFAULT: PanelId[][] = [['explorer', 'terminal'], ['viewer', 'terminal']];
+const WATCH_SHIT_DONE_LAYOUT: PanelId[][] = [['explorer', 'terminal'], ['explorer', 'editor']];
+const WHY_LAYOUT: PanelId[][] = [['explorer', 'editor', 'terminal']];
+const REALLY_LAYOUT: PanelId[][] = [['explorer'], ['editor'], ['terminal']];
+const MY_LAYOUT_DEFAULT: PanelId[][] = [['explorer', 'terminal'], ['editor', 'terminal']];
 
-const ALL_PANELS: PanelId[] = ['explorer', 'viewer', 'terminal'];
+const ALL_PANELS: PanelId[] = ['explorer', 'editor', 'terminal'];
 
 const PRESET_LAYOUTS: Partial<Record<LayoutPreset, PanelId[][]>> = {
   'get-shit-done': GET_SHIT_DONE_LAYOUT,
@@ -71,8 +71,8 @@ interface UIContextValue {
   setActiveFileTab: (path: string) => void;
   reorderFileTabs: (fromIndex: number, toIndex: number) => void;
   settingsLoaded: boolean;
-  panelVisibility: { explorer: boolean; viewer: boolean; terminal: boolean };
-  setPanelVisibility: (panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => void;
+  panelVisibility: { explorer: boolean; editor: boolean; terminal: boolean };
+  setPanelVisibility: (panel: 'explorer' | 'editor' | 'terminal', visible: boolean) => void;
   diffFilePath: string | null;
   setDiffFilePath: (path: string | null) => void;
   gitError: string | null;
@@ -134,7 +134,7 @@ interface SessionContextValue {
   deleteWorkspace: (filename: string) => Promise<void>;
 }
 
-const ALL_VISIBLE: PanelVisibility = { explorer: true, viewer: true, terminal: true };
+const ALL_VISIBLE: PanelVisibility = { explorer: true, editor: true, terminal: true };
 
 const defaultSettings: AppSettings = {
   shellOverride: null,
@@ -1271,7 +1271,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const setPanelVisibility = useCallback((panel: 'explorer' | 'viewer' | 'terminal', visible: boolean) => {
+  const setPanelVisibility = useCallback((panel: 'explorer' | 'editor' | 'terminal', visible: boolean) => {
     const gid = activeGroupIdRef.current;
     if (!gid) return;
     const current = panelVisibilityMapRef.current[gid] ?? { ...initialPanelVisibilityRef.current };
@@ -1309,7 +1309,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             next = { ...next, panelLayout: prev.savedCustomLayout.map(r => [...r]) };
           } else {
             const initial = MY_LAYOUT_DEFAULT.map(r => [...r]);
-            const defaultVis: PanelVisibility = { explorer: true, viewer: false, terminal: true };
+            const defaultVis: PanelVisibility = { explorer: true, editor: false, terminal: true };
             next = { ...next, panelLayout: initial, savedCustomLayout: initial.map(r => [...r]), customPanelVisibility: defaultVis };
           }
           const savedVis = next.customPanelVisibility;

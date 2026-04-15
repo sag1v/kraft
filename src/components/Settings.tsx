@@ -81,15 +81,15 @@ function renderGridPreview(grid: PanelId[][]): React.ReactNode {
 
 const PRESET_GRIDS: Record<string, PanelId[][]> = {
   'get-shit-done': [['terminal' as PanelId]],
-  'watch-shit-done': [['explorer', 'terminal'], ['explorer', 'viewer']],
-  'why': [['explorer', 'viewer', 'terminal']],
-  'really': [['explorer'], ['viewer'], ['terminal']],
+  'watch-shit-done': [['explorer', 'terminal'], ['explorer', 'editor']],
+  'why': [['explorer', 'editor', 'terminal']],
+  'really': [['explorer'], ['editor'], ['terminal']],
 };
 
 const MY_LAYOUT_DEFAULT_GRID: PanelId[][] = [['explorer', 'terminal']];
 
 function filterHiddenPanels(grid: PanelId[][], visibility: PanelVisibility): PanelId[][] {
-  const hidden = (['explorer', 'viewer', 'terminal'] as PanelId[]).filter(id => !visibility[id]);
+  const hidden = (['explorer', 'editor', 'terminal'] as PanelId[]).filter(id => !visibility[id]);
   if (hidden.length === 0) return grid;
 
   let g = grid.map(r => [...r]);
@@ -600,8 +600,8 @@ export function Settings() {
                     Explorer
                   </span>
                   <span className="settings-legend-item">
-                    <span className="settings-legend-dot viewer" />
-                    Viewer
+                    <span className="settings-legend-dot editor" />
+                    Editor
                   </span>
                   <span className="settings-legend-item">
                     <span className="settings-legend-dot terminal" />

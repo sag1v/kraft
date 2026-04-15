@@ -331,6 +331,6 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       view.requestMeasure();
     }, [effectiveEditorFontSize]);
 
-    return <div ref={containerRef} className="viewer-code-editor" />;
+    return <div ref={containerRef} className="editor-code-editor" />;
   }
 );
