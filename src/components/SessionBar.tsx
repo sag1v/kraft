@@ -375,12 +375,12 @@ export function SessionBar({ className }: { className?: string }) {
           <button type="button" className="tab-context-item" role="menuitem"
             onMouseDown={e => e.preventDefault()}
             onClick={() => { closeAppBarCtx(); setWorkspaceManagerMode('save'); }}>
-            Save Workspace...
+            Save Workspace
           </button>
           <button type="button" className="tab-context-item" role="menuitem"
             onMouseDown={e => e.preventDefault()}
             onClick={() => { closeAppBarCtx(); setWorkspaceManagerMode('load'); }}>
-            Workspaces...
+            Manage Workspaces
           </button>
         </div>
       )}

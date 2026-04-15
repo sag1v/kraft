@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { VscStarEmpty, VscStarFull, VscTrash, VscCheck, VscChromeClose } from 'react-icons/vsc';
 import { useSessionContext, useUIContext } from '../context/AppContext';
 import type { SavedWorkspaceMeta } from '../types';
 
@@ -58,6 +59,8 @@ function LoadWorkspaceDialog({ workspaces, defaultWorkspace, onLoad, onDelete, o
   onSetDefault: (filename: string | null) => void;
   onCancel: () => void;
 }) {
+  const [confirmingFilename, setConfirmingFilename] = useState<string | null>(null);
+
   const formatDate = (iso: string) => {
     try {
       return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -69,15 +72,24 @@ function LoadWorkspaceDialog({ workspaces, defaultWorkspace, onLoad, onDelete, o
   return (
     <div className="workspace-manager-backdrop" onClick={onCancel}>
       <div className="workspace-manager-dialog workspace-manager-dialog--list" onClick={e => e.stopPropagation()}>
-        <div className="workspace-manager-dialog__title">Workspaces</div>
+        <div className="workspace-manager-dialog__title">Manage Workspaces</div>
         {workspaces.length === 0 ? (
           <div className="workspace-manager-empty">No saved workspaces yet.</div>
         ) : (
           <ul className="workspace-manager-list">
             {workspaces.map(ws => {
               const isDefault = ws.filename === defaultWorkspace;
+              const isConfirming = confirmingFilename === ws.filename;
               return (
-                <li key={ws.filename} className={`workspace-manager-list__item${isDefault ? ' workspace-manager-list__item--default' : ''}`}>
+                <li
+                  key={ws.filename}
+                  className={[
+                    'workspace-manager-list__item',
+                    isDefault ? 'workspace-manager-list__item--default' : '',
+                    isConfirming ? 'workspace-manager-list__item--confirming' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={isConfirming ? undefined : () => onLoad(ws.filename)}
+                >
                   <div className="workspace-manager-list__info">
                     <span className="workspace-manager-list__name">{ws.name}</span>
                     <div className="workspace-manager-list__meta">
@@ -89,27 +101,43 @@ function LoadWorkspaceDialog({ workspaces, defaultWorkspace, onLoad, onDelete, o
                       )}
                     </div>
                   </div>
-                  <div className="workspace-manager-list__actions">
-                    <button
-                      className="workspace-manager-btn workspace-manager-btn--primary workspace-manager-btn--sm"
-                      onClick={() => onLoad(ws.filename)}
-                    >
-                      Load
-                    </button>
-                    <button
-                      className={`workspace-manager-btn workspace-manager-btn--sm ${isDefault ? 'workspace-manager-btn--default-active' : 'workspace-manager-btn--secondary'}`}
-                      onClick={() => onSetDefault(isDefault ? null : ws.filename)}
-                      title={isDefault ? 'Remove as default' : 'Set as default (loads on startup)'}
-                    >
-                      {isDefault ? '★' : '☆'}
-                    </button>
-                    <button
-                      className="workspace-manager-btn workspace-manager-btn--danger workspace-manager-btn--sm"
-                      onClick={() => onDelete(ws.filename)}
-                      title="Delete workspace"
-                    >
-                      ×
-                    </button>
+                  <div className="workspace-manager-list__actions" onClick={e => e.stopPropagation()}>
+                    {isConfirming ? (
+                      <>
+                        <span className="workspace-manager-delete-label">Delete?</span>
+                        <button
+                          className="workspace-manager-icon-btn workspace-manager-icon-btn--confirm"
+                          onClick={() => { onDelete(ws.filename); setConfirmingFilename(null); }}
+                          title="Confirm delete"
+                        >
+                          <VscCheck />
+                        </button>
+                        <button
+                          className="workspace-manager-icon-btn"
+                          onClick={() => setConfirmingFilename(null)}
+                          title="Cancel"
+                        >
+                          <VscChromeClose />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className={`workspace-manager-icon-btn${isDefault ? ' workspace-manager-icon-btn--accent' : ''}`}
+                          onClick={() => onSetDefault(isDefault ? null : ws.filename)}
+                          title={isDefault ? 'Remove as default' : 'Set as default (loads on startup)'}
+                        >
+                          {isDefault ? <VscStarFull /> : <VscStarEmpty />}
+                        </button>
+                        <button
+                          className="workspace-manager-icon-btn workspace-manager-icon-btn--trash"
+                          onClick={() => setConfirmingFilename(ws.filename)}
+                          title="Delete workspace"
+                        >
+                          <VscTrash />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </li>
               );

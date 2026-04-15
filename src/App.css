@@ -3955,24 +3955,49 @@ body {
   background: var(--bg-tertiary);
   color: var(--fg-muted);
 }
-.workspace-manager-btn--danger {
-  background: transparent;
-  color: var(--fg-muted);
-  border: 1px solid var(--border);
+.workspace-manager-icon-btn {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 14px;
+  padding: 4px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.1s, background 0.1s;
+  line-height: 1;
+  flex-shrink: 0;
 }
-.workspace-manager-btn--danger:hover:not(:disabled) {
-  color: #f14c4c;
-  border-color: #f14c4c;
-  opacity: 1;
+.workspace-manager-icon-btn:hover {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.07);
 }
-.workspace-manager-btn--default-active {
-  background: transparent;
+.workspace-manager-icon-btn--accent {
   color: var(--accent);
-  border: 1px solid var(--accent);
 }
-.workspace-manager-btn--sm {
-  padding: 3px 8px;
-  font-size: 12px;
+.workspace-manager-icon-btn--accent:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.workspace-manager-icon-btn--trash:hover {
+  color: #f14c4c;
+  background: rgba(241, 76, 76, 0.1);
+}
+.workspace-manager-icon-btn--confirm {
+  color: #f14c4c;
+}
+.workspace-manager-icon-btn--confirm:hover {
+  color: #f14c4c;
+  background: rgba(241, 76, 76, 0.15);
+}
+.workspace-manager-delete-label {
+  font-size: 11px;
+  color: #f14c4c;
+  white-space: nowrap;
+  align-self: center;
+  padding-right: 2px;
 }
 .workspace-manager-empty {
   font-size: 12px;
@@ -3999,10 +4024,22 @@ body {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 5px;
-  transition: border-color 0.15s;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.1s;
+}
+.workspace-manager-list__item:hover {
+  background: var(--bg-tertiary);
 }
 .workspace-manager-list__item--default {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.workspace-manager-list__item--confirming {
+  border-color: rgba(241, 76, 76, 0.35);
+  background: rgba(241, 76, 76, 0.05);
+  cursor: default;
+}
+.workspace-manager-list__item--confirming:hover {
+  background: rgba(241, 76, 76, 0.05);
 }
 .workspace-manager-list__info {
   display: flex;
