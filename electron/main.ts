@@ -282,6 +282,7 @@ interface PersistedSession {
 
 let lastSession: PersistedSession | null = null;
 let sessionWasCrash = false;
+let isQuitting = false;
 
 function initSession(): void {
   try {
@@ -1215,6 +1216,7 @@ function setupIPC() {
   });
 
   ipcMain.handle('save-session', (_event, session: PersistedSession) => {
+    if (isQuitting) return false;
     try {
       fs.writeFileSync(getSessionPath(), JSON.stringify({ ...session, running: true }, null, 2));
       return true;
@@ -1474,7 +1476,18 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   clearDirtyFlag();
+});
+
+process.on('SIGTERM', () => {
+  clearDirtyFlag();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  clearDirtyFlag();
+  process.exit(0);
 });
 
 app.on('window-all-closed', () => {
