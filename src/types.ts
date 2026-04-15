@@ -178,7 +178,6 @@ export interface PersistedGroup {
 }
 
 export interface PersistedSession {
-  running: boolean;
   savedAt: string;
   groups: PersistedGroup[];
   activeGroupIndex: number;
@@ -289,8 +288,7 @@ export interface ElectronAPI {
   unwatchFile: (filePath: string) => void;
   onFileChanged: (callback: (filePath: string) => void) => () => void;
   saveSession: (session: PersistedSession) => Promise<boolean>;
-  getSession: () => Promise<{ session: PersistedSession | null; wasCrash: boolean; pendingWorkspace?: string | null }>;
-  clearCrashFlag: () => Promise<boolean>;
+  getSession: () => Promise<{ pendingWorkspace?: string | null }>;
   saveWorkspace: (workspace: SavedWorkspace) => Promise<{ filename: string }>;
   loadWorkspace: (filename: string) => Promise<SavedWorkspace | null>;
   listWorkspaces: () => Promise<SavedWorkspaceMeta[]>;

@@ -125,9 +125,6 @@ interface SessionContextValue {
   undoLastCommit: (repoRoot: string) => Promise<void>;
   agentContextDirs: AgentContextDir[];
   activeWorkspaceName: string | null;
-  crashSession: PersistedSession | null;
-  restoreCrashSession: () => Promise<void>;
-  dismissCrashSession: () => void;
   saveWorkspace: (name: string) => Promise<string | null>;
   loadWorkspace: (filename: string) => Promise<void>;
   listWorkspaces: () => Promise<SavedWorkspaceMeta[]>;
@@ -207,7 +204,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [agentContextDirsMap, setAgentContextDirsMap] = useState<Record<string, AgentContextDir[]>>({});
   const [recentlyClosedGroups, setRecentlyClosedGroups] = useState<{ group: TerminalGroup; index: number }[]>([]);
   const recentlyClosedGroupsRef = useRef<{ group: TerminalGroup; index: number }[]>([]);
-  const [crashSession, setCrashSession] = useState<PersistedSession | null>(null);
   const [activeWorkspaceName, setActiveWorkspaceName] = useState<string | null>(null);
   // Forward ref so the startup effect can call loadWorkspace before it's defined
   const loadWorkspaceRef = useRef<((filename: string) => Promise<void>) | null>(null);
@@ -320,18 +316,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setRecentlyClosedGroups(loaded);
           }
         }
-        // Check for crash session or pending workspace (from dock menu)
+        // Check for pending workspace (from dock menu)
         if (window.api?.getSession) {
-          const { session, wasCrash, pendingWorkspace } = await window.api.getSession();
-          if (wasCrash && session && session.groups?.length > 0) {
-            setCrashSession(session);
-          } else if (pendingWorkspace) {
-            // Triggered from dock menu on a new window — load after a tick
-            // so the component tree is settled
+          const { pendingWorkspace } = await window.api.getSession();
+          if (pendingWorkspace) {
             const pw = pendingWorkspace;
             setTimeout(() => loadWorkspaceRef.current?.(pw), 0);
           } else {
-            // Auto-load default workspace if one is configured
             const defaultWs = (saved as any).defaultWorkspace as string | null | undefined;
             if (defaultWs) {
               setTimeout(() => loadWorkspaceRef.current?.(defaultWs), 0);
@@ -1061,7 +1052,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const gs = groupsRef.current;
     const activeIndex = Math.max(0, gs.findIndex(g => g.id === activeGroupIdRef.current));
     return {
-      running: true,
       savedAt: new Date().toISOString(),
       groups: serializeGroups(),
       activeGroupIndex: activeIndex,
@@ -1134,20 +1124,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPanelLayoutMap(prev => ({ ...prev, ...newPanelLayoutMap }));
     const activeId = newGroups[Math.min(activeGroupIndex, newGroups.length - 1)]?.id ?? newGroups[0].id;
     setActiveGroupId(activeId);
-  }, []);
-
-  // ── Crash restore ─────────────────────────────────────────────────────────
-
-  const restoreCrashSession = useCallback(async () => {
-    if (!crashSession) return;
-    setCrashSession(null);
-    await restorePersistedGroups(crashSession.groups, crashSession.activeGroupIndex);
-    window.api?.clearCrashFlag?.();
-  }, [crashSession, restorePersistedGroups]);
-
-  const dismissCrashSession = useCallback(() => {
-    setCrashSession(null);
-    window.api?.clearCrashFlag?.();
   }, []);
 
   // ── Named workspaces ──────────────────────────────────────────────────────
@@ -1416,15 +1392,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     exitSplit,
     updateGroupSplitPcts,
     activeWorkspaceName,
-    crashSession,
-    restoreCrashSession,
-    dismissCrashSession,
     saveWorkspace,
     loadWorkspace,
     listWorkspaces,
     deleteWorkspace,
-  }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedGroups, crashSession, activeWorkspaceName,
-       setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, closePane, exitSplit, updateGroupSplitPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile, restoreCrashSession, dismissCrashSession, saveWorkspace, loadWorkspace, listWorkspaces, deleteWorkspace]);
+  }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedGroups, activeWorkspaceName,
+       setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, closePane, exitSplit, updateGroupSplitPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile, saveWorkspace, loadWorkspace, listWorkspaces, deleteWorkspace]);
 
   return (
     <UIContext.Provider value={uiValue}>

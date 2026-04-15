@@ -10,7 +10,7 @@ import { GlobalTooltip } from './components/GlobalTooltip';
 import { GitErrorToast } from './components/GitErrorToast';
 import { UpdateNotification } from './components/UpdateNotification';
 import { EasterEggGame } from './components/EasterEggGame';
-import { CrashRestoreBanner } from './components/CrashRestoreBanner';
+
 
 function AppInner() {
   const {
@@ -261,7 +261,6 @@ function AppInner() {
   return (
     <div className="app">
       <TopBar />
-      <CrashRestoreBanner />
       <div className="app-body">
         <PanelLayout />
         {gameOpen && <EasterEggGame onClose={() => setGameOpen(false)} />}

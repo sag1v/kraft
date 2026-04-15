@@ -274,51 +274,12 @@ async function rebuildDockMenu(): Promise<void> {
 }
 
 interface PersistedSession {
-  running: boolean;
   savedAt: string;
   groups: any[];
   activeGroupIndex: number;
 }
 
-let lastSession: PersistedSession | null = null;
-let sessionWasCrash = false;
 let isQuitting = false;
-
-function initSession(): void {
-  try {
-    const data = fs.readFileSync(getSessionPath(), 'utf-8');
-    const session = JSON.parse(data) as PersistedSession;
-    if (session.running === true && session.groups?.length > 0) {
-      sessionWasCrash = true;
-      lastSession = session;
-    }
-  } catch {
-    // no prior session
-  }
-  // Mark current session as running (dirty flag)
-  const current: PersistedSession = {
-    running: true,
-    savedAt: new Date().toISOString(),
-    groups: lastSession?.groups ?? [],
-    activeGroupIndex: lastSession?.activeGroupIndex ?? 0,
-  };
-  try {
-    fs.writeFileSync(getSessionPath(), JSON.stringify(current, null, 2));
-  } catch {
-    // ignore write errors
-  }
-}
-
-function clearDirtyFlag(): void {
-  try {
-    const data = fs.readFileSync(getSessionPath(), 'utf-8');
-    const session = JSON.parse(data);
-    session.running = false;
-    fs.writeFileSync(getSessionPath(), JSON.stringify(session, null, 2));
-  } catch {
-    // ignore
-  }
-}
 
 function loadSettings(): Record<string, any> {
   try {
@@ -1403,28 +1364,21 @@ function setupIPC() {
   });
 
   ipcMain.handle('get-session', () => {
-    const result: { session: PersistedSession | null; wasCrash: boolean; pendingWorkspace: string | null } = {
-      session: lastSession,
-      wasCrash: sessionWasCrash,
+    const result: { pendingWorkspace: string | null } = {
       pendingWorkspace,
     };
-    pendingWorkspace = null; // consume it — only deliver once
+    pendingWorkspace = null; // consume it - only deliver once
     return result;
   });
 
   ipcMain.handle('save-session', (_event, session: PersistedSession) => {
     if (isQuitting) return false;
     try {
-      fs.writeFileSync(getSessionPath(), JSON.stringify({ ...session, running: true }, null, 2));
+      fs.writeFileSync(getSessionPath(), JSON.stringify(session, null, 2));
       return true;
     } catch {
       return false;
     }
-  });
-
-  ipcMain.handle('clear-crash-flag', () => {
-    clearDirtyFlag();
-    return true;
   });
 
   ipcMain.handle('list-workspaces', async () => {
@@ -1646,7 +1600,6 @@ app.setName('Kraft');
 
 app.whenReady().then(() => {
   getShellEnv();
-  initSession();
   setupIPC();
   setupMenu();
   createWindow();
@@ -1674,17 +1627,6 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   isQuitting = true;
-  clearDirtyFlag();
-});
-
-process.on('SIGTERM', () => {
-  clearDirtyFlag();
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  clearDirtyFlag();
-  process.exit(0);
 });
 
 app.on('window-all-closed', () => {

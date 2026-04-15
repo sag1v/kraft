@@ -227,8 +227,7 @@ const api = {
   },
 
   saveSession: (session: any): Promise<boolean> => ipcRenderer.invoke('save-session', session),
-  getSession: (): Promise<{ session: any | null; wasCrash: boolean; pendingWorkspace?: string | null }> => ipcRenderer.invoke('get-session'),
-  clearCrashFlag: (): Promise<boolean> => ipcRenderer.invoke('clear-crash-flag'),
+  getSession: (): Promise<{ pendingWorkspace?: string | null }> => ipcRenderer.invoke('get-session'),
   saveWorkspace: (workspace: any): Promise<{ filename: string }> => ipcRenderer.invoke('save-workspace', workspace),
   loadWorkspace: (filename: string): Promise<any | null> => ipcRenderer.invoke('load-workspace', filename),
   listWorkspaces: (): Promise<{ name: string; filename: string; createdAt: string }[]> => ipcRenderer.invoke('list-workspaces'),

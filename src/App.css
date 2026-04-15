@@ -4095,48 +4095,6 @@ body {
   color: var(--git-conflict) !important;
 }
 
-/* ── Crash Restore Banner ─────────────────────────────────────────────────── */
-.crash-restore-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
-  font-size: 12px;
-  color: var(--fg);
-  flex-shrink: 0;
-}
-.crash-restore-banner__icon {
-  color: var(--accent);
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-.crash-restore-banner__message {
-  flex: 1;
-  color: var(--fg-muted);
-}
-.crash-restore-banner__btn {
-  padding: 3px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-  flex-shrink: 0;
-  transition: opacity 0.1s;
-}
-.crash-restore-banner__btn:hover { opacity: 0.85; }
-.crash-restore-banner__btn--primary {
-  background: var(--accent);
-  color: var(--bg);
-}
-.crash-restore-banner__btn--dismiss {
-  background: var(--bg-tertiary);
-  color: var(--fg-muted);
-}
-
 /* ── Workspace Manager ────────────────────────────────────────────────────── */
 .workspace-manager-backdrop {
   position: fixed;
