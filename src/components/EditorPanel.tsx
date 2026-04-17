@@ -30,7 +30,7 @@ export function EditorPanel() {
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [contentCache, setContentCache] = useState<Record<string, { content: string | null; error: string | null }>>({});
   const [loading, setLoading] = useState(false);
-  const [fileVersion, setFileVersion] = useState(0);
+  const [fileVersions, setFileVersions] = useState<Record<string, number>>({});
   const fetchedVersionRef = useRef<Record<string, number>>({});
   const pendingNavLineRef = useRef<number | null>(null);
   const openFilePathRef = useRef(openFilePath);
@@ -46,6 +46,9 @@ export function EditorPanel() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
+  const editDraftsRef = useRef(editDrafts);
+  editDraftsRef.current = editDrafts;
+  const [diskChangedFiles, setDiskChangedFiles] = useState<Set<string>>(new Set());
 
   const [tabContextMenu, setTabContextMenu] = useState<{
     x: number;
@@ -79,28 +82,35 @@ export function EditorPanel() {
     const result = await window.api.writeFile(filePath, draft);
     if (!result.error) {
       setContentCache(prev => ({ ...prev, [filePath]: { content: draft, error: null } }));
-      fetchedVersionRef.current[filePath] = fileVersion;
+      setEditDrafts(prev => { const next = { ...prev }; delete next[filePath]; return next; });
+      fetchedVersionRef.current[filePath] = fileVersions[filePath] ?? 0;
+      setDiskChangedFiles(prev => {
+        if (!prev.has(filePath)) return prev;
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
     }
-  }, [editDrafts, fileVersion]);
+  }, [editDrafts, fileVersions]);
 
   useEffect(() => {
-    if (!openFilePath || !window.api?.watchFile || !window.api?.onFileChanged) return;
-    window.api.watchFile(openFilePath);
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    if (!openFiles.length || !window.api?.watchFile || !window.api?.onFileChanged) return;
+    openFiles.forEach(f => window.api.watchFile(f));
+    const timers: Record<string, ReturnType<typeof setTimeout>> = {};
     const unsubscribe = window.api.onFileChanged((changedPath) => {
-      if (changedPath !== openFilePath) return;
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        setFileVersion(v => v + 1);
+      if (!openFiles.includes(changedPath)) return;
+      if (timers[changedPath]) clearTimeout(timers[changedPath]);
+      timers[changedPath] = setTimeout(() => {
+        delete timers[changedPath];
+        setFileVersions(prev => ({ ...prev, [changedPath]: (prev[changedPath] ?? 0) + 1 }));
       }, 400);
     });
     return () => {
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
-      window.api.unwatchFile(openFilePath);
+      Object.values(timers).forEach(clearTimeout);
+      openFiles.forEach(f => window.api.unwatchFile(f));
       unsubscribe();
     };
-  }, [openFilePath]);
+  }, [openFiles]);
 
   // Handle navigation requests from search panel
   useEffect(() => {
@@ -169,6 +179,7 @@ export function EditorPanel() {
       return;
     }
 
+    const fileVersion = fileVersions[openFilePath] ?? 0;
     const hasCached = !!contentCache[openFilePath];
     const lastFetchedVersion = fetchedVersionRef.current[openFilePath] ?? -1;
 
@@ -190,6 +201,17 @@ export function EditorPanel() {
             setContentCache(prev => ({ ...prev, [openFilePath]: { content: null, error: result.error } }));
           } else {
             setContentCache(prev => ({ ...prev, [openFilePath]: { content: result.content, error: null } }));
+            const localDraft = editDraftsRef.current[openFilePath];
+            if (localDraft !== undefined && localDraft !== result.content) {
+              setDiskChangedFiles(prev => new Set([...prev, openFilePath]));
+            } else {
+              setDiskChangedFiles(prev => {
+                if (!prev.has(openFilePath)) return prev;
+                const next = new Set(prev);
+                next.delete(openFilePath);
+                return next;
+              });
+            }
           }
           setLoading(false);
         }
@@ -203,7 +225,7 @@ export function EditorPanel() {
     })();
 
     return () => { cancelled = true; };
-  }, [openFilePath, fileVersion]);
+  }, [openFilePath, fileVersions]);
 
   useEffect(() => {
     const staleKeys = Object.keys(contentCache).filter(k => !openFiles.includes(k));
@@ -216,6 +238,13 @@ export function EditorPanel() {
       setEditDrafts(prev => {
         const next = { ...prev };
         for (const k of staleKeys) delete next[k];
+        return next;
+      });
+      setDiskChangedFiles(prev => {
+        const stale = staleKeys.filter(k => prev.has(k));
+        if (!stale.length) return prev;
+        const next = new Set(prev);
+        for (const k of stale) next.delete(k);
         return next;
       });
     }
@@ -243,6 +272,17 @@ export function EditorPanel() {
     await saveFile(openFilePath);
     stageFiles([openFilePath]);
   }, [openFilePath, saveFile, stageFiles]);
+
+  const handleReloadFromDisk = useCallback(() => {
+    if (!openFilePath) return;
+    setEditDrafts(prev => { const next = { ...prev }; delete next[openFilePath]; return next; });
+    setDiskChangedFiles(prev => { const next = new Set(prev); next.delete(openFilePath); return next; });
+  }, [openFilePath]);
+
+  const handleKeepLocalChanges = useCallback(() => {
+    if (!openFilePath) return;
+    setDiskChangedFiles(prev => { const next = new Set(prev); next.delete(openFilePath); return next; });
+  }, [openFilePath]);
 
   const goNext = useCallback(() => {
     setActiveMatchIndex(i => diffMatchCount > 0 ? (i + 1) % diffMatchCount : 0);
@@ -407,6 +447,16 @@ export function EditorPanel() {
           <button className="editor-search-btn" onClick={() => { setSearchVisible(false); setSearchQuery(''); }} title="Close (Esc)">✕</button>
         </div>
       )}
+      {openFilePath && diskChangedFiles.has(openFilePath) && (
+        <div className="editor-conflict-banner">
+          <span className="editor-conflict-icon">!</span>
+          <span className="editor-conflict-count">File changed on disk</span>
+          <div className="editor-conflict-nav">
+            <button className="editor-conflict-nav-btn" onClick={handleReloadFromDisk} title="Discard local edits and load from disk">Reload</button>
+            <button className="editor-conflict-nav-btn" onClick={handleKeepLocalChanges} title="Keep your local edits">Keep local</button>
+          </div>
+        </div>
+      )}
       {isConflictFile && !effectiveDiffMode && (
         <div className="editor-conflict-banner">
           <span className="editor-conflict-icon">!</span>
@@ -447,7 +497,7 @@ export function EditorPanel() {
         {effectiveDiffMode && openFilePath ? (
           <DiffView
             filePath={openFilePath}
-            version={fileVersion}
+            version={fileVersions[openFilePath] ?? 0}
             searchQuery={searchQuery}
             caseSensitive={caseSensitive}
             wholeWord={wholeWord}

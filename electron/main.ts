@@ -105,11 +105,15 @@ const DIR_CACHE_TTL = 5000;
 
 interface ActiveWatcherEntry { watcher: fs.FSWatcher; webContentsId: number; }
 interface GitWatcherEntry { watchers: fs.FSWatcher[]; webContentsId: number; }
-interface FileWatcherEntry { listener: (curr: fs.Stats, prev: fs.Stats) => void; webContentsId: number; }
+interface DirFileEntry { webContentsId: number; timer: ReturnType<typeof setTimeout> | null; }
+interface DirFileWatcherEntry { watcher: fs.FSWatcher; files: Map<string, DirFileEntry>; }
 
 const activeWatchers = new Map<string, ActiveWatcherEntry>();
 const gitWatchers = new Map<string, GitWatcherEntry>();
-const fileWatchers = new Map<string, FileWatcherEntry>();
+// Keyed by directory path; each entry watches one dir and tracks individual files within it.
+// Using directory-level FSEvents (path-based) instead of per-file kqueue (inode-based) so that
+// atomic saves from external editors (write temp + rename) are detected reliably on macOS.
+const dirFileWatchers = new Map<string, DirFileWatcherEntry>();
 
 function getDefaultShell(): string {
   if (process.platform === 'win32') {
@@ -546,10 +550,16 @@ function createWindow() {
       }
     }
     // Clean up file watchers owned by this window
-    for (const [filePath, entry] of fileWatchers) {
-      if (entry.webContentsId === winWebContentsId) {
-        fs.unwatchFile(filePath, entry.listener);
-        fileWatchers.delete(filePath);
+    for (const [dir, dirEntry] of dirFileWatchers) {
+      for (const [base, fileEntry] of dirEntry.files) {
+        if (fileEntry.webContentsId === winWebContentsId) {
+          if (fileEntry.timer !== null) clearTimeout(fileEntry.timer);
+          dirEntry.files.delete(base);
+        }
+      }
+      if (dirEntry.files.size === 0) {
+        dirEntry.watcher.close();
+        dirFileWatchers.delete(dir);
       }
     }
     // Clean up git watchers owned by this window
@@ -1487,22 +1497,51 @@ function setupIPC() {
   });
 
   ipcMain.on('watch-file', (event, filePath: string) => {
-    if (fileWatchers.has(filePath)) return;
     const webContentsId = event.sender.id;
-    const listener = (curr: fs.Stats, prev: fs.Stats) => {
-      if (curr.mtimeMs !== prev.mtimeMs) {
-        sendToWebContents(webContentsId, 'file-changed', filePath);
+    const dir = path.dirname(filePath);
+    const base = path.basename(filePath);
+
+    if (!dirFileWatchers.has(dir)) {
+      try {
+        const entry: DirFileWatcherEntry = { watcher: null as any, files: new Map() };
+        const watcher = fs.watch(dir, (_eventType, filename) => {
+          if (!filename) return;
+          const fileEntry = entry.files.get(filename);
+          if (!fileEntry) return;
+          if (fileEntry.timer !== null) clearTimeout(fileEntry.timer);
+          fileEntry.timer = setTimeout(() => {
+            fileEntry.timer = null;
+            sendToWebContents(fileEntry.webContentsId, 'file-changed', path.join(dir, filename));
+          }, 100);
+        });
+        watcher.on('error', () => {
+          for (const fe of entry.files.values()) {
+            if (fe.timer !== null) clearTimeout(fe.timer);
+          }
+          watcher.close();
+          dirFileWatchers.delete(dir);
+        });
+        entry.watcher = watcher;
+        dirFileWatchers.set(dir, entry);
+      } catch {
+        return;
       }
-    };
-    fs.watchFile(filePath, { interval: 500, persistent: false }, listener);
-    fileWatchers.set(filePath, { listener, webContentsId });
+    }
+
+    dirFileWatchers.get(dir)!.files.set(base, { webContentsId, timer: null });
   });
 
   ipcMain.on('unwatch-file', (_event, filePath: string) => {
-    const entry = fileWatchers.get(filePath);
-    if (entry) {
-      fs.unwatchFile(filePath, entry.listener);
-      fileWatchers.delete(filePath);
+    const dir = path.dirname(filePath);
+    const base = path.basename(filePath);
+    const dirEntry = dirFileWatchers.get(dir);
+    if (!dirEntry) return;
+    const fileEntry = dirEntry.files.get(base);
+    if (fileEntry?.timer !== null) clearTimeout(fileEntry!.timer!);
+    dirEntry.files.delete(base);
+    if (dirEntry.files.size === 0) {
+      dirEntry.watcher.close();
+      dirFileWatchers.delete(dir);
     }
   });
 
@@ -1643,10 +1682,13 @@ app.on('window-all-closed', () => {
     for (const w of entry.watchers) w.close();
   }
   gitWatchers.clear();
-  for (const [filePath, entry] of fileWatchers) {
-    fs.unwatchFile(filePath, entry.listener);
+  for (const [, dirEntry] of dirFileWatchers) {
+    for (const fe of dirEntry.files.values()) {
+      if (fe.timer !== null) clearTimeout(fe.timer);
+    }
+    dirEntry.watcher.close();
   }
-  fileWatchers.clear();
+  dirFileWatchers.clear();
   app.quit();
 });
 

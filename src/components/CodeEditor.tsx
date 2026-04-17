@@ -8,7 +8,7 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
 } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Transaction } from '@codemirror/state';
 import { history, defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
 import {
@@ -284,7 +284,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           syntaxHighlighting(kraftHighlightStyle),
           ...conflictExtension(),
           EditorView.updateListener.of(update => {
-            if (update.docChanged) {
+            if (update.docChanged && !update.transactions.some(tr => tr.annotation(Transaction.remote))) {
               onChangeRef.current(update.state.doc.toString());
             }
           }),
@@ -322,7 +322,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filePath]);
 
-    // Sync externally-changed content (e.g. file reloaded from disk)
+    // Sync externally-changed content (e.g. file reloaded from disk).
+    // Annotated as Transaction.remote so the updateListener skips it and doesn't create a draft.
     useEffect(() => {
       const view = editorRef.current;
       if (!view) return;
@@ -330,6 +331,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       if (current !== value) {
         view.dispatch({
           changes: { from: 0, to: view.state.doc.length, insert: value },
+          annotations: Transaction.remote.of(true),
         });
       }
     }, [value]);
