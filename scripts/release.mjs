@@ -87,14 +87,18 @@ async function uploadPackage(filePath, packageVersion) {
 }
 
 async function linkAssetToRelease(name, url) {
-  const res = await api(`/projects/${PROJECT_ID}/releases/${TAG}/assets/links`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, url, link_type: 'package' }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    console.warn(`Warning: failed to link ${name} to release: ${res.status} ${body}`);
+  try {
+    const res = await api(`/projects/${PROJECT_ID}/releases/${TAG}/assets/links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, url, link_type: 'package' }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.warn(`Warning: failed to link ${name} to release: ${res.status} ${body}`);
+    }
+  } catch (err) {
+    console.warn(`Warning: failed to link ${name} to release: ${err.message}`);
   }
 }
 
