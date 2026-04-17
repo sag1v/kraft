@@ -111,7 +111,7 @@ export function TerminalPanel() {
           <SplitIcon />
         </button>
         <PanelMaximizeButton isMaximized={maximizedPanel === 'terminal'} onToggle={() => setMaximizedPanel(maximizedPanel === 'terminal' ? null : 'terminal')} />
-        <PanelMinimizeButton onMinimize={() => setPanelVisibility('terminal', false)} tooltip={tooltipWithShortcut('Hide Terminal', 'toggle-terminal')} />
+        <PanelMinimizeButton onMinimize={() => { setMaximizedPanel(null); setPanelVisibility('terminal', false); }} tooltip={tooltipWithShortcut('Hide Terminal', 'toggle-terminal')} />
       </div>
 
       <div className="terminal-instances" ref={containerRef}>

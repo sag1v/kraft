@@ -1737,7 +1737,7 @@ export function Explorer() {
           <div className="panel-header">
             <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
             <PanelMaximizeButton isMaximized={maximizedPanel === 'explorer'} onToggle={() => setMaximizedPanel(maximizedPanel === 'explorer' ? null : 'explorer')} />
-            <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
+            <PanelMinimizeButton onMinimize={() => { setMaximizedPanel(null); setPanelVisibility('explorer', false); }} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
           </div>
           <div className="panel-body explorer-tree">
             <div className="explorer-loading">Loading...</div>
@@ -1750,7 +1750,7 @@ export function Explorer() {
         <div className="panel-header">
           <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
           <PanelMaximizeButton isMaximized={maximizedPanel === 'explorer'} onToggle={() => setMaximizedPanel(maximizedPanel === 'explorer' ? null : 'explorer')} />
-          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
+          <PanelMinimizeButton onMinimize={() => { setMaximizedPanel(null); setPanelVisibility('explorer', false); }} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
         </div>
         <div className="panel-body explorer-tree">
           <div className="explorer-prompt">
@@ -1838,7 +1838,7 @@ export function Explorer() {
             </IconButton>
           )}
           <PanelMaximizeButton isMaximized={maximizedPanel === 'explorer'} onToggle={() => setMaximizedPanel(maximizedPanel === 'explorer' ? null : 'explorer')} />
-          <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
+          <PanelMinimizeButton onMinimize={() => { setMaximizedPanel(null); setPanelVisibility('explorer', false); }} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
         </div>
       </div>
       <div className="explorer-view-tabs">

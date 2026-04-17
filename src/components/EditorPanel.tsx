@@ -370,7 +370,7 @@ export function EditorPanel() {
           </button>
         )}
         <PanelMaximizeButton isMaximized={maximizedPanel === 'editor'} onToggle={() => setMaximizedPanel(maximizedPanel === 'editor' ? null : 'editor')} />
-        <PanelMinimizeButton onMinimize={() => setPanelVisibility('editor', false)} tooltip={tooltipWithShortcut('Hide Editor', 'toggle-editor')} />
+        <PanelMinimizeButton onMinimize={() => { setMaximizedPanel(null); setPanelVisibility('editor', false); }} tooltip={tooltipWithShortcut('Hide Editor', 'toggle-editor')} />
       </div>
       {tabContextMenu && openFiles.length > 0 && (
         <div
