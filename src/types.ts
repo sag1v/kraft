@@ -269,6 +269,7 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<string>;
   showItemInFolder: (filePath: string) => Promise<void>;
+  openExternal: (url: string) => Promise<void>;
   checkForUpdates: () => Promise<boolean>;
   downloadUpdate: () => Promise<void>;
   installUpdate: () => Promise<void>;

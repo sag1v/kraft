@@ -1612,6 +1612,7 @@ function setupIPC() {
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-platform', () => process.platform);
   ipcMain.handle('show-item-in-folder', (_event, filePath: string) => shell.showItemInFolder(filePath));
+  ipcMain.handle('open-external', (_event, url: string) => shell.openExternal(url));
 
   ipcMain.handle('check-for-updates', async () => {
     return updateChecker.check();

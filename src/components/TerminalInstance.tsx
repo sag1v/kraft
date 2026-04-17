@@ -426,7 +426,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
     const fitAddon = new FitAddon();
     xterm.loadAddon(fitAddon);
-    xterm.loadAddon(new WebLinksAddon());
+    xterm.loadAddon(new WebLinksAddon((_event, uri) => window.api.openExternal(uri)));
 
     const linkTooltip = createLinkTooltip();
     document.body.appendChild(linkTooltip);

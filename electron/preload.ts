@@ -165,6 +165,7 @@ const api = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
   getPlatform: (): Promise<string> => ipcRenderer.invoke('get-platform'),
   showItemInFolder: (filePath: string): Promise<void> => ipcRenderer.invoke('show-item-in-folder', filePath),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
   checkForUpdates: (): Promise<boolean> => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke('download-update'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('install-update'),
