@@ -73,6 +73,8 @@ interface UIContextValue {
   settingsLoaded: boolean;
   panelVisibility: { explorer: boolean; editor: boolean; terminal: boolean };
   setPanelVisibility: (panel: 'explorer' | 'editor' | 'terminal', visible: boolean) => void;
+  maximizedPanel: PanelId | null;
+  setMaximizedPanel: (id: PanelId | null) => void;
   diffFilePath: string | null;
   setDiffFilePath: (path: string | null) => void;
   gitError: string | null;
@@ -192,6 +194,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [gitCacheVersion, setGitCacheVersion] = useState(0);
   const [panelVisibilityMap, setPanelVisibilityMap] = useState<Record<string, PanelVisibility>>({});
   const [panelLayoutMap, setPanelLayoutMap] = useState<Record<string, PanelId[][]>>({});
+  const [maximizedPanel, setMaximizedPanel] = useState<PanelId | null>(null);
   const [gitStatus, setGitStatus] = useState<Record<string, GitFileStatus>>({});
   const [gitStagedStatus, setGitStagedStatus] = useState<Record<string, GitFileStatus>>({});
   const [gitIgnored, setGitIgnored] = useState<string[]>([]);
@@ -1339,6 +1342,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     settingsLoaded,
     panelVisibility,
     setPanelVisibility,
+    maximizedPanel,
+    setMaximizedPanel,
     diffFilePath,
     setDiffFilePath,
     gitError,
@@ -1347,8 +1352,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setGitErrorViewContent,
     errorViewTitle,
     setErrorViewTitle,
-  }), [theme, layout, panelLayout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, diffFilePath, gitError, gitErrorViewContent, errorViewTitle,
-       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setOpenFilePath, closeFileTab, closeOtherFileTabs, closeAllFileTabs, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
+  }), [theme, layout, panelLayout, settings, settingsOpen, homeDir, openFilePath, openFiles, settingsLoaded, panelVisibility, maximizedPanel, diffFilePath, gitError, gitErrorViewContent, errorViewTitle,
+       setThemeId, setLayout, setPanelLayout, updateSettings, setPanelVisibility, setMaximizedPanel, setOpenFilePath, closeFileTab, closeOtherFileTabs, closeAllFileTabs, setActiveFileTab, reorderFileTabs, setDiffFilePath]);
 
   const sessionValue = useMemo<SessionContextValue>(() => ({
     cwd,

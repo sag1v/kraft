@@ -460,7 +460,7 @@ function computePanelDropLine(
 /* ------------------------------------------------------------------ */
 
 export function PanelLayout() {
-  const { layout, panelLayout, setPanelLayout, panelVisibility, setPanelVisibility } = useUIContext();
+  const { layout, panelLayout, setPanelLayout, panelVisibility, setPanelVisibility, maximizedPanel } = useUIContext();
   const containerRef = useRef<HTMLDivElement>(null);
   const [explorerWidth, setExplorerWidth] = useState(240);
   const [layoutContainerWidth, setLayoutContainerWidth] = useState(0);
@@ -497,10 +497,11 @@ export function PanelLayout() {
   const showTerminal = panelVisibility.terminal;
 
   const isPanelVisible = useCallback((id: PanelId): boolean => {
+    if (maximizedPanel !== null) return id === maximizedPanel;
     if (id === 'explorer') return showExplorer;
     if (id === 'editor') return showEditorPanel;
     return showTerminal;
-  }, [showExplorer, showEditorPanel, showTerminal]);
+  }, [showExplorer, showEditorPanel, showTerminal, maximizedPanel]);
 
   const effectiveLayout = useMemo(() => {
     const visiblePanels = new Set(
@@ -954,6 +955,7 @@ export function PanelLayout() {
   }, [onPointerMoveCapture, onPointerUpCapture, onEscapeDuringPanelDrag]);
 
   const onPanelPointerDown = useCallback((id: PanelId, e: React.PointerEvent) => {
+    if (maximizedPanel !== null) return;
     if (e.button !== 0) return;
     const panelEl = e.currentTarget as HTMLElement;
     const header = panelEl.querySelector('.panel-header');
@@ -968,7 +970,7 @@ export function PanelLayout() {
       document.addEventListener('pointerup', onPointerUpCapture, true);
       document.addEventListener('pointercancel', onPointerUpCapture, true);
     }
-  }, [onPointerMoveCapture, onPointerUpCapture]);
+  }, [onPointerMoveCapture, onPointerUpCapture, maximizedPanel]);
 
   /* ---- Handles ---- */
 

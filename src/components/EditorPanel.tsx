@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
-import { PanelMinimizeButton } from './IconButton';
+import { PanelMinimizeButton, PanelMaximizeButton } from './IconButton';
 import { tooltipWithShortcut } from '../shortcuts';
 import { FileIcon } from './FileIcon';
 import { TabBar, type TabItem } from './TabBar';
@@ -20,6 +20,8 @@ export function EditorPanel() {
     reorderFileTabs,
     homeDir,
     setPanelVisibility,
+    maximizedPanel,
+    setMaximizedPanel,
     diffFilePath,
     setDiffFilePath,
     gitErrorViewContent,
@@ -367,6 +369,7 @@ export function EditorPanel() {
             Diff
           </button>
         )}
+        <PanelMaximizeButton isMaximized={maximizedPanel === 'editor'} onToggle={() => setMaximizedPanel(maximizedPanel === 'editor' ? null : 'editor')} />
         <PanelMinimizeButton onMinimize={() => setPanelVisibility('editor', false)} tooltip={tooltipWithShortcut('Hide Editor', 'toggle-editor')} />
       </div>
       {tabContextMenu && openFiles.length > 0 && (

@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useEffect, useMemo } from 'react';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { TerminalInstance } from './TerminalInstance';
-import { PanelMinimizeButton } from './IconButton';
+import { PanelMinimizeButton, PanelMaximizeButton } from './IconButton';
 import { tooltipWithShortcut } from '../shortcuts';
 
 // SVG icon for the split action
@@ -15,7 +15,7 @@ function SplitIcon() {
 }
 
 export function TerminalPanel() {
-  const { theme, settings, setPanelVisibility, setOpenFilePath } = useUIContext();
+  const { theme, settings, setPanelVisibility, setOpenFilePath, maximizedPanel, setMaximizedPanel } = useUIContext();
   const {
     groups,
     activeGroup,
@@ -110,6 +110,7 @@ export function TerminalPanel() {
         >
           <SplitIcon />
         </button>
+        <PanelMaximizeButton isMaximized={maximizedPanel === 'terminal'} onToggle={() => setMaximizedPanel(maximizedPanel === 'terminal' ? null : 'terminal')} />
         <PanelMinimizeButton onMinimize={() => setPanelVisibility('terminal', false)} tooltip={tooltipWithShortcut('Hide Terminal', 'toggle-terminal')} />
       </div>
 

@@ -2061,6 +2061,7 @@ body {
   cursor: pointer;
   padding: 0 6px;
   height: 100%;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   opacity: 0;

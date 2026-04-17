@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, c
 import { VscFolderOpened, VscFiles, VscSourceControl, VscNewFile, VscNewFolder, VscSearch } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
-import { IconButton, PanelMinimizeButton } from './IconButton';
+import { IconButton, PanelMinimizeButton, PanelMaximizeButton } from './IconButton';
 import { shortenPath, normPath, isPathWithinRoot } from '../utils';
 import type { DirEntry, GitFileStatus, AgentContextDir, DirReadResult, ContentSearchFileResult } from '../types';
 import { tooltipWithShortcut } from '../shortcuts';
@@ -1211,7 +1211,7 @@ function SearchView({ explorerRoot }: { explorerRoot: string | null }) {
 }
 
 export function Explorer() {
-  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath, settings, panelVisibility } = useUIContext();
+  const { homeDir, setOpenFilePath, setPanelVisibility, setDiffFilePath, openFilePath, settings, panelVisibility, maximizedPanel, setMaximizedPanel } = useUIContext();
   const {
     cwd,
     explorerRoot,
@@ -1736,6 +1736,7 @@ export function Explorer() {
         <div className="panel explorer-panel">
           <div className="panel-header">
             <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
+            <PanelMaximizeButton isMaximized={maximizedPanel === 'explorer'} onToggle={() => setMaximizedPanel(maximizedPanel === 'explorer' ? null : 'explorer')} />
             <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
           </div>
           <div className="panel-body explorer-tree">
@@ -1748,6 +1749,7 @@ export function Explorer() {
       <div className="panel explorer-panel">
         <div className="panel-header">
           <span className="panel-title panel-icon explorer-icon" data-tooltip="Explorer - drag to reorder" data-tooltip-pos="bottom"><VscFolderOpened size={16} /></span>
+          <PanelMaximizeButton isMaximized={maximizedPanel === 'explorer'} onToggle={() => setMaximizedPanel(maximizedPanel === 'explorer' ? null : 'explorer')} />
           <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
         </div>
         <div className="panel-body explorer-tree">
@@ -1835,6 +1837,7 @@ export function Explorer() {
               ⟳
             </IconButton>
           )}
+          <PanelMaximizeButton isMaximized={maximizedPanel === 'explorer'} onToggle={() => setMaximizedPanel(maximizedPanel === 'explorer' ? null : 'explorer')} />
           <PanelMinimizeButton onMinimize={() => setPanelVisibility('explorer', false)} tooltip={tooltipWithShortcut('Hide Explorer', 'toggle-explorer')} />
         </div>
       </div>
