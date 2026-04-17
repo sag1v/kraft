@@ -442,6 +442,19 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     );
     xterm.open(container);
 
+    // Capture Ctrl+R at the window level before Chromium can process it as a
+    // reload shortcut. We check that this terminal's container holds DOM focus,
+    // then write \x12 directly to the PTY and stop the event so xterm doesn't
+    // also handle it (which would double-send).
+    const handleCtrlR = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.key !== 'r') return;
+      if (!container.contains(document.activeElement)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.api.writeTerminal(sessionIdRef.current, '\x12');
+    };
+    window.addEventListener('keydown', handleCtrlR, { capture: true });
+
     xtermRef.current = xterm;
     fitAddonRef.current = fitAddon;
 
@@ -507,6 +520,16 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       }
     });
 
+    // Prevent Chromium from intercepting Ctrl+key combinations (e.g. Ctrl+R for reload)
+    // before the keydown event reaches xterm. Returning true tells xterm to still process
+    // the key and forward it to the PTY as normal.
+    xterm.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+      }
+      return true;
+    });
+
     xterm.onData((data) => {
       window.api.writeTerminal(sessionIdRef.current, data);
       if (data.includes('\r') || data.includes('\n')) {
@@ -551,6 +574,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
       clearInterval(cwdPoll);
       if (cwdCheckTimer !== null) clearTimeout(cwdCheckTimer);
       linkTooltip.remove();
+      window.removeEventListener('keydown', handleCtrlR, { capture: true });
       xtermRef.current = null;
       fitAddonRef.current = null;
       try { webglAddon?.dispose(); } catch { /* already disposed */ }

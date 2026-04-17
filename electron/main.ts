@@ -59,6 +59,12 @@ async function createZshIntegration(): Promise<{ extraEnv: Record<string, string
     await fs.promises.writeFile(path.join(tempDir, '.zlogin'), stub('.zlogin'));
 
     const zshrc = stub('.zshrc') + `
+# Frameworks like Prezto use \${ZDOTDIR:-\$HOME}/.zsh_history, which lands in the temp dir.
+# Redirect to the real history file after all user config has been sourced.
+[[ "\$HISTFILE" == "\${ZDOTDIR}"* ]] && HISTFILE="${home}/.zsh_history"
+# Some plugins (e.g. fzf with incomplete PATH) rebind ^R to 'redisplay' instead of
+# history-incremental-search-backward. Restore it only if it ended up as redisplay.
+[[ "\$(bindkey '^R' 2>/dev/null)" == *redisplay* ]] && bindkey '^R' history-incremental-search-backward
 # Kraft shell integration — emit OSC 7 on every directory change
 __kraft_osc7() {
   printf '\\033]7;file://%s%s\\033\\\\' "\${HOST:-\$(hostname -s 2>/dev/null || echo localhost)}" "\${PWD}"
