@@ -67,7 +67,7 @@ function MaximizeIcon() {
   );
 }
 
-function RestoreIcon() {
+export function RestoreIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 13 13" fill="none" aria-hidden="true">
       <rect x="3.5" y="1" width="8" height="8" stroke="currentColor" strokeWidth="1.3" rx="0.5"/>

@@ -36,7 +36,7 @@ function RenameInput({ value, onCommit, onCancel }: {
 // ── Single tab ─────────────────────────────────────────────────────────────
 
 function SessionTab({ group, isActive, isInSplit, isClosable, dropSide, onActivate, onClose, onRename, onRenameChange, onContextMenu, onDragStart, onDragOver, onDrop }: {
-  group: { id: string; label: string; customLabel?: string; icon?: string; iconColor?: string; panes: { id: string; cwd: string }[] };
+  group: { id: string; label: string; customLabel?: string; icon?: string; iconColor?: string; rows: { panes: { id: string; cwd: string }[] }[] };
   isActive: boolean;
   isInSplit: boolean;
   isClosable: boolean;
@@ -52,7 +52,7 @@ function SessionTab({ group, isActive, isInSplit, isClosable, dropSide, onActiva
 }) {
   const [renaming, setRenaming] = useState(false);
   const setRenamingWithNotify = (v: boolean) => { setRenaming(v); onRenameChange(v); };
-  const cwd = group.panes[0]?.cwd ?? '';
+  const cwd = group.rows[0]?.panes[0]?.cwd ?? '';
   const dirName = cwd ? cwd.split('/').pop() || group.label : group.label;
   const displayName = group.customLabel || dirName;
 
@@ -255,7 +255,7 @@ export function SessionBar({ className }: { className?: string }) {
             key={group.id}
             group={group}
             isActive={group.id === activeGroupId}
-            isInSplit={group.panes.length >= 2}
+            isInSplit={group.rows.reduce((s, r) => s + r.panes.length, 0) >= 2 || group.rows.length >= 2}
             isClosable={groups.length > 1}
             dropSide={dropIndicator?.index === i ? dropIndicator.side : null}
             onActivate={() => setActiveGroup(group.id)}

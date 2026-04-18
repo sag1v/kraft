@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalPane, TerminalGroup, PanelId, PanelVisibility, AgentContextDir, PersistedSession, PersistedGroup, SavedWorkspace, SavedWorkspaceMeta } from '../types';
+import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalPane, TerminalRow, TerminalGroup, PanelId, PanelVisibility, AgentContextDir, PersistedSession, PersistedGroup, SavedWorkspace, SavedWorkspaceMeta } from '../types';
 import { getThemeById, kraftDark } from '../themes';
 import { clearEditorState } from '../components/CodeEditor';
 import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
@@ -99,13 +99,17 @@ interface SessionContextValue {
   duplicateGroup: (id: string) => Promise<void>;
   destroyGroup: (id: string) => void;
   splitPane: () => Promise<void>;
+  splitDown: () => Promise<void>;
   closePane: (paneId: string) => void;
   exitSplit: () => void;
-  updateGroupSplitPcts: (groupId: string, pcts: number[]) => void;
+  updateGroupColPcts: (groupId: string, rowId: string, colPcts: number[]) => void;
+  updateGroupRowPcts: (groupId: string, rowPcts: number[]) => void;
   updatePaneCwd: (paneId: string, cwd: string) => void;
   renameGroup: (id: string, customLabel: string) => void;
   updateGroupAppearance: (id: string, icon?: string, iconColor?: string) => void;
   reorderGroups: (fromIndex: number, toIndex: number) => void;
+  reorderPanes: (groupId: string, rowId: string, fromIndex: number, toIndex: number) => void;
+  movePaneTo: (groupId: string, paneId: string, fromRowId: string, target: { kind: 'column'; rowId: string; colIdx: number } | { kind: 'new-row'; insertAfterRowId: string | null }) => void;
   recentlyClosedGroups: { group: TerminalGroup; index: number }[];
   restoreLastClosedGroup: () => Promise<void>;
   explorerRoot: string | null;
@@ -167,6 +171,10 @@ let groupTabCounter = 0;
 
 function newGroupId() {
   return `g-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function newRowId() {
+  return `r-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function normPath(p: string) {
@@ -250,8 +258,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const activeGroup = groups.find(g => g.id === activeGroupId) || null;
   const focusedPaneId = activeGroup ? activeGroup.focusedPaneId : null;
+  const allPanesFlat = (g: TerminalGroup) => g.rows.flatMap(r => r.panes);
   const focusedPane = activeGroup
-    ? (activeGroup.panes.find(p => p.id === activeGroup.focusedPaneId) ?? activeGroup.panes[0] ?? null)
+    ? (allPanesFlat(activeGroup).find(p => p.id === activeGroup.focusedPaneId) ?? activeGroup.rows[0]?.panes[0] ?? null)
     : null;
   const cwd = focusedPane?.cwd || homeDir || '';
   const explorerRoot = activeGroupId ? explorerRoots[activeGroupId] ?? null : null;
@@ -348,7 +357,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // terminalId is a pane (PTY) id — find the group containing it
       setGroups(prev =>
         prev.map(g => {
-          if (!g.panes.some(p => p.id === terminalId)) return g;
+          if (!g.rows.some(r => r.panes.some(p => p.id === terminalId))) return g;
           if (g.icon !== undefined) return g;
           const setColor = g.iconColor === undefined;
           return {
@@ -382,7 +391,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // terminalId is a pane (PTY) id — find the group containing it
       setGroups(prev =>
         prev.map(g => {
-          if (!g.panes.some(p => p.id === terminalId)) return g;
+          if (!g.rows.some(r => r.panes.some(p => p.id === terminalId))) return g;
           if (!g.autoIcon) return g;
           return {
             ...g,
@@ -436,17 +445,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // If the previous group's explorer was synced with its cwd, auto-load
     // the new group's explorer with its cwd so the user doesn't have to.
-    if (prevId && group.panes[0]?.cwd) {
+    const firstPaneCwd = group.rows[0]?.panes[0]?.cwd;
+    if (prevId && firstPaneCwd) {
       setExplorerRoots(prev => {
         const prevRoot = prev[prevId];
         if (!prevRoot) return prev;
         const prevGroup = groupsRef.current.find(g => g.id === prevId);
+        const prevAllPanes = prevGroup ? prevGroup.rows.flatMap(r => r.panes) : [];
         const prevFocusedPane = prevGroup
-          ? (prevGroup.panes.find(p => p.id === prevGroup.focusedPaneId) ?? prevGroup.panes[0])
+          ? (prevAllPanes.find(p => p.id === prevGroup.focusedPaneId) ?? prevAllPanes[0])
           : null;
         if (!prevFocusedPane?.cwd) return prev;
         if (normPath(prevRoot) !== normPath(prevFocusedPane.cwd)) return prev;
-        return { ...prev, [group.id]: normPath(group.panes[0].cwd) };
+        return { ...prev, [group.id]: normPath(firstPaneCwd) };
       });
     }
 
@@ -489,8 +500,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const createGroup = useCallback(async () => {
     if (!window.api?.createTerminal) return;
     const activeGrp = groupsRef.current.find(g => g.id === activeGroupIdRef.current);
+    const activeGrpAllPanes = activeGrp ? activeGrp.rows.flatMap(r => r.panes) : [];
     const focusedPane = activeGrp
-      ? (activeGrp.panes.find(p => p.id === activeGrp.focusedPaneId) ?? activeGrp.panes[0])
+      ? (activeGrpAllPanes.find(p => p.id === activeGrp.focusedPaneId) ?? activeGrpAllPanes[0])
       : null;
     const startCwd = settingsRef.current.newTabUsePreviousCwd
       ? (focusedPane?.cwd || homeDir || undefined)
@@ -502,9 +514,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addGroup({
         id: newGroupId(),
         label: `Terminal ${groupTabCounter}`,
-        panes: [{ id: paneId, cwd: startCwd || '' }],
+        rows: [{ id: newRowId(), panes: [{ id: paneId, cwd: startCwd || '' }], colPcts: [100] }],
+        rowPcts: [100],
         focusedPaneId: paneId,
-        splitPcts: [100],
       });
     } catch (err) {
       console.error('Failed to create terminal:', err);
@@ -520,9 +532,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addGroup({
         id: newGroupId(),
         label: `Terminal ${groupTabCounter}`,
-        panes: [{ id: paneId, cwd: path }],
+        rows: [{ id: newRowId(), panes: [{ id: paneId, cwd: path }], colPcts: [100] }],
+        rowPcts: [100],
         focusedPaneId: paneId,
-        splitPcts: [100],
       });
     } catch (err) {
       console.error('Failed to create terminal:', err);
@@ -532,8 +544,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const duplicateGroup = useCallback(async (sourceId: string) => {
     if (!window.api?.createTerminal) return;
     const sourceGrp = groupsRef.current.find(g => g.id === sourceId);
+    const sourceAllPanes = sourceGrp ? sourceGrp.rows.flatMap(r => r.panes) : [];
     const sourceFocusedPane = sourceGrp
-      ? (sourceGrp.panes.find(p => p.id === sourceGrp.focusedPaneId) ?? sourceGrp.panes[0])
+      ? (sourceAllPanes.find(p => p.id === sourceGrp.focusedPaneId) ?? sourceAllPanes[0])
       : null;
     const startCwd = sourceFocusedPane?.cwd || homeDir || undefined;
     const shell = settingsRef.current.shellOverride || undefined;
@@ -543,9 +556,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addGroup({
         id: newGroupId(),
         label: `Terminal ${groupTabCounter}`,
-        panes: [{ id: paneId, cwd: startCwd || '' }],
+        rows: [{ id: newRowId(), panes: [{ id: paneId, cwd: startCwd || '' }], colPcts: [100] }],
+        rowPcts: [100],
         focusedPaneId: paneId,
-        splitPcts: [100],
       });
     } catch (err) {
       console.error('Failed to duplicate terminal:', err);
@@ -570,7 +583,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setRecentlyClosedGroups(closed);
       window.api?.saveSettings({ ...settingsRef.current, recentlyClosedGroups: closed });
       // Destroy all PTYs in the group
-      for (const pane of grp.panes) {
+      for (const pane of grp.rows.flatMap(r => r.panes)) {
         try { window.api?.destroyTerminal(pane.id); } catch {}
       }
     }
@@ -587,20 +600,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!window.api?.createTerminal) return;
     const shell = settingsRef.current.shellOverride || undefined;
     try {
-      // Restore all panes of the closed group
-      const newPanes: TerminalPane[] = [];
-      for (const oldPane of toRestore.panes) {
-        const { id: paneId } = await window.api.createTerminal({ cwd: oldPane.cwd || undefined, shell, cols: 80, rows: 24 });
-        newPanes.push({ id: paneId, cwd: oldPane.cwd });
+      // Restore all rows and panes of the closed group
+      const newRows: TerminalRow[] = [];
+      for (const oldRow of toRestore.rows) {
+        const newPanes: TerminalPane[] = [];
+        for (const oldPane of oldRow.panes) {
+          const { id: paneId } = await window.api.createTerminal({ cwd: oldPane.cwd || undefined, shell, cols: 80, rows: 24 });
+          newPanes.push({ id: paneId, cwd: oldPane.cwd });
+        }
+        if (newPanes.length > 0) {
+          newRows.push({ id: newRowId(), panes: newPanes, colPcts: oldRow.colPcts.length === newPanes.length ? oldRow.colPcts : equalSplitPcts(newPanes.length) });
+        }
       }
-      if (newPanes.length === 0) return;
+      if (newRows.length === 0) return;
       groupTabCounter++;
       addGroup({
         ...toRestore,
         id: newGroupId(),
-        panes: newPanes,
-        focusedPaneId: newPanes[0].id,
-        splitPcts: equalSplitPcts(newPanes.length),
+        rows: newRows,
+        rowPcts: equalSplitPcts(newRows.length),
+        focusedPaneId: newRows[0].panes[0].id,
       }, restoreIndex);
     } catch (err) {
       console.error('Failed to restore terminal:', err);
@@ -613,16 +632,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setFocusedPane = useCallback((paneId: string) => {
     setGroups(prev => prev.map(g => {
-      if (!g.panes.some(p => p.id === paneId)) return g;
+      if (!g.rows.some(r => r.panes.some(p => p.id === paneId))) return g;
       return { ...g, focusedPaneId: paneId };
     }));
   }, []);
 
-  const splitPane = useCallback(async () => {
+  const splitRight = useCallback(async () => {
     if (!window.api?.createTerminal) return;
     const activeGrp = groupsRef.current.find(g => g.id === activeGroupIdRef.current);
     if (!activeGrp) return;
-    const currentPane = activeGrp.panes.find(p => p.id === activeGrp.focusedPaneId) ?? activeGrp.panes[0];
+    const focusedRow = activeGrp.rows.find(r => r.panes.some(p => p.id === activeGrp.focusedPaneId)) ?? activeGrp.rows[0];
+    const currentPane = focusedRow?.panes.find(p => p.id === activeGrp.focusedPaneId) ?? focusedRow?.panes[0];
     // Splits always inherit the focused pane's cwd (independent of newTabUsePreviousCwd setting).
     const startCwd = currentPane?.cwd || homeDir || undefined;
     const shell = settingsRef.current.shellOverride || undefined;
@@ -631,22 +651,66 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const newPane: TerminalPane = { id: paneId, cwd: startCwd || '' };
       setGroups(prev => prev.map(g => {
         if (g.id !== activeGroupIdRef.current) return g;
-        const newPanes = [...g.panes, newPane];
-        return { ...g, panes: newPanes, focusedPaneId: paneId, splitPcts: equalSplitPcts(newPanes.length) };
+        const newRows = g.rows.map(r => {
+          if (r.id !== focusedRow?.id) return r;
+          const newPanes = [...r.panes, newPane];
+          return { ...r, panes: newPanes, colPcts: equalSplitPcts(newPanes.length) };
+        });
+        return { ...g, rows: newRows, focusedPaneId: paneId };
       }));
     } catch (err) {
       console.error('Failed to split pane:', err);
     }
   }, [homeDir]);
+  const splitPane = splitRight; // alias for backward compat
+
+  const splitDown = useCallback(async () => {
+    if (!window.api?.createTerminal) return;
+    const activeGrp = groupsRef.current.find(g => g.id === activeGroupIdRef.current);
+    if (!activeGrp) return;
+    const focusedRowIdx = activeGrp.rows.findIndex(r => r.panes.some(p => p.id === activeGrp.focusedPaneId));
+    const targetRowIdx = focusedRowIdx === -1 ? activeGrp.rows.length - 1 : focusedRowIdx;
+    const startCwd = activeGrp.rows[targetRowIdx]?.panes.find(p => p.id === activeGrp.focusedPaneId)?.cwd
+      || activeGrp.rows[targetRowIdx]?.panes[0]?.cwd || homeDir || undefined;
+    const shell = settingsRef.current.shellOverride || undefined;
+    try {
+      const { id: paneId } = await window.api.createTerminal({ cwd: startCwd, shell, cols: 80, rows: 24 });
+      const newPane: TerminalPane = { id: paneId, cwd: startCwd || '' };
+      const newRow: TerminalRow = { id: newRowId(), panes: [newPane], colPcts: [100] };
+      setGroups(prev => prev.map(g => {
+        if (g.id !== activeGroupIdRef.current) return g;
+        const insertIdx = targetRowIdx + 1;
+        const newRows = [...g.rows];
+        newRows.splice(insertIdx, 0, newRow);
+        return { ...g, rows: newRows, rowPcts: equalSplitPcts(newRows.length), focusedPaneId: paneId };
+      }));
+    } catch (err) {
+      console.error('Failed to split down:', err);
+    }
+  }, [homeDir]);
 
   const closePane = useCallback((paneId: string) => {
     setGroups(prev => prev.map(g => {
-      if (!g.panes.some(p => p.id === paneId)) return g;
-      const newPanes = g.panes.filter(p => p.id !== paneId);
-      const newFocusedId = g.focusedPaneId === paneId
-        ? (newPanes[0]?.id ?? '')
+      const rowIdx = g.rows.findIndex(r => r.panes.some(p => p.id === paneId));
+      if (rowIdx === -1) return g;
+      const row = g.rows[rowIdx];
+      const newPanes = row.panes.filter(p => p.id !== paneId);
+      let newRows: TerminalRow[];
+      let newRowPcts: number[];
+      if (newPanes.length === 0) {
+        // Remove entire row
+        newRows = g.rows.filter((_, i) => i !== rowIdx);
+        newRowPcts = newRows.length > 0 ? equalSplitPcts(newRows.length) : [100];
+      } else {
+        newRows = g.rows.map((r, i) => i !== rowIdx ? r : { ...r, panes: newPanes, colPcts: equalSplitPcts(newPanes.length) });
+        newRowPcts = g.rowPcts;
+      }
+      if (newRows.length === 0) return g; // shouldn't happen but guard
+      const allNewPanes = newRows.flatMap(r => r.panes);
+      const newFocusedPaneId = g.focusedPaneId === paneId
+        ? (allNewPanes[0]?.id ?? '')
         : g.focusedPaneId;
-      return { ...g, panes: newPanes, focusedPaneId: newFocusedId, splitPcts: equalSplitPcts(newPanes.length) };
+      return { ...g, rows: newRows, rowPcts: newRowPcts, focusedPaneId: newFocusedPaneId };
     }));
     try { window.api?.destroyTerminal(paneId); } catch {}
     setAgentContextDirsMap(prev => {
@@ -659,40 +723,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /** Close all panes except the focused one, collapsing split mode. */
   const exitSplit = useCallback(() => {
     const grp = groupsRef.current.find(g => g.id === activeGroupIdRef.current);
-    if (!grp || grp.panes.length < 2) return;
-    const panestoClose = grp.panes.filter(p => p.id !== grp.focusedPaneId);
-    for (const pane of panestoClose) {
-      try { window.api?.destroyTerminal(pane.id); } catch {}
-    }
+    if (!grp) return;
+    const allPanes = grp.rows.flatMap(r => r.panes);
+    if (allPanes.length < 2) return;
+    const focused = allPanes.find(p => p.id === grp.focusedPaneId) ?? allPanes[0];
+    const panesToClose = allPanes.filter(p => p.id !== focused.id);
+    for (const p of panesToClose) { try { window.api?.destroyTerminal(p.id); } catch {} }
     setAgentContextDirsMap(prev => {
       const next = { ...prev };
-      for (const pane of panestoClose) delete next[pane.id];
+      for (const p of panesToClose) delete next[p.id];
       return next;
     });
     setGroups(prev => prev.map(g => {
       if (g.id !== activeGroupIdRef.current) return g;
-      const focused = g.panes.find(p => p.id === g.focusedPaneId);
-      if (!focused) return g;
-      return { ...g, panes: [focused], splitPcts: [100] };
+      const newRow: TerminalRow = { id: g.rows[0]?.id ?? newRowId(), panes: [focused], colPcts: [100] };
+      return { ...g, rows: [newRow], rowPcts: [100], focusedPaneId: focused.id };
     }));
   }, []);
 
-  const updateGroupSplitPcts = useCallback((groupId: string, pcts: number[]) => {
+  const updateGroupColPcts = useCallback((groupId: string, rowId: string, colPcts: number[]) => {
     setGroups(prev => prev.map(g => {
       if (g.id !== groupId) return g;
-      return { ...g, splitPcts: pcts };
+      return { ...g, rows: g.rows.map(r => r.id !== rowId ? r : { ...r, colPcts }) };
     }));
+  }, []);
+
+  const updateGroupRowPcts = useCallback((groupId: string, rowPcts: number[]) => {
+    setGroups(prev => prev.map(g => g.id !== groupId ? g : { ...g, rowPcts }));
   }, []);
 
   const updatePaneCwd = useCallback((paneId: string, newCwd: string) => {
     if (!newCwd) return;
     const normalized = normPath(newCwd);
     setGroups(prev => prev.map(g => {
-      const paneIdx = g.panes.findIndex(p => p.id === paneId);
-      if (paneIdx === -1 || g.panes[paneIdx].cwd === normalized) return g;
-      const newPanes = [...g.panes];
-      newPanes[paneIdx] = { ...g.panes[paneIdx], cwd: normalized };
-      return { ...g, panes: newPanes };
+      if (!g.rows.some(r => r.panes.some(p => p.id === paneId))) return g;
+      return { ...g, rows: g.rows.map(r => ({
+        ...r,
+        panes: r.panes.map(p => p.id === paneId ? { ...p, cwd: normalized } : p),
+      }))};
     }));
   }, []);
 
@@ -727,6 +795,72 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       next.splice(toIndex, 0, moved);
       return next;
     });
+  }, []);
+
+  const reorderPanes = useCallback((groupId: string, rowId: string, fromIndex: number, toIndex: number) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g;
+      return { ...g, rows: g.rows.map(r => {
+        if (r.id !== rowId) return r;
+        const newPanes = [...r.panes];
+        const newColPcts = [...r.colPcts];
+        const [movedPane] = newPanes.splice(fromIndex, 1);
+        const [movedPct] = newColPcts.splice(fromIndex, 1);
+        newPanes.splice(toIndex, 0, movedPane);
+        newColPcts.splice(toIndex, 0, movedPct);
+        return { ...r, panes: newPanes, colPcts: newColPcts };
+      })};
+    }));
+  }, []);
+
+  const movePaneTo = useCallback((
+    groupId: string,
+    paneId: string,
+    fromRowId: string,
+    target: { kind: 'column'; rowId: string; colIdx: number } | { kind: 'new-row'; insertAfterRowId: string | null }
+  ) => {
+    setGroups(prev => prev.map(g => {
+      if (g.id !== groupId) return g;
+      const pane = g.rows.flatMap(r => r.panes).find(p => p.id === paneId);
+      if (!pane) return g;
+
+      // No-op check
+      if (target.kind === 'column') {
+        const fromIdx = g.rows.find(r => r.id === fromRowId)?.panes.findIndex(p => p.id === paneId) ?? -1;
+        if (fromRowId === target.rowId && fromIdx === target.colIdx) return g;
+      }
+
+      // Remove pane from source row; drop row if it becomes empty
+      let newRows = g.rows
+        .map(r => r.id !== fromRowId ? r : { ...r, panes: r.panes.filter(p => p.id !== paneId), colPcts: equalSplitPcts(r.panes.length - 1) })
+        .filter(r => r.panes.length > 0);
+
+      if (target.kind === 'column') {
+        const targetRowExists = newRows.some(r => r.id === target.rowId);
+        if (!targetRowExists) {
+          // Source row was removed (had only this pane); treat as new single-pane row
+          newRows = [{ id: newRowId(), panes: [pane], colPcts: [100] }];
+        } else {
+          newRows = newRows.map(r => {
+            if (r.id !== target.rowId) return r;
+            const newPanes = [...r.panes];
+            newPanes.splice(Math.min(target.colIdx, newPanes.length), 0, pane);
+            return { ...r, panes: newPanes, colPcts: equalSplitPcts(newPanes.length) };
+          });
+        }
+      } else {
+        const newRow: TerminalRow = { id: newRowId(), panes: [pane], colPcts: [100] };
+        if (target.insertAfterRowId === null) {
+          newRows.unshift(newRow);
+        } else {
+          const afterIdx = newRows.findIndex(r => r.id === target.insertAfterRowId);
+          newRows.splice(afterIdx === -1 ? newRows.length : afterIdx + 1, 0, newRow);
+        }
+      }
+
+      if (newRows.length === 0) return g;
+      return { ...g, rows: newRows, rowPcts: equalSplitPcts(newRows.length), focusedPaneId: paneId };
+    }));
   }, []);
 
   const setExplorerRoot = useCallback((path: string | null) => {
@@ -1038,14 +1172,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const serializeGroups = useCallback((): PersistedGroup[] => {
     return groupsRef.current.map(g => {
-      const focusedIndex = Math.max(0, g.panes.findIndex(p => p.id === g.focusedPaneId));
+      let focusedRowIndex = 0;
+      let focusedPaneIndex = 0;
+      for (let ri = 0; ri < g.rows.length; ri++) {
+        const pi = g.rows[ri].panes.findIndex(p => p.id === g.focusedPaneId);
+        if (pi !== -1) { focusedRowIndex = ri; focusedPaneIndex = pi; break; }
+      }
       return {
         customLabel: g.customLabel,
         icon: g.autoIcon ? undefined : g.icon,
         iconColor: g.autoIconColor ? undefined : g.iconColor,
-        panes: g.panes.map(p => ({ cwd: p.cwd })),
-        focusedPaneIndex: focusedIndex,
-        splitPcts: g.splitPcts,
+        rows: g.rows.map(r => ({ panes: r.panes.map(p => ({ cwd: p.cwd })), colPcts: r.colPcts })),
+        rowPcts: g.rowPcts,
+        focusedRowIndex,
+        focusedPaneIndex,
         explorerRoot: explorerRoots[g.id] ?? null,
         panelVisibility: panelVisibilityMapRef.current[g.id],
         panelLayout: panelLayoutMapRef.current[g.id],
@@ -1092,25 +1232,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     for (const pg of persistedGroups) {
       try {
-        const newPanes: TerminalPane[] = [];
-        for (const pp of pg.panes) {
-          const { id: paneId } = await window.api.createTerminal({ cwd: pp.cwd || undefined, shell, cols: 80, rows: 24 });
-          newPanes.push({ id: paneId, cwd: pp.cwd });
+        const newRows: TerminalRow[] = [];
+
+        if (pg.rows && pg.rows.length > 0) {
+          // New grid format
+          for (const pr of pg.rows) {
+            const rowPanes: TerminalPane[] = [];
+            for (const pp of pr.panes) {
+              const { id: paneId } = await window.api.createTerminal({ cwd: pp.cwd || undefined, shell, cols: 80, rows: 24 });
+              rowPanes.push({ id: paneId, cwd: pp.cwd });
+            }
+            if (rowPanes.length > 0) {
+              newRows.push({ id: newRowId(), panes: rowPanes, colPcts: pr.colPcts?.length === rowPanes.length ? pr.colPcts : equalSplitPcts(rowPanes.length) });
+            }
+          }
+        } else if (pg.panes && pg.panes.length > 0) {
+          // Old flat format — single row
+          const rowPanes: TerminalPane[] = [];
+          for (const pp of pg.panes) {
+            const { id: paneId } = await window.api.createTerminal({ cwd: pp.cwd || undefined, shell, cols: 80, rows: 24 });
+            rowPanes.push({ id: paneId, cwd: pp.cwd });
+          }
+          if (rowPanes.length > 0) {
+            newRows.push({ id: newRowId(), panes: rowPanes, colPcts: pg.splitPcts?.length === rowPanes.length ? pg.splitPcts : equalSplitPcts(rowPanes.length) });
+          }
         }
-        if (newPanes.length === 0) continue;
+
+        if (newRows.length === 0) continue;
+
+        const focusedRowIdx = Math.min(pg.focusedRowIndex ?? 0, newRows.length - 1);
+        const focusedPaneIdx = Math.min(pg.focusedPaneIndex ?? 0, newRows[focusedRowIdx].panes.length - 1);
+        const focusedPaneId = newRows[focusedRowIdx].panes[focusedPaneIdx].id;
+        const rowPcts = pg.rowPcts?.length === newRows.length ? pg.rowPcts : equalSplitPcts(newRows.length);
 
         groupTabCounter++;
         const gid = newGroupId();
-        const focusedPaneId = newPanes[Math.min(pg.focusedPaneIndex ?? 0, newPanes.length - 1)].id;
         newGroups.push({
           id: gid,
           label: `Terminal ${groupTabCounter}`,
           customLabel: pg.customLabel,
           icon: pg.icon,
           iconColor: pg.iconColor,
-          panes: newPanes,
+          rows: newRows,
+          rowPcts,
           focusedPaneId,
-          splitPcts: pg.splitPcts?.length === newPanes.length ? pg.splitPcts : equalSplitPcts(newPanes.length),
         });
 
         if (pg.explorerRoot != null) newExplorerRoots[gid] = pg.explorerRoot;
@@ -1152,7 +1317,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!workspace || !Array.isArray(workspace.groups)) return;
     // Destroy all current PTYs before replacing
     for (const g of groupsRef.current) {
-      for (const p of g.panes) {
+      for (const p of g.rows.flatMap(r => r.panes)) {
         try { window.api?.destroyTerminal(p.id); } catch {}
       }
     }
@@ -1370,11 +1535,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     duplicateGroup,
     destroyGroup,
     splitPane,
+    splitDown,
     closePane,
     updatePaneCwd,
     renameGroup,
     updateGroupAppearance,
     reorderGroups,
+    reorderPanes,
+    movePaneTo,
     recentlyClosedGroups,
     restoreLastClosedGroup,
     explorerRoot,
@@ -1397,14 +1565,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     undoLastCommit,
     agentContextDirs,
     exitSplit,
-    updateGroupSplitPcts,
+    updateGroupColPcts,
+    updateGroupRowPcts,
     activeWorkspaceName,
     saveWorkspace,
     loadWorkspace,
     listWorkspaces,
     deleteWorkspace,
   }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedGroups, activeWorkspaceName,
-       setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, closePane, exitSplit, updateGroupSplitPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile, saveWorkspace, loadWorkspace, listWorkspaces, deleteWorkspace]);
+       setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, splitDown, closePane, exitSplit, updateGroupColPcts, updateGroupRowPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, reorderPanes, movePaneTo, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile, saveWorkspace, loadWorkspace, listWorkspaces, deleteWorkspace]);
 
   return (
     <UIContext.Provider value={uiValue}>

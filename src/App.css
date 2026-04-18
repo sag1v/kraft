@@ -1949,6 +1949,47 @@ body {
 
 /* ── Terminal ── */
 
+.terminal-panel-header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  gap: 6px;
+}
+
+.terminal-panel-header-actions {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.panel-split-btn {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--panel-header-height);
+  height: var(--panel-header-height);
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.panel-header:hover .panel-split-btn {
+  opacity: 0.8;
+}
+
+.panel-split-btn:hover {
+  opacity: 1 !important;
+  color: var(--fg);
+}
+
 .terminal-panel {
   height: 100%;
   display: flex;
@@ -1978,8 +2019,32 @@ body {
 .terminal-instances {
   flex: 1;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  position: relative;
+}
+
+.terminal-row {
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  position: relative;
+}
+
+.terminal-row-divider {
+  height: 4px;
+  min-height: 4px;
+  flex-shrink: 0;
+  background: var(--border);
+  cursor: row-resize;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.terminal-row-divider:hover,
+.terminal-row-divider:active {
+  background: var(--accent);
 }
 
 /* ── Split terminal ── */
@@ -2003,42 +2068,138 @@ body {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
-/* ── Per-pane close button ── */
+/* ── Per-pane wrapper ── */
 .terminal-pane-wrapper {
   position: relative;
 }
 
-.terminal-pane-close-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 10;
-  width: 20px;
-  height: 20px;
+/* ── Pane header bar (split mode only) ── */
+.terminal-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 4px 0 2px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.terminal-pane-header-grip {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
   color: var(--fg-muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  cursor: grab;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+
+.terminal-pane-header-grip:hover {
+  color: var(--fg);
+  background: var(--bg-tertiary);
+}
+
+.terminal-pane-header-grip:active {
+  cursor: grabbing;
+}
+
+.terminal-pane-header-spacer {
+  flex: 1;
+}
+
+.terminal-pane-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
   padding: 0;
-  opacity: 0;
-  transition: opacity 0.12s, color 0.12s, background 0.12s;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+
+.terminal-pane-header-btn:hover {
+  color: var(--fg);
+  background: var(--bg-tertiary);
+}
+
+/* ── Drag-to-reorder overlay + drop zones ── */
+
+/* Full-area overlay that captures mouse events so xterm canvas doesn't steal them */
+.terminal-drag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  cursor: grabbing;
+}
+
+/* Per-slot drop zone — absolutely positioned inside overlay, covers a pane's footprint */
+.terminal-drop-zone {
+  position: absolute;
+  border: 2px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  transition: background 0.1s, border-color 0.1s;
   pointer-events: none;
 }
 
-.terminal-pane-wrapper:hover .terminal-pane-close-btn {
-  opacity: 1;
-  pointer-events: auto;
+.terminal-drop-zone--active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
 }
 
-.terminal-pane-close-btn:hover {
-  color: var(--fg);
-  background: var(--bg-tertiary);
+/* Horizontal line that appears between rows during drag — indicates "drop as new row" */
+.terminal-row-insert-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform: translateY(-50%);
+  background: transparent;
+  pointer-events: none;
+  transition: background 0.1s, box-shadow 0.1s;
+  z-index: 21;
+}
+
+.terminal-row-insert-line--active {
+  background: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* ── Restore chip in panel header (shown when a pane is zoomed) ── */
+.terminal-zoom-restore-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+
+.terminal-zoom-restore-chip:hover {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .session-tab-split-icon {

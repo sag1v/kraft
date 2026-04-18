@@ -61,6 +61,12 @@ export interface TerminalPane {
   cwd: string;
 }
 
+export interface TerminalRow {
+  id: string;
+  panes: TerminalPane[];
+  colPcts: number[];  // horizontal percentages, sum to 100
+}
+
 export interface TerminalGroup {
   id: string;
   label: string;
@@ -71,9 +77,9 @@ export interface TerminalGroup {
   autoIcon?: boolean;
   /** True when the color was auto-set by agent detection (not manually chosen). */
   autoIconColor?: boolean;
-  panes: TerminalPane[];
-  focusedPaneId: string;      // which pane has keyboard focus
-  splitPcts: number[];        // flex percentage for each pane (length === panes.length)
+  rows: TerminalRow[];    // was: panes: TerminalPane[]
+  rowPcts: number[];      // was: splitPcts: number[]
+  focusedPaneId: string;  // which pane has keyboard focus
 }
 
 export interface UpdateInfo {
@@ -165,13 +171,24 @@ export interface PersistedPane {
   cwd: string;
 }
 
+export interface PersistedRow {
+  panes: PersistedPane[];
+  colPcts: number[];
+}
+
 export interface PersistedGroup {
   customLabel?: string;
   icon?: string;
   iconColor?: string;
-  panes: PersistedPane[];
-  focusedPaneIndex: number;
-  splitPcts: number[];
+  // New grid format:
+  rows?: PersistedRow[];
+  rowPcts?: number[];
+  // Old flat format (backward compat, still may exist on disk):
+  panes?: PersistedPane[];
+  splitPcts?: number[];
+  // Both formats use these:
+  focusedRowIndex?: number;
+  focusedPaneIndex?: number;
   explorerRoot?: string | null;
   panelVisibility?: PanelVisibility;
   panelLayout?: PanelId[][];

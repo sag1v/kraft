@@ -52,7 +52,7 @@ function AppInner() {
       document.title = activeWorkspaceName;
       return;
     }
-    const firstCwd = groups[0]?.panes[0]?.cwd;
+    const firstCwd = groups[0]?.rows[0]?.panes[0]?.cwd;
     const folderName = firstCwd ? (firstCwd.split('/').filter(Boolean).pop() ?? null) : null;
     document.title = folderName ?? 'Kraft';
   }, [activeWorkspaceName, groups]);
