@@ -10,7 +10,7 @@ import {
 } from '@codemirror/view';
 import { EditorState, Transaction } from '@codemirror/state';
 import { history, defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { search, searchKeymap } from '@codemirror/search';
+import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import {
   syntaxHighlighting,
   HighlightStyle,
@@ -278,6 +278,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           indentUnit.of('  '),
           EditorState.tabSize.of(2),
           search({ top: true }),
+          highlightSelectionMatches({ minSelectionLength: 1, wholeWords: true }),
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
           ...(Array.isArray(langExt) ? langExt : [langExt]),
           editorTheme,
