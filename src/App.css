@@ -2041,17 +2041,17 @@ body {
   background: var(--bg-tertiary);
 }
 
-.session-tab--in-split::after {
-  content: '';
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
+.session-tab-split-icon {
+  display: inline-flex;
+  align-items: center;
   margin-left: 4px;
   flex-shrink: 0;
-  vertical-align: middle;
-  opacity: 0.8;
+  opacity: 0.08;
+  color: var(--fg);
+}
+
+.session-tab-split-icon svg rect {
+  stroke-width: 1;
 }
 
 .panel-split-btn {

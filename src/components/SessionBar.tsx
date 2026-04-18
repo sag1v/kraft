@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSessionContext } from '../context/AppContext';
 import { TerminalTabIcon, TERMINAL_ICONS, TAB_COLORS } from '../terminalIcons';
 import { WorkspaceManager } from './WorkspaceManager';
+import { SplitIcon } from './TerminalPanel';
 import type { WorkspaceManagerMode } from './WorkspaceManager';
 
 // ── Inline rename input ────────────────────────────────────────────────────
@@ -79,6 +80,9 @@ function SessionTab({ group, isActive, isInSplit, isClosable, dropSide, onActiva
         />
       ) : (
         <span className="session-tab-label">{displayName}</span>
+      )}
+      {isInSplit && (
+        <span className="session-tab-split-icon"><SplitIcon /></span>
       )}
       {isClosable && (
         <button

@@ -5,7 +5,7 @@ import { PanelMinimizeButton, PanelMaximizeButton } from './IconButton';
 import { tooltipWithShortcut } from '../shortcuts';
 
 // SVG icon for the split action
-function SplitIcon() {
+export function SplitIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <rect x="1" y="1" width="5" height="12" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
