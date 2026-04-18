@@ -219,8 +219,14 @@ const editorTheme = EditorView.theme({
   },
 }, { dark: true });
 
-// Persists scroll position across tab switches (keyed by filePath)
+// Persists scroll position and full editor state (undo history, selection) across tab switches
 const scrollPositions = new Map<string, number>();
+const editorStates = new Map<string, EditorState>();
+
+export function clearEditorState(filePath: string) {
+  editorStates.delete(filePath);
+  scrollPositions.delete(filePath);
+}
 
 export interface CodeEditorHandle {
   navigateConflict: (direction: 'next' | 'prev') => void;
@@ -265,32 +271,33 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
       const langExt = getLanguageExtension(filePath);
 
-      const state = EditorState.create({
-        doc: value,
-        extensions: [
-          lineNumbers(),
-          highlightActiveLineGutter(),
-          highlightActiveLine(),
-          history(),
-          drawSelection(),
-          indentOnInput(),
-          bracketMatching(),
-          indentUnit.of('  '),
-          EditorState.tabSize.of(2),
-          search({ top: true }),
-          highlightSelectionMatches({ minSelectionLength: 1, wholeWords: true }),
-          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-          ...(Array.isArray(langExt) ? langExt : [langExt]),
-          editorTheme,
-          syntaxHighlighting(kraftHighlightStyle),
-          ...conflictExtension(),
-          EditorView.updateListener.of(update => {
-            if (update.docChanged && !update.transactions.some(tr => tr.annotation(Transaction.remote))) {
-              onChangeRef.current(update.state.doc.toString());
-            }
-          }),
-        ],
-      });
+      const extensions = [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightActiveLine(),
+        history(),
+        drawSelection(),
+        indentOnInput(),
+        bracketMatching(),
+        indentUnit.of('  '),
+        EditorState.tabSize.of(2),
+        search({ top: true }),
+        highlightSelectionMatches({ minSelectionLength: 1, wholeWords: true }),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+        ...(Array.isArray(langExt) ? langExt : [langExt]),
+        editorTheme,
+        syntaxHighlighting(kraftHighlightStyle),
+        ...conflictExtension(),
+        EditorView.updateListener.of(update => {
+          if (update.docChanged && !update.transactions.some(tr => tr.annotation(Transaction.remote))) {
+            onChangeRef.current(update.state.doc.toString());
+          }
+        }),
+      ];
+
+      // Restore previously saved state (preserves undo history and cursor position)
+      const savedState = editorStates.get(filePath);
+      const state = savedState ?? EditorState.create({ doc: value, extensions });
 
       const view = new EditorView({ state, parent: containerRef.current });
 
@@ -315,8 +322,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
       return () => {
         rafIds.forEach(cancelAnimationFrame);
-        // Save scroll position before destroying
         scrollPositions.set(filePath, view.scrollDOM.scrollTop);
+        editorStates.set(filePath, view.state);
         view.destroy();
         editorRef.current = null;
       };

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Theme, LayoutPreset, AppSettings, GitInfo, GitFileStatus, TerminalPane, TerminalGroup, PanelId, PanelVisibility, AgentContextDir, PersistedSession, PersistedGroup, SavedWorkspace, SavedWorkspaceMeta } from '../types';
 import { getThemeById, kraftDark } from '../themes';
+import { clearEditorState } from '../components/CodeEditor';
 import { AGENT_AUTO_TAB_ICON_ID, pickRandomColor } from '../terminalIcons';
 
 const GET_SHIT_DONE_LAYOUT: PanelId[][] = [['terminal']];
@@ -754,6 +755,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const closeFileTab = useCallback((path: string) => {
     const gid = activeGroupIdRef.current;
     if (!gid) return;
+    clearEditorState(path);
     setDiffFilePathState(prev => (prev === path ? null : prev));
     setOpenFileTabsMap(prev => {
       const entry = prev[gid];
