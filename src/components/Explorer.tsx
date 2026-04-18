@@ -280,6 +280,7 @@ interface SourceControlViewProps {
   gitStatus: Record<string, GitFileStatus>;
   gitStagedStatus: Record<string, GitFileStatus>;
   allRoots: string[];
+  gitRepoRootsMap: Record<string, string>;
   onFileClick: (path: string) => void;
   onFileDoubleClick: () => void;
   onStageFile: (path: string) => void;
@@ -443,16 +444,29 @@ function buildRepoGroups(
   gitStatus: Record<string, GitFileStatus>,
   gitStagedStatus: Record<string, GitFileStatus>,
   allRoots: string[],
+  gitRepoRootsMap: Record<string, string>,
 ): RepoChanges[] {
   const statusOrder: Record<string, number> = { conflict: 0, modified: 1, added: 2, renamed: 3, untracked: 4, deleted: 5 };
   const sortFiles = (entries: [string, GitFileStatus][]) =>
     entries.sort(([, a], [, b]) => (statusOrder[a] ?? 99) - (statusOrder[b] ?? 99));
 
+  // Deduplicate allRoots by their actual git repo root so that multiple directories
+  // inside the same repo are shown as one unified section.
+  const seenRepoRoots = new Map<string, string>(); // gitRepoRoot -> effective root path to use
+  const effectiveRoots: string[] = [];
+  for (const root of allRoots) {
+    const repoRoot = gitRepoRootsMap[root] ?? root;
+    if (!seenRepoRoots.has(repoRoot)) {
+      seenRepoRoots.set(repoRoot, repoRoot);
+      effectiveRoots.push(repoRoot);
+    }
+  }
+
   const repoMap = new Map<string, RepoChanges>();
   const assignedUnstaged = new Set<string>();
   const assignedStaged = new Set<string>();
 
-  for (const root of allRoots) {
+  for (const root of effectiveRoots) {
     const prefix = root.endsWith('/') ? root : root + '/';
     const rootName = root.split('/').pop() || root;
     const staged: [string, GitFileStatus][] = [];
@@ -666,10 +680,10 @@ function RepoSection({ repo, onFileClick, onFileDoubleClick, onStageFile, onUnst
   );
 }
 
-function SourceControlView({ gitStatus, gitStagedStatus, allRoots, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll, onDiscardFile, onDiscardAll, onStash, onStashPop, onCommitStaged, onCommitAll, onUndoLastCommit }: SourceControlViewProps) {
+function SourceControlView({ gitStatus, gitStagedStatus, allRoots, gitRepoRootsMap, onFileClick, onFileDoubleClick, onStageFile, onUnstageFile, onStageAll, onUnstageAll, onDiscardFile, onDiscardAll, onStash, onStashPop, onCommitStaged, onCommitAll, onUndoLastCommit }: SourceControlViewProps) {
   const repos = useMemo(
-    () => buildRepoGroups(gitStatus, gitStagedStatus, allRoots),
-    [gitStatus, gitStagedStatus, allRoots],
+    () => buildRepoGroups(gitStatus, gitStagedStatus, allRoots, gitRepoRootsMap),
+    [gitStatus, gitStagedStatus, allRoots, gitRepoRootsMap],
   );
 
   const totalCount = useMemo(
@@ -1233,6 +1247,8 @@ export function Explorer() {
     commitAll,
     undoLastCommit,
     agentContextDirs,
+    gitRepoRootsMap,
+    lastFetchedDirs,
     createGroupAtPath,
   } = useSessionContext();
 
@@ -1717,9 +1733,14 @@ export function Explorer() {
   );
 
   const allRoots = useMemo(() => {
+    // Use the dirs from the last completed git fetch so that allRoots and gitStatus
+    // always update atomically. This prevents the tree from flickering when switching
+    // between terminals with different paths (roots would change instantly but git data
+    // would still be from the previous fetch).
+    if (lastFetchedDirs !== null) return lastFetchedDirs;
     const roots = explorerRoot ? [explorerRoot] : [];
     return roots.concat(visibleContextDirs.map(d => d.path));
-  }, [explorerRoot, visibleContextDirs]);
+  }, [lastFetchedDirs, explorerRoot, visibleContextDirs]);
 
   const combinedGitStatus = useMemo(() => {
     if (Object.keys(gitStagedStatus).length === 0) return gitStatus;
@@ -1980,6 +2001,7 @@ export function Explorer() {
             gitStatus={gitStatus}
             gitStagedStatus={gitStagedStatus}
             allRoots={allRoots}
+            gitRepoRootsMap={gitRepoRootsMap}
             onFileClick={handleChangeFileClick}
             onFileDoubleClick={showEditorPanel}
             onStageFile={(path) => stageFiles([path])}

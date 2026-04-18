@@ -120,6 +120,8 @@ interface SessionContextValue {
   gitStagedStatus: Record<string, GitFileStatus>;
   gitIgnored: string[];
   gitRepoRoot: string | null;
+  gitRepoRootsMap: Record<string, string>;
+  lastFetchedDirs: string[] | null;
   getRepoRootForFile: (filePath: string) => string | null;
   refreshGitStatus: () => void;
   stageFiles: (filePaths: string[]) => Promise<void>;
@@ -209,6 +211,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [gitIgnored, setGitIgnored] = useState<string[]>([]);
   const [gitRepoRoot, setGitRepoRoot] = useState<string | null>(null);
   const [gitRepoRootsMap, setGitRepoRootsMap] = useState<Record<string, string>>({});
+  const [lastFetchedDirs, setLastFetchedDirs] = useState<string[] | null>(null);
   const [diffFilePath, setDiffFilePathState] = useState<string | null>(null);
   const [gitError, setGitError] = useState<string | null>(null);
   const [gitErrorViewContent, setGitErrorViewContent] = useState<string | null>(null);
@@ -1013,12 +1016,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setGitIgnored(mergedIgnored);
       setGitRepoRoot(primaryRepoRoot);
       setGitRepoRootsMap(rootsMap);
+      setLastFetchedDirs(dirs);
     } catch {
       setGitStatus({});
       setGitStagedStatus({});
       setGitIgnored([]);
       setGitRepoRoot(null);
       setGitRepoRootsMap({});
+      setLastFetchedDirs([]);
     }
   }, []);
 
@@ -1029,6 +1034,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setGitStagedStatus({});
       setGitIgnored([]);
       setGitRepoRoot(null);
+      setLastFetchedDirs([]);
       return;
     }
     const timer = setTimeout(() => fetchGitStatus(allRoots), 300);
@@ -1553,6 +1559,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     gitStagedStatus,
     gitIgnored,
     gitRepoRoot,
+    gitRepoRootsMap,
+    lastFetchedDirs,
     getRepoRootForFile,
     refreshGitStatus,
     stageFiles,
@@ -1572,7 +1580,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadWorkspace,
     listWorkspaces,
     deleteWorkspace,
-  }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, agentContextDirs, recentlyClosedGroups, activeWorkspaceName,
+  }), [cwd, groups, activeGroupId, activeGroup, focusedPaneId, explorerRoot, explorerOutOfSync, gitInfo, gitStatus, gitStagedStatus, gitIgnored, gitRepoRoot, gitRepoRootsMap, lastFetchedDirs, agentContextDirs, recentlyClosedGroups, activeWorkspaceName,
        setActiveGroup, setFocusedPane, createGroup, createGroupAtPath, duplicateGroup, destroyGroup, splitPane, splitDown, closePane, exitSplit, updateGroupColPcts, updateGroupRowPcts, updatePaneCwd, renameGroup, updateGroupAppearance, reorderGroups, reorderPanes, movePaneTo, restoreLastClosedGroup, setExplorerRoot, refreshGitStatus, stageFiles, unstageFiles, discardFiles, stashChanges, stashPop, commitStaged, commitAll, undoLastCommit, getRepoRootForFile, saveWorkspace, loadWorkspace, listWorkspaces, deleteWorkspace]);
 
   return (
