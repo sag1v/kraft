@@ -232,6 +232,30 @@ let pendingWorkspace: string | null = null;
 // webContentsId → workspace filename
 const windowActiveWorkspace = new Map<number, string>();
 
+// Handle "Open Recent" dock clicks — fires even before app.whenReady() when app was closed
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  const filename = path.basename(filePath);
+  if (!filename.endsWith('.json')) return;
+
+  if (!app.isReady()) {
+    pendingWorkspace = filename;
+    return;
+  }
+
+  const wins = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
+  const existing = wins.find(w => windowActiveWorkspace.get(w.webContents.id) === filename);
+  if (existing) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return;
+  }
+
+  pendingWorkspace = filename;
+  createWindow();
+});
+
 async function rebuildDockMenu(): Promise<void> {
   if (process.platform !== 'darwin') return;
   const dir = getWorkspacesDir();
@@ -250,6 +274,10 @@ async function rebuildDockMenu(): Promise<void> {
     // Newest first (filenames contain timestamp)
     workspaces.sort((a, b) => b.filename.localeCompare(a.filename));
     workspaces = workspaces.slice(0, 8);
+    // Register with macOS so workspaces appear in "Open Recent" even when app is closed
+    for (const ws of workspaces) {
+      app.addRecentDocument(path.join(dir, ws.filename));
+    }
   } catch {}
 
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -1433,7 +1461,9 @@ function setupIPC() {
       .toLowerCase()
       .slice(0, 50);
     const filename = `${safeName}-${Date.now()}.json`;
-    await fs.promises.writeFile(path.join(dir, filename), JSON.stringify(workspace, null, 2));
+    const fullPath = path.join(dir, filename);
+    await fs.promises.writeFile(fullPath, JSON.stringify(workspace, null, 2));
+    app.addRecentDocument(fullPath);
     rebuildDockMenu();
     return { filename };
   });
