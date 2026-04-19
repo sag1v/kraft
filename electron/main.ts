@@ -274,10 +274,6 @@ async function rebuildDockMenu(): Promise<void> {
     // Newest first (filenames contain timestamp)
     workspaces.sort((a, b) => b.filename.localeCompare(a.filename));
     workspaces = workspaces.slice(0, 8);
-    // Register with macOS so workspaces appear in "Open Recent" even when app is closed
-    for (const ws of workspaces) {
-      app.addRecentDocument(path.join(dir, ws.filename));
-    }
   } catch {}
 
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -1460,10 +1456,8 @@ function setupIPC() {
       .replace(/\s+/g, '-')
       .toLowerCase()
       .slice(0, 50);
-    const filename = `${safeName}-${Date.now()}.json`;
-    const fullPath = path.join(dir, filename);
-    await fs.promises.writeFile(fullPath, JSON.stringify(workspace, null, 2));
-    app.addRecentDocument(fullPath);
+    const filename = `${safeName}.json`;
+    await fs.promises.writeFile(path.join(dir, filename), JSON.stringify(workspace, null, 2));
     rebuildDockMenu();
     return { filename };
   });
@@ -1680,6 +1674,7 @@ app.whenReady().then(() => {
   setupMenu();
   createWindow();
 
+  if (process.platform === 'darwin') app.clearRecentDocuments();
   rebuildDockMenu();
 
   updateChecker.onUpdateAvailable((info) => {
@@ -1703,6 +1698,25 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (process.platform !== 'darwin') return;
+  // Populate macOS "Open Recent" so workspaces are visible in the dock when the app is closed.
+  // Must be synchronous — the process is about to exit.
+  try {
+    const dir = getWorkspacesDir();
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    const workspaces: { filename: string; createdAt: string }[] = [];
+    for (const file of files) {
+      try {
+        const ws = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
+        workspaces.push({ filename: file, createdAt: ws.createdAt || '' });
+      } catch {}
+    }
+    // Add oldest→newest so the newest ends up at the top of macOS's list
+    workspaces.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    for (const ws of workspaces.slice(-8)) {
+      app.addRecentDocument(path.join(dir, ws.filename));
+    }
+  } catch {}
 });
 
 app.on('window-all-closed', () => {
