@@ -3722,6 +3722,19 @@ body {
   border-color: var(--fg-muted);
 }
 
+.editor-code-editor .cm-search-counter {
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  min-width: 44px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.editor-code-editor .cm-search-counter[data-no-results] {
+  color: #f97171;
+}
+
 .editor-code-editor .cm-search label {
   color: var(--fg-muted);
   font-size: 11px;

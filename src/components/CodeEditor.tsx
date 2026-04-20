@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useImperativeHandle, forward
 import { useUIContext } from '../context/AppContext';
 import {
   EditorView,
+  ViewUpdate,
   keymap,
   lineNumbers,
   drawSelection,
@@ -10,7 +11,11 @@ import {
 } from '@codemirror/view';
 import { EditorState, Transaction } from '@codemirror/state';
 import { history, defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import {
+  search, searchKeymap, highlightSelectionMatches,
+  findNext, findPrevious, closeSearchPanel,
+  getSearchQuery, setSearchQuery, SearchQuery,
+} from '@codemirror/search';
 import {
   syntaxHighlighting,
   HighlightStyle,
@@ -219,6 +224,115 @@ const editorTheme = EditorView.theme({
   },
 }, { dark: true });
 
+function createKraftSearchPanel(view: EditorView) {
+  const dom = document.createElement('div');
+  dom.className = 'cm-search';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Find…';
+  input.setAttribute('aria-label', 'Find');
+  input.setAttribute('main-field', 'true');
+
+  const counter = document.createElement('span');
+  counter.className = 'cm-search-counter';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.name = 'prev';
+  prevBtn.setAttribute('aria-label', 'Previous match');
+  prevBtn.textContent = '↑';
+
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.name = 'next';
+  nextBtn.setAttribute('aria-label', 'Next match');
+  nextBtn.textContent = '↓';
+
+  dom.append(input, counter, prevBtn, nextBtn);
+
+  prevBtn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    findPrevious(view);
+  });
+  nextBtn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    findNext(view);
+  });
+
+  input.addEventListener('input', () => {
+    view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: input.value })) });
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) findPrevious(view); else findNext(view);
+    } else if (e.key === 'Escape') {
+      closeSearchPanel(view);
+      view.focus();
+    }
+  });
+
+  function updateCounter() {
+    const q = getSearchQuery(view.state);
+    if (!q.search) {
+      counter.textContent = '';
+      counter.removeAttribute('data-no-results');
+      return;
+    }
+
+    try {
+      const matches: { from: number; to: number }[] = [];
+      const cursor = q.getCursor(view.state.doc);
+      let step = cursor.next();
+      while (!step.done && matches.length < 10000) {
+        matches.push(step.value);
+        step = cursor.next();
+      }
+
+      if (matches.length === 0) {
+        counter.textContent = 'No results';
+        counter.setAttribute('data-no-results', '');
+        return;
+      }
+
+      counter.removeAttribute('data-no-results');
+
+      const sel = view.state.selection.main;
+      let idx = matches.findIndex(m => m.from === sel.from && m.to === sel.to);
+      if (idx === -1) {
+        idx = matches.findIndex(m => m.from >= sel.head);
+        if (idx === -1) idx = 0;
+      }
+
+      const total = matches.length >= 10000 ? '10000+' : String(matches.length);
+      counter.textContent = `${idx + 1}/${total}`;
+    } catch {
+      counter.textContent = '';
+    }
+  }
+
+  return {
+    dom,
+    top: true,
+    mount() {
+      const q = getSearchQuery(view.state);
+      input.value = q.search || '';
+      input.focus();
+      input.select();
+      updateCounter();
+    },
+    update(update: ViewUpdate) {
+      if (update.transactions.some(tr => tr.effects.some(e => e.is(setSearchQuery)))) {
+        const q = getSearchQuery(update.state);
+        if (input.value !== q.search) input.value = q.search || '';
+      }
+      updateCounter();
+    },
+  };
+}
+
 // Persists scroll position and full editor state (undo history, selection) across tab switches
 const scrollPositions = new Map<string, number>();
 const editorStates = new Map<string, EditorState>();
@@ -281,7 +395,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         bracketMatching(),
         indentUnit.of('  '),
         EditorState.tabSize.of(2),
-        search({ top: true }),
+        search({ top: true, createPanel: createKraftSearchPanel }),
         highlightSelectionMatches({ minSelectionLength: 1, wholeWords: true }),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
         ...(Array.isArray(langExt) ? langExt : [langExt]),
