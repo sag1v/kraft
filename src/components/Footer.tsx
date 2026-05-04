@@ -5,7 +5,7 @@ import { shortcutLabel } from '../shortcuts';
 
 export function Footer() {
   const { homeDir, theme } = useUIContext();
-  const { cwd, gitInfo, gitStatus, gitStagedStatus } = useSessionContext();
+  const { cwd, gitInfo, gitStatus, gitStagedStatus, gitRepoRoot } = useSessionContext();
 
   const displayPath = cwd ? shortenPath(cwd, homeDir) : '~';
   const hasLocalChanges = Object.keys(gitStatus).length > 0 || Object.keys(gitStagedStatus).length > 0;
@@ -25,9 +25,14 @@ export function Footer() {
             )}
             {gitInfo.branch && (
               <>
-                <span className="footer-branch" style={{ color: theme.colors.accent }} data-tooltip="Current branch">
+                <button
+                  className="footer-branch footer-branch-btn"
+                  style={{ color: theme.colors.accent }}
+                  data-tooltip={gitRepoRoot ? 'Switch branch' : 'Current branch'}
+                  onClick={() => gitRepoRoot && window.dispatchEvent(new CustomEvent('kraft:open-branch-switcher'))}
+                >
                   ⎇ {gitInfo.branch}
-                </span>
+                </button>
               </>
             )}
             {hasLocalChanges && (

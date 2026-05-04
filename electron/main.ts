@@ -1228,6 +1228,52 @@ function setupIPC() {
     })
   );
 
+  ipcMain.handle('git-list-branches', async (_event, repoRoot: string) => {
+    try {
+      const [localResult, remoteResult] = await Promise.all([
+        shellExec('git', ['branch', '--format=%(HEAD)|%(refname:short)'], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 }),
+        shellExec('git', ['branch', '-r', '--format=%(refname:short)'], { cwd: repoRoot, encoding: 'utf-8', timeout: 5000 }),
+      ]);
+
+      let current = '';
+      const local: string[] = [];
+      for (const line of localResult.stdout.split('\n').filter(Boolean)) {
+        const pipeIdx = line.indexOf('|');
+        const head = pipeIdx >= 0 ? line.slice(0, pipeIdx) : '';
+        const name = pipeIdx >= 0 ? line.slice(pipeIdx + 1) : line;
+        if (head === '*') current = name;
+        local.push(name);
+      }
+
+      const remote = remoteResult.stdout
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.includes('HEAD'));
+
+      return { local, remote, current };
+    } catch {
+      return { local: [], remote: [], current: '' };
+    }
+  });
+
+  ipcMain.handle('git-checkout-branch', (_event, repoRoot: string, branch: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await shellExec('git', ['checkout', branch], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
+
+  ipcMain.handle('git-create-branch', (_event, repoRoot: string, branch: string) =>
+    enqueueGitOp(repoRoot, async () => {
+      try {
+        await shellExec('git', ['checkout', '-b', branch], { cwd: repoRoot, encoding: 'utf-8', timeout: 15000 });
+        return { success: true, error: null };
+      } catch (e) { return gitResult(e); }
+    })
+  );
+
   ipcMain.handle('get-git-diff', async (_event, filePath: string, repoRoot: string) => {
     try {
       try {

@@ -70,6 +70,12 @@ const api = {
     ipcRenderer.invoke('git-commit-all', repoRoot, message),
   gitUndoCommit: (repoRoot: string): Promise<boolean> =>
     ipcRenderer.invoke('git-undo-commit', repoRoot),
+  gitListBranches: (repoRoot: string): Promise<{ local: string[]; remote: string[]; current: string }> =>
+    ipcRenderer.invoke('git-list-branches', repoRoot),
+  gitCheckoutBranch: (repoRoot: string, branch: string): Promise<{ success: boolean; error: string | null }> =>
+    ipcRenderer.invoke('git-checkout-branch', repoRoot, branch),
+  gitCreateBranch: (repoRoot: string, branch: string): Promise<{ success: boolean; error: string | null }> =>
+    ipcRenderer.invoke('git-create-branch', repoRoot, branch),
 
   createTerminal: (options: {
     cwd?: string;

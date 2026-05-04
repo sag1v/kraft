@@ -263,6 +263,9 @@ export interface ElectronAPI {
   gitCommit: (repoRoot: string, message: string) => Promise<GitResult>;
   gitCommitAll: (repoRoot: string, message: string) => Promise<GitResult>;
   gitUndoCommit: (repoRoot: string) => Promise<GitResult>;
+  gitListBranches: (repoRoot: string) => Promise<{ local: string[]; remote: string[]; current: string }>;
+  gitCheckoutBranch: (repoRoot: string, branch: string) => Promise<GitResult>;
+  gitCreateBranch: (repoRoot: string, branch: string) => Promise<GitResult>;
   createTerminal: (options: { cwd?: string; shell?: string; cols?: number; rows?: number }) => Promise<TerminalInfo>;
   writeTerminal: (id: string, data: string) => void;
   resizeTerminal: (id: string, cols: number, rows: number) => void;

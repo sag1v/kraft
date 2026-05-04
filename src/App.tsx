@@ -8,6 +8,7 @@ import { Settings } from './components/Settings';
 import { CommandPalette } from './components/CommandPalette';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { GitErrorToast } from './components/GitErrorToast';
+import { BranchSwitcher } from './components/BranchSwitcher';
 import { UpdateNotification } from './components/UpdateNotification';
 import { EasterEggGame } from './components/EasterEggGame';
 
@@ -270,6 +271,7 @@ function AppInner() {
       <CommandPalette />
       <GlobalTooltip />
       <GitErrorToast />
+      <BranchSwitcher />
       <UpdateNotification />
     </div>
   );
