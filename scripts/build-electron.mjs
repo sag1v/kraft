@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
+
 function loadEnvVar(name, fallback = '') {
   try {
     const envContent = fs.readFileSync(path.join(root, '.env'), 'utf-8');

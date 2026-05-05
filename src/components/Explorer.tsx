@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from 'react';
-import { VscFolderOpened, VscFiles, VscSourceControl, VscNewFile, VscNewFolder, VscSearch } from 'react-icons/vsc';
+import { VscFolderOpened, VscFiles, VscSourceControl, VscNewFile, VscNewFolder, VscSearch, VscCollapseAll, VscRefresh } from 'react-icons/vsc';
 import { useUIContext, useSessionContext } from '../context/AppContext';
 import { FileIcon } from './FileIcon';
 import { IconButton, PanelMinimizeButton, PanelMaximizeButton } from './IconButton';
@@ -1836,7 +1836,7 @@ export function Explorer() {
                 tooltipPos="bottom"
                 onClick={(e) => { e.stopPropagation(); setRootOpen(false); setCollapseKey(k => k + 1); }}
               >
-                ⊟
+                <VscCollapseAll size={14} />
               </IconButton>
               <IconButton
                 className="explorer-action-btn"
@@ -1844,7 +1844,7 @@ export function Explorer() {
                 tooltipPos="bottom"
                 onClick={handleRefresh}
               >
-                ⟳
+                <VscRefresh size={14} />
               </IconButton>
             </>
           )}
@@ -1855,7 +1855,7 @@ export function Explorer() {
               tooltipPos="bottom"
               onClick={refreshGitStatus}
             >
-              ⟳
+              <VscRefresh size={14} />
             </IconButton>
           )}
           <PanelMaximizeButton isMaximized={maximizedPanel === 'explorer'} onToggle={() => setMaximizedPanel(maximizedPanel === 'explorer' ? null : 'explorer')} />
