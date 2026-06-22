@@ -144,6 +144,7 @@ const ALL_VISIBLE: PanelVisibility = { explorer: true, editor: true, terminal: t
 
 const defaultSettings: AppSettings = {
   shellOverride: null,
+  terminalShiftEnterNewline: true,
   defaultLayout: 'watch-shit-done',
   panelLayout: WATCH_SHIT_DONE_LAYOUT.map(r => [...r]),
   savedCustomLayout: null,

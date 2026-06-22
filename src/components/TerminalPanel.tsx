@@ -470,6 +470,7 @@ export function TerminalPanel() {
                         theme={theme}
                         fontFamily={settings.fontFamily}
                         fontSize={settings.fontSize}
+                        shiftEnterNewline={settings.terminalShiftEnterNewline}
                         cwd={pane.cwd}
                         workspaceRoots={workspaceRoots}
                         onCwdChange={handleCwdChange}

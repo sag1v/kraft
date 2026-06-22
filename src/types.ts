@@ -100,6 +100,7 @@ export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'untracked' | 're
 export interface GitStatusResult {
   files: Record<string, GitFileStatus>;
   staged: Record<string, GitFileStatus>;
+  ignored?: string[];
   repoRoot: string | null;
 }
 
@@ -216,6 +217,7 @@ export interface SavedWorkspaceMeta {
 
 export interface AppSettings {
   shellOverride: string | null;
+  terminalShiftEnterNewline: boolean;
   defaultLayout: LayoutPreset;
   panelLayout: PanelId[][];
   savedCustomLayout: PanelId[][] | null;

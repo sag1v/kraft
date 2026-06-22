@@ -196,6 +196,11 @@ function parseImportedSettings(raw: unknown): SettingsImport {
         imported.settings.shellOverride = value;
         recognized += 1;
         break;
+      case 'terminalShiftEnterNewline':
+        if (typeof value !== 'boolean') throw new Error('Invalid terminalShiftEnterNewline setting.');
+        imported.settings.terminalShiftEnterNewline = value;
+        recognized += 1;
+        break;
       case 'defaultLayout':
         if (typeof value !== 'string' || !(VALID_LAYOUTS as string[]).includes(value)) throw new Error('Invalid defaultLayout setting.');
         imported.settings.defaultLayout = value as LayoutPreset;
@@ -602,7 +607,7 @@ export function Settings() {
   const showSyncLayout = !isSearching || matches('sync layout tabs independent per tab session');
   const showLayoutSection = !isSearching || filteredLayouts.length > 0 || showCustomLayout || showSyncLayout;
 
-  const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder hidden files dotfiles dot new tab working directory previous cwd');
+  const showShell = !isSearching || matches('shell terminal bash zsh fish default explorer auto load folder hidden files dotfiles dot new tab working directory previous cwd shift enter newline multiline continuation command');
 
   const effectiveKeys = (id: string): string => {
     if ((FOCUS_SHORTCUT_IDS as string[]).includes(id)) {
@@ -933,6 +938,18 @@ export function Settings() {
                     className="settings-toggle"
                     data-checked={settings.autoLoadExplorer}
                     onClick={() => updateSettings({ autoLoadExplorer: !settings.autoLoadExplorer })}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div className="settings-row-info">
+                    <span className="settings-row-title">Shift+Enter New Line</span>
+                    <span className="settings-row-desc">Insert a shell continuation line in the terminal so commands can span multiple visual lines.</span>
+                  </div>
+                  <button
+                    className="settings-toggle"
+                    data-checked={settings.terminalShiftEnterNewline}
+                    onClick={() => updateSettings({ terminalShiftEnterNewline: !settings.terminalShiftEnterNewline })}
                   />
                 </div>
 

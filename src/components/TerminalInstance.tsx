@@ -70,6 +70,8 @@ function isGitDiffLine(text: string): boolean {
 
 const IS_MAC = navigator.platform.toUpperCase().includes('MAC');
 const LINK_TOOLTIP_TEXT = IS_MAC ? 'Follow link (⌘ + click)' : 'Follow link (Ctrl + click)';
+// POSIX shell line continuation. This keeps multiline input as one command.
+const SHELL_INPUT_CONTINUATION = ' \\\r';
 
 function createLinkTooltip(): HTMLDivElement {
   const el = document.createElement('div');
@@ -291,6 +293,7 @@ interface TerminalInstanceProps {
   theme: Theme;
   fontFamily?: string;
   fontSize?: number;
+  shiftEnterNewline?: boolean;
   cwd: string;
   workspaceRoots: string[];
   onCwdChange: (sessionId: string, cwd: string) => void;
@@ -308,6 +311,7 @@ export const TerminalInstance = React.memo(function TerminalInstance({
   theme,
   fontFamily = 'JetBrains Mono',
   fontSize = 14,
+  shiftEnterNewline = true,
   cwd,
   workspaceRoots,
   onCwdChange,
@@ -326,6 +330,9 @@ export const TerminalInstance = React.memo(function TerminalInstance({
 
   const cwdRef = useRef(cwd);
   cwdRef.current = cwd;
+
+  const shiftEnterNewlineRef = useRef(shiftEnterNewline);
+  shiftEnterNewlineRef.current = shiftEnterNewline;
 
   const workspaceRootsRef = useRef(workspaceRoots);
   workspaceRootsRef.current = workspaceRoots;
@@ -524,6 +531,21 @@ export const TerminalInstance = React.memo(function TerminalInstance({
     // before the keydown event reaches xterm. Returning true tells xterm to still process
     // the key and forward it to the PTY as normal.
     xterm.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (
+        event.type === 'keydown' &&
+        event.key === 'Enter' &&
+        shiftEnterNewlineRef.current &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        window.api.writeTerminal(sessionIdRef.current, SHELL_INPUT_CONTINUATION);
+        return false;
+      }
+
       if (event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
       }
