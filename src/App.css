@@ -2677,6 +2677,54 @@ body {
   border-color: var(--accent);
 }
 
+.settings-action-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 10px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.settings-action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-io-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.settings-file-input {
+  display: none;
+}
+
+.settings-io-message {
+  margin-top: -4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.settings-io-message[data-type="success"] {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.settings-io-message[data-type="error"] {
+  border-color: var(--danger, #ff5f57);
+  color: var(--danger, #ff5f57);
+}
+
 .settings-toggle {
   position: relative;
   width: 36px;

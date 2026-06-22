@@ -1457,8 +1457,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           next = { ...next, panelLayout: presetLayout.map(r => [...r]) };
           newVis = { ...ALL_VISIBLE };
         } else if (partial.defaultLayout === 'custom') {
-          if (prev.savedCustomLayout) {
-            next = { ...next, panelLayout: prev.savedCustomLayout.map(r => [...r]) };
+          if (next.savedCustomLayout) {
+            next = { ...next, panelLayout: next.savedCustomLayout.map(r => [...r]) };
           } else {
             const initial = MY_LAYOUT_DEFAULT.map(r => [...r]);
             const defaultVis: PanelVisibility = { explorer: true, editor: false, terminal: true };
