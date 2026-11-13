@@ -2,6 +2,10 @@
 
 A terminal-first developer IDE built with Electron, React, and xterm.js. Kraft puts the terminal at the center of the development workflow, with an integrated file explorer, code editor, Git controls, and customizable panel layout.
 
+<p align="center">
+  <img src="docs/kraft-demo.gif" alt="Kraft demo: file explorer with Git diff, editing, command palette, drag-and-drop panels, split terminals, and multiple sessions" width="100%">
+</p>
+
 ## Features
 
 ### Terminal
