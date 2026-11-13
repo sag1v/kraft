@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { resolve, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
@@ -7,154 +7,152 @@ import { createHash } from 'crypto';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
-const envFile = readFileSync(resolve(root, '.env'), 'utf-8');
+const envPath = resolve(root, '.env');
+const envFile = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : '';
+
 function envVar(name) {
+  if (process.env[name]) return process.env[name];
   const line = envFile.split('\n').find((l) => l.startsWith(`${name}=`));
   return line?.split('=').slice(1).join('=').trim() || '';
 }
 
-const GITLAB_TOKEN = envVar('GITLAB_KRAFT_TOKEN');
-const GITLAB_HOST = envVar('GITLAB_HOST') || 'https://gitlab.example.com';
-const GITLAB_PROJECT_PATH = envVar('GITLAB_PROJECT_PATH') || 'sag1v/kraft';
-const PROJECT_NUM_ID = envVar('GITLAB_PROJECT_NUM_ID');
+function resolveGitHubToken() {
+  const fromEnv = envVar('GITHUB_KRAFT_TOKEN') || envVar('GH_TOKEN') || envVar('GITHUB_TOKEN');
+  if (fromEnv) return fromEnv;
+  try {
+    const ghUser = envVar('GITHUB_USER') || 'sag1v';
+    return execSync(`gh auth token --user ${ghUser}`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return '';
+  }
+}
 
-if (!GITLAB_TOKEN) {
-  console.error('GITLAB_KRAFT_TOKEN is required in .env');
+const GITHUB_TOKEN = resolveGitHubToken();
+const GITHUB_REPO = envVar('GITHUB_REPO') || 'sag1v/kraft';
+const TARGET_BRANCH = envVar('GITHUB_RELEASE_BRANCH') || 'main';
+const API = 'https://api.github.com';
+
+if (!GITHUB_TOKEN) {
+  console.error('GitHub token not found. Set GITHUB_KRAFT_TOKEN in .env or authenticate gh CLI as sag1v.');
   process.exit(1);
 }
 
-const PROJECT_ID = encodeURIComponent(GITLAB_PROJECT_PATH);
-const API = `${GITLAB_HOST}/api/v4`;
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'));
 const VERSION = pkg.version;
 const TAG = `v${VERSION}`;
 
 async function api(path, options = {}) {
-  const res = await fetch(`${API}${path}`, {
+  return fetch(`${API}${path}`, {
     ...options,
     headers: {
-      'PRIVATE-TOKEN': GITLAB_TOKEN,
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Kraft-Release-Script',
       ...options.headers,
     },
   });
-  return res;
 }
 
 async function releaseExists() {
-  const res = await api(`/projects/${PROJECT_ID}/releases/${TAG}`);
+  const res = await api(`/repos/${GITHUB_REPO}/releases/tags/${TAG}`);
   return res.ok;
 }
 
-async function createRelease() {
-  const res = await api(`/projects/${PROJECT_ID}/releases`, {
+async function createDraftRelease() {
+  const res = await api(`/repos/${GITHUB_REPO}/releases`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       tag_name: TAG,
+      target_commitish: TARGET_BRANCH,
       name: `Kraft ${TAG}`,
-      description: `Release ${TAG}`,
-      ref: 'dev',
+      body: `Release ${TAG}`,
+      draft: true,
+      prerelease: false,
+      generate_release_notes: true,
     }),
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Failed to create release: ${res.status} ${body}`);
+    throw new Error(`Failed to create draft release: ${res.status} ${body}`);
   }
-  console.log(`Created release ${TAG}`);
+  const release = await res.json();
+  console.log(`Created draft release ${TAG} (id: ${release.id})`);
+  return release;
+}
+
+async function publishRelease(releaseId) {
+  const res = await api(`/repos/${GITHUB_REPO}/releases/${releaseId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      draft: false,
+      tag_name: TAG,
+      target_commitish: TARGET_BRANCH,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to publish release: ${res.status} ${body}`);
+  }
   return res.json();
 }
 
-async function uploadPackage(filePath, packageVersion) {
-  const fileName = basename(filePath);
+function uploadAsset(uploadUrlTemplate, filePath) {
+  const fileName = basename(filePath).replace(/ /g, '-');
   const sizeMB = (statSync(filePath).size / 1024 / 1024).toFixed(1);
+  const baseUploadUrl = uploadUrlTemplate.replace(/\{\?name,label\}$/, '');
+  const uploadUrl = `${baseUploadUrl}?name=${encodeURIComponent(fileName)}`;
 
-  const uploadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${packageVersion}/${encodeURIComponent(fileName)}`;
-  console.log(`Uploading ${fileName} (${sizeMB} MB) to packages/generic/kraft/${packageVersion}/...`);
+  console.log(`Uploading ${fileName} (${sizeMB} MB)...`);
 
   execSync(
     `curl --retry 3 --retry-delay 5 --retry-connrefused -fS \
-      -X PUT \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+      -X POST \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
       -H "Content-Type: application/octet-stream" \
-      --upload-file "${filePath}" \
-      "${uploadUrl}"`,
+      --data-binary @"${filePath}" \
+      "${uploadUrl}" > /dev/null`,
     { stdio: 'inherit' }
   );
 
-  const downloadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${packageVersion}/${encodeURIComponent(fileName)}`;
   console.log(`Uploaded ${fileName}`);
-  return downloadUrl;
-}
-
-async function linkAssetToRelease(name, url) {
-  try {
-    const res = await api(`/projects/${PROJECT_ID}/releases/${TAG}/assets/links`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, url, link_type: 'package' }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.warn(`Warning: failed to link ${name} to release: ${res.status} ${body}`);
-    }
-  } catch (err) {
-    console.warn(`Warning: failed to link ${name} to release: ${err.message}`);
-  }
 }
 
 function generateLatestMacYml(zipPath, dmgPath) {
   const zipBuffer = readFileSync(zipPath);
   const zipSha512 = createHash('sha512').update(zipBuffer).digest('base64');
   const zipSize = statSync(zipPath).size;
-  const zipFileName = basename(zipPath);
-  const zipUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${VERSION}/${encodeURIComponent(zipFileName)}`;
+  const zipFileName = basename(zipPath).replace(/ /g, '-');
 
   const dmgBuffer = readFileSync(dmgPath);
   const dmgSha512 = createHash('sha512').update(dmgBuffer).digest('base64');
   const dmgSize = statSync(dmgPath).size;
-  const dmgFileName = basename(dmgPath);
-  const dmgUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/${VERSION}/${encodeURIComponent(dmgFileName)}`;
+  const dmgFileName = basename(dmgPath).replace(/ /g, '-');
 
   return [
     `version: ${VERSION}`,
     `files:`,
-    `  - url: ${zipUrl}`,
+    `  - url: ${zipFileName}`,
     `    sha512: ${zipSha512}`,
     `    size: ${zipSize}`,
-    `  - url: ${dmgUrl}`,
+    `  - url: ${dmgFileName}`,
     `    sha512: ${dmgSha512}`,
     `    size: ${dmgSize}`,
-    `path: ${zipUrl}`,
+    `path: ${zipFileName}`,
     `sha512: ${zipSha512}`,
-    `releaseDate: ${new Date().toISOString()}`,
+    `releaseDate: '${new Date().toISOString()}'`,
   ].join('\n');
-}
-
-async function uploadLatestYml(ymlContent) {
-  // Upload to stable "latest" path so electron-updater always checks the same URL
-  const uploadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/latest/latest-mac.yml`;
-  console.log('Uploading latest-mac.yml to packages/generic/kraft/latest/...');
-
-  execSync(
-    `curl --retry 3 --retry-delay 5 --retry-connrefused -fS \
-      -X PUT \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-      -H "Content-Type: application/octet-stream" \
-      --data-binary @- \
-      "${uploadUrl}"`,
-    { input: ymlContent, stdio: ['pipe', 'inherit', 'inherit'] }
-  );
-
-  const downloadUrl = `${GITLAB_HOST}/api/v4/projects/${PROJECT_NUM_ID}/packages/generic/kraft/latest/latest-mac.yml`;
-  console.log('Uploaded latest-mac.yml');
-  return downloadUrl;
 }
 
 async function main() {
   console.log(`\nKraft Release Script`);
   console.log(`Version: ${VERSION}`);
   console.log(`Tag: ${TAG}`);
-  console.log(`Project: ${GITLAB_PROJECT_PATH}\n`);
+  console.log(`Repository: ${GITHUB_REPO}\n`);
 
   if (await releaseExists()) {
     console.error(`Release ${TAG} already exists. Bump the version in package.json first.`);
@@ -183,43 +181,40 @@ async function main() {
   }
 
   const distDir = resolve(root, 'dist-release');
-  const files = readdirSync(distDir).filter(
-    (f) => (f.endsWith('.zip') || f.endsWith('.dmg')) && f.includes(VERSION)
+  const artifactFiles = readdirSync(distDir).filter(
+    (f) =>
+      (f.endsWith('.zip') || f.endsWith('.dmg') || f.endsWith('.blockmap')) &&
+      f.includes(VERSION)
   );
 
-  if (files.length === 0) {
-    console.error('No .zip or .dmg files found in dist-release/');
+  const zipFile = artifactFiles.find((f) => f.endsWith('.zip'));
+  const dmgFile = artifactFiles.find((f) => f.endsWith('.dmg'));
+
+  if (!zipFile || !dmgFile) {
+    console.error(`Expected .zip and .dmg files for version ${VERSION} in dist-release/`);
     process.exit(1);
   }
 
-  console.log('Artifacts found:');
-  files.forEach((f) => console.log(`  ${f}`));
+  const latestMacYmlPath = resolve(distDir, 'latest-mac.yml');
+  const ymlContent = generateLatestMacYml(resolve(distDir, zipFile), resolve(distDir, dmgFile));
+  writeFileSync(latestMacYmlPath, `${ymlContent}\n`, 'utf-8');
+
+  const filesToUpload = [...artifactFiles.map((f) => resolve(distDir, f)), latestMacYmlPath];
+
+  console.log('Artifacts to upload:');
+  filesToUpload.forEach((f) => console.log(`  ${basename(f)}`));
   console.log();
 
-  await createRelease();
+  const draftRelease = await createDraftRelease();
 
-  let zipPath = '';
-  let dmgPath = '';
-  for (const file of files) {
-    const filePath = resolve(distDir, file);
-    const url = await uploadPackage(filePath, VERSION);
-    await linkAssetToRelease(file, url);
-    if (file.endsWith('.zip')) zipPath = filePath;
-    if (file.endsWith('.dmg')) dmgPath = filePath;
+  for (const filePath of filesToUpload) {
+    uploadAsset(draftRelease.upload_url, filePath);
   }
 
-  if (zipPath && dmgPath) {
-    const ymlContent = generateLatestMacYml(zipPath, dmgPath);
-    console.log('\nlatest-mac.yml content:');
-    console.log(ymlContent);
-    console.log();
-
-    const ymlUrl = await uploadLatestYml(ymlContent);
-    await linkAssetToRelease('latest-mac.yml', ymlUrl);
-  }
+  const published = await publishRelease(draftRelease.id);
 
   console.log(`\nRelease ${TAG} published successfully!`);
-  console.log(`View at: ${GITLAB_HOST}/${GITLAB_PROJECT_PATH}/-/releases/${TAG}`);
+  console.log(`View at: ${published.html_url}`);
 }
 
 main().catch((err) => {

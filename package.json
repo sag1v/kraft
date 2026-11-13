@@ -3,6 +3,10 @@
   "productName": "Kraft",
   "version": "0.27.0",
   "description": "Terminal-first AI-powered developer IDE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sag1v/kraft.git"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -10,7 +14,7 @@
     "build:renderer": "vite build",
     "build": "npm run build:electron && npm run build:renderer",
     "pack": "npm run build && electron-builder --mac --dir",
-    "dist": "npm run build && electron-builder --mac",
+    "dist": "npm run build && electron-builder --mac --publish never",
     "release": "node scripts/release.mjs",
     "start": "electron .",
     "postinstall": "electron-rebuild -f -w node-pty"
@@ -37,8 +41,10 @@
       "identity": "Kraft Dev Signing"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://gitlab.example.com/api/v4/projects/0/packages/generic/kraft/latest"
+      "provider": "github",
+      "owner": "sag1v",
+      "repo": "kraft",
+      "releaseType": "release"
     },
     "extraMetadata": {
       "main": "dist-electron/main.js"

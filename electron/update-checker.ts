@@ -25,6 +25,8 @@ type ErrorCallback = (error: string) => void;
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;
+const GITHUB_RELEASE_BASE = 'https://github.com/sag1v/kraft/releases/download';
+const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 
 export class UpdateChecker {
   private onUpdateAvailableCb: UpdateAvailableCallback | null = null;
@@ -50,11 +52,17 @@ export class UpdateChecker {
     autoUpdater.on('update-available', (info: ElectronUpdateInfo) => {
       console.log(`[UpdateChecker] Update available: ${info.version}`);
 
-      const dmgFile = info.files?.find((f) => f.url.endsWith('.dmg'));
+      const dmgFiles = info.files?.filter((f) => f.url.endsWith('.dmg')) ?? [];
+      const dmgFile = dmgFiles.find((f) => f.url.includes(process.arch)) ?? dmgFiles[0];
       if (!dmgFile) {
         console.warn('[UpdateChecker] No DMG file found in update info');
         return;
       }
+
+      const tag = (info as ElectronUpdateInfo & { tag?: string }).tag || `v${info.version}`;
+      const dmgUrl = /^https?:\/\//i.test(dmgFile.url)
+        ? dmgFile.url
+        : `${GITHUB_RELEASE_BASE}/${tag}/${dmgFile.url.replace(/ /g, '-')}`;
 
       const updateInfo: UpdateInfo = {
         version: info.version,
@@ -62,7 +70,7 @@ export class UpdateChecker {
         releaseName: `v${info.version}`,
       };
 
-      this.pendingUpdate = { info: updateInfo, dmgUrl: dmgFile.url };
+      this.pendingUpdate = { info: updateInfo, dmgUrl };
       this.onUpdateAvailableCb?.(updateInfo);
     });
 
@@ -110,12 +118,15 @@ export class UpdateChecker {
   private fetchFile(url: string, destPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const get = url.startsWith('https') ? httpsGet : httpGet;
-      get(url, (response) => {
-        if (response.statusCode === 301 || response.statusCode === 302) {
-          this.fetchFile(response.headers.location!, destPath).then(resolve).catch(reject);
+      get(url, { headers: { 'User-Agent': 'Kraft-Updater' } }, (response) => {
+        if (response.statusCode && REDIRECT_STATUS_CODES.has(response.statusCode) && response.headers.location) {
+          const nextUrl = new URL(response.headers.location, url).toString();
+          response.resume();
+          this.fetchFile(nextUrl, destPath).then(resolve).catch(reject);
           return;
         }
         if (response.statusCode !== 200) {
+          response.resume();
           reject(new Error(`Download failed: HTTP ${response.statusCode}`));
           return;
         }

@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if release assets already exist
+        id: check_release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSET_COUNT=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets | length' 2>/dev/null || echo "0")
+          if [ "${ASSET_COUNT}" -gt 0 ]; then
+            echo "Release ${GITHUB_REF_NAME} already has ${ASSET_COUNT} asset(s) - skipping CI publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.check_release.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.check_release.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Build and publish macOS release
+        if: steps.check_release.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          npm run build
+          if [ -n "${CSC_LINK}" ]; then
+            npx electron-builder --mac --publish always
+          else
+            npx electron-builder --mac --publish always -c.mac.identity="-"
+          fi
