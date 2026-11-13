@@ -159,23 +159,18 @@ async function main() {
     process.exit(1);
   }
 
-  const keychainPath = resolve(process.env.HOME, 'Library/Keychains/kraft-build.keychain-db');
-  try {
-    console.log('Unlocked build keychain');
-  } catch {
-    console.warn('Warning: could not unlock kraft-build keychain (may not exist)');
-  }
-
+  const keychainPath = envVar('KRAFT_KEYCHAIN_PATH') || resolve(process.env.HOME, 'Library/Keychains/kraft-build.keychain-db');
   const skipBuild = process.argv.includes('--skip-build');
   if (!skipBuild) {
     console.log('Building app...');
+    const buildEnv = { ...process.env };
+    if (existsSync(keychainPath)) {
+      buildEnv.CSC_KEYCHAIN = keychainPath;
+    }
     execSync('npm run dist', {
       cwd: root,
       stdio: 'inherit',
-      env: {
-        ...process.env,
-        CSC_KEYCHAIN: keychainPath,
-      },
+      env: buildEnv,
     });
     console.log('Build complete\n');
   }

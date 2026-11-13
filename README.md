@@ -1,63 +1,48 @@
 # Kraft
 
-A terminal-first developer IDE built with Electron, React, and xterm.js. Kraft puts the terminal at the center of the development workflow, with an integrated file explorer, code viewer, and customizable panel layout.
+A terminal-first developer IDE built with Electron, React, and xterm.js. Kraft puts the terminal at the center of the development workflow, with an integrated file explorer, code editor, Git controls, and customizable panel layout.
 
 ## Features
 
 ### Terminal
-- Multiple terminal sessions with tabbed interface
-- Middle-click to close tabs, right-click context menu (Close / Close Others)
-- Keyboard shortcuts: `Ctrl+Shift+T` (new tab), `Ctrl+Shift+W` (close tab), `Ctrl+Tab` (switch tabs)
-- Configurable shell (zsh, bash, fish, or system default)
+- Multiple terminal sessions with tabbed interface and split grid panes
+- Middle-click to close tabs, right-click context menu, and tab restoration (`Cmd+Shift+T`)
+- Keyboard shortcuts: `Cmd+T` (new tab), `Cmd+Shift+W` (close tab), `Ctrl+Tab` / `Ctrl+Shift+Tab` (switch tabs)
+- Configurable shell (`zsh`, `bash`, `fish`, or system default) and optional `Shift+Enter` newline mode
 - GPU-accelerated rendering via WebGL
 
-### File Explorer
+### File Explorer & Git
 - Live file tree that updates automatically when files change on disk
-- Collapse all folders with a single click
 - Syncs with the active terminal session's working directory
-- Per-session tree caching for instant tab switching
+- Create, rename, reveal in Finder, and move files or folders to Trash
+- Integrated Git status indicators, diff view, staging/unstaging, commit, stash, and branch switching/creation
 
-### Code Viewer
-- Syntax highlighting powered by highlight.js
-- Relative path display with full path tooltip
-- Horizontal and vertical scrolling with hover-visible scrollbars
+### Code Editor
+- CodeMirror 6 editor with multi-language syntax highlighting and merge-conflict decorations
+- Multi-tab editing with external file-change detection
+- In-file search (`Cmd+F`) and workspace content search (`Cmd+Shift+F`)
 
-### Command Palette
+### Command Palette & Workspaces
 - `Cmd+P` - Quick file search (respects `.gitignore` via `git ls-files`)
 - `Cmd+Shift+P` - Command search with keyboard shortcut badges
-- File results show icons, filenames, and relative paths
-- Breadth-first file ordering (closest to root first)
+- Saved workspaces with macOS Dock "Open Recent" integration
 
-### Layout
-- Drag-and-drop panel rearrangement with full-span drop indicators
-- Predefined layouts: Standard, Split, Stacked, Terminal Focus, Editor Focus
-- Custom "My Layout" that persists across sessions
-- Resizable panels with drag handles
-- Minimize and restore panels
-- Minimum drag distance threshold to prevent accidental layout changes
+### Layout & Themes
+- Drag-and-drop panel rearrangement, resizing, maximizing, and minimizing
+- Layout presets plus a persistent custom layout
+- Built-in themes: Kraft Dark (default), One Dark, Console, DOS, Rose, and Console Light
+- Settings import/export as JSON (`Cmd+,`)
 
-### Themes
-- Kraft Dark (default) - JetBrains-inspired dark theme with vivid text
-- Tokyo Night
-- Gruvbox Dark
-- Rose Pine Dawn
+## AI Agent Integration
 
-### Other
-- `Cmd+Shift+R` - Reload window
-- `Cmd+Alt+I` - Toggle developer tools
-- `Cmd+,` - Open settings
-- Themed tooltips throughout the UI
-- Settings persist across sessions (theme, shell, layout, font size)
-
-## AI Agent
-
-The AI agent feature is not yet implemented. The terminal includes an agent mode indicator (`? for agent mode`) as a placeholder for future integration, but the agent functionality is currently not available.
+Kraft automatically detects active Claude Code terminal sessions and syncs session context directories with the UI.
 
 ## Development
 
 ### Prerequisites
 
-- Node.js (managed via nvm)
+- macOS
+- Node.js 22+
 - npm
 
 ### Setup
@@ -72,22 +57,29 @@ npm install
 npm run dev
 ```
 
-This starts both the Vite dev server (for hot-reloading the renderer) and the Electron main process.
+Starts the Vite dev server (renderer hot reload) and the Electron main process.
 
 ### Build
 
 ```bash
+# Compile Electron main/preload + renderer
 npm run build
+
+# Package macOS .dmg and .zip locally (into dist-release/)
+npm run dist
 ```
+
+## CI & Releases
+
+- **CI (`.github/workflows/ci.yml`)**: Runs `npm ci` and `npm run build` on `macos-latest` for pushes and pull requests to `main`.
+- **Automated Release (`.github/workflows/release.yml`)**: Pushing a `v*` tag (for example `v0.28.0`) builds macOS `.dmg` and `.zip` installers and publishes them to [GitHub Releases](https://github.com/sag1v/kraft/releases) along with `latest-mac.yml` for in-app updates via `electron-updater`. Optional repository secrets `CSC_LINK` and `CSC_KEY_PASSWORD` enable macOS code signing in CI.
+- **Local Release (`npm run release`)**: Builds macOS artifacts locally and publishes them to [GitHub Releases](https://github.com/sag1v/kraft/releases) using `GITHUB_KRAFT_TOKEN` (from `.env` or environment) or an authenticated `gh` CLI session.
 
 ## Tech Stack
 
 - **Electron** - Desktop application framework
-- **React 18** - UI rendering
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **xterm.js** - Terminal emulation with WebGL addon
-- **node-pty** - Native terminal process management
-- **highlight.js** - Syntax highlighting
-- **react-icons** - File type icons
-- **esbuild** - Electron main process bundling
+- **electron-builder** & **electron-updater** - Packaging and GitHub Releases auto-updates
+- **React 18** & **TypeScript** - UI and type safety
+- **Vite** & **esbuild** - Renderer and Electron bundling
+- **xterm.js** & **node-pty** - WebGL terminal emulation and PTY management
+- **CodeMirror 6** & **highlight.js** - Code editing and syntax highlighting
