@@ -47,12 +47,12 @@ jobs:
         if: steps.check_release.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          SECRET_CSC_LINK: ${{ secrets.CSC_LINK }}
+          SECRET_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           npm run build
-          if [ -n "${CSC_LINK}" ]; then
-            npx electron-builder --mac --publish always
+          if [ -n "${SECRET_CSC_LINK}" ]; then
+            CSC_LINK="${SECRET_CSC_LINK}" CSC_KEY_PASSWORD="${SECRET_CSC_KEY_PASSWORD}" npx electron-builder --mac --publish always
           else
-            npx electron-builder --mac --publish always -c.mac.identity="-"
+            npx electron-builder --mac --publish always
           fi

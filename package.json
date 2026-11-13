@@ -37,8 +37,7 @@
         "dmg"
       ],
       "category": "public.app-category.developer-tools",
-      "icon": "assets/icon.png",
-      "identity": "Kraft Dev Signing"
+      "icon": "assets/icon.png"
     },
     "publish": {
       "provider": "github",
